@@ -40,7 +40,7 @@ export default function App() {
       >
         <h1 className="text-sm font-bold tracking-wide text-amber-200">🧪 Idle Potion Brewer</h1>
         <div className="flex items-center gap-1.5 rounded-full bg-amber-950/70 px-3 py-1.5 text-sm font-semibold text-amber-300">
-          <Coins size={16} /> {fmt(coins)}
+          <Coins size={16} /> {Math.floor(coins).toLocaleString()}
         </div>
       </header>
 
@@ -52,7 +52,7 @@ export default function App() {
       {/* Hidden dev toggle */}
       <button
         onClick={() => setPanel("dev")}
-        className="absolute bottom-2 left-2 rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100"
+        className="absolute bottom-2 left-2 z-[2] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100"
         title="Dev Dashboard"
       >
         <Settings2 size={16} />

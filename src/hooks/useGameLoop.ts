@@ -2,27 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
+import type { Worker } from "../types";
+
+export interface WorkerLoopState {
+  workerProgress: number;
+  workerPhase: "idle" | "outbound" | "away" | "inbound";
+}
 
 export interface LoopProgress {
-  workerProgress: number; // 0..1 within the current display phase (not the whole trip)
-  workerPhase: "idle" | "outbound" | "away" | "inbound"; // "away" = invisible at location
-  brewProgress: number; // 0..1
+  workers: WorkerLoopState[];
+  brewProgress: number;
   brewActive: boolean;
 }
 
-// Fixed on-screen walk time each way; longer trips just stay "away" longer
 const WALK_SECS = 3;
 
-/** Total round-trip seconds for the worker's current assignment. */
-export function workerTripSeconds(): number {
-  const g = useGameStore.getState();
+function workerTripSecondsFor(w: Worker): number {
   const cfg = useConfigStore.getState();
-  const loc = g.worker.assigned_location ? cfg.locations[g.worker.assigned_location] : null;
+  const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
   if (!loc) return 0;
-  return gatherRoundTrip(loc.distance, g.worker.gather_speed);
+  return gatherRoundTrip(loc.distance, w.gather_speed);
 }
 
-/** Total brew seconds for the current recipe. */
 export function machineBrewSeconds(): number {
   const g = useGameStore.getState();
   const cfg = useConfigStore.getState();
@@ -34,32 +35,29 @@ export function machineBrewSeconds(): number {
   return brewTime(g.machine, toxicity, cfg.formulas, ingredients);
 }
 
-/** Compute the correct loop state right now from persisted store timestamps. */
+function workerPhaseFor(w: Worker, now: number): WorkerLoopState {
+  if (!w.assigned_location || !w.trip_started_at) {
+    return { workerProgress: 0, workerPhase: "idle" };
+  }
+  const total = workerTripSecondsFor(w);
+  const elapsed = (now - w.trip_started_at) / 1000;
+  if (total <= 0 || elapsed >= total) {
+    return { workerProgress: 0, workerPhase: "idle" };
+  }
+  const walkSecs = Math.min(WALK_SECS, total * 0.4);
+  if (elapsed < walkSecs) {
+    return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" };
+  } else if (elapsed < total - walkSecs) {
+    return { workerProgress: 0, workerPhase: "away" };
+  } else {
+    return { workerProgress: (elapsed - (total - walkSecs)) / walkSecs, workerPhase: "inbound" };
+  }
+}
+
 function snapshotProgress(): LoopProgress {
   const g = useGameStore.getState();
   const now = Date.now();
-
-  let workerProgress = 0;
-  let workerPhase: LoopProgress["workerPhase"] = "idle";
-
-  if (g.worker.assigned_location && g.worker.trip_started_at) {
-    const total = workerTripSeconds();
-    const elapsed = (now - g.worker.trip_started_at) / 1000;
-    if (total > 0 && elapsed < total) {
-      const walkSecs = Math.min(WALK_SECS, total * 0.4);
-      if (elapsed < walkSecs) {
-        workerPhase = "outbound";
-        workerProgress = elapsed / walkSecs;
-      } else if (elapsed < total - walkSecs) {
-        workerPhase = "away";
-      } else {
-        workerPhase = "inbound";
-        workerProgress = (elapsed - (total - walkSecs)) / walkSecs;
-      }
-    }
-    // elapsed >= total → trip completes on first tick; keep idle defaults
-  }
-
+  const workers = g.workers.map((w) => workerPhaseFor(w, now));
   const brewStalled = g.machine.brew_stalled ?? false;
   const brewActive = g.machine.running && !brewStalled;
   let brewProgress = 0;
@@ -68,15 +66,9 @@ function snapshotProgress(): LoopProgress {
     const elapsed = (now - g.machine.brew_started_at) / 1000;
     if (total > 0 && elapsed < total) brewProgress = elapsed / total;
   }
-
-  return { workerProgress, workerPhase, brewProgress, brewActive };
+  return { workers, brewProgress, brewActive };
 }
 
-/**
- * Central game loop. Ticks ~12fps, advances worker trips & machine brews using
- * timestamps (no catch-up loops), and forces re-render so animations track
- * actual_time / brew_speed.
- */
 export function useGameLoop(): LoopProgress {
   const [, setTick] = useState(0);
   const progRef = useRef<LoopProgress>(snapshotProgress());
@@ -93,36 +85,35 @@ export function useGameLoop(): LoopProgress {
       const g = useGameStore.getState();
       const now = Date.now();
 
-      // ---- worker ----
-      let workerProgress = 0;
-      let workerPhase: LoopProgress["workerPhase"] = "idle";
-      if (g.worker.assigned_location && g.worker.trip_started_at) {
-        const total = workerTripSeconds();
-        const elapsed = (now - g.worker.trip_started_at) / 1000;
+      // ---- all workers ----
+      const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {
+        if (!w.assigned_location || !w.trip_started_at) {
+          return { workerProgress: 0, workerPhase: "idle" as const };
+        }
+        const total = workerTripSecondsFor(w);
+        const elapsed = (now - w.trip_started_at) / 1000;
+
         if (total > 0 && elapsed >= total) {
-          g.completeTrip();
-          workerProgress = 0;
-          workerPhase = "idle";
+          g.completeTrip(idx);
+          return { workerProgress: 0, workerPhase: "idle" as const };
         } else if (total > 0) {
-          // Cap walk time so very short trips still have an "away" window
           const walkSecs = Math.min(WALK_SECS, total * 0.4);
+          const storePhase = elapsed / total < 0.5 ? "outbound" : "inbound";
+          if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
 
           if (elapsed < walkSecs) {
-            workerPhase = "outbound";
-            workerProgress = elapsed / walkSecs;
+            return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" as const };
           } else if (elapsed < total - walkSecs) {
-            workerPhase = "away";
-            workerProgress = 0;
+            return { workerProgress: 0, workerPhase: "away" as const };
           } else {
-            workerPhase = "inbound";
-            workerProgress = (elapsed - (total - walkSecs)) / walkSecs;
+            return {
+              workerProgress: (elapsed - (total - walkSecs)) / walkSecs,
+              workerPhase: "inbound" as const,
+            };
           }
-
-          // Keep store phase in sync (drives flavor text only)
-          const storePhase = elapsed / total < 0.5 ? "outbound" : "inbound";
-          if (storePhase !== g.worker.trip_phase) g.setTripPhase(storePhase);
         }
-      }
+        return { workerProgress: 0, workerPhase: "idle" as const };
+      });
 
       // ---- machine ----
       let brewProgress = 0;
@@ -139,7 +130,7 @@ export function useGameLoop(): LoopProgress {
         }
       }
 
-      progRef.current = { workerProgress, workerPhase, brewProgress, brewActive };
+      progRef.current = { workers: workerStates, brewProgress, brewActive };
       setTick((x) => (x + 1) % 1000000);
     };
 

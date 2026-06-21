@@ -72,10 +72,23 @@ function pickDrop(drops: { ingredientId: string; weight: number }[]): string {
   return drops[drops.length - 1].ingredientId;
 }
 
-function newWorker(): Worker {
+const WORKER_COLORS = [
+  "#7c3aed", // violet (default)
+  "#dc2626", // red
+  "#16a34a", // green
+  "#2563eb", // blue
+  "#d97706", // amber
+  "#0891b2", // cyan
+  "#be185d", // pink
+  "#65a30d", // lime
+];
+const WORKER_NAMES = ["Wort", "Midge", "Crumble", "Tuck", "Pell", "Sable", "Fenwick", "Glum"];
+
+function newWorker(index = 0): Worker {
   return {
-    id: 1,
-    name: "Wort",
+    id: index + 1,
+    name: WORKER_NAMES[index] ?? `Worker ${index + 1}`,
+    color: WORKER_COLORS[index % WORKER_COLORS.length],
     level: 1,
     xp: 0,
     gather_speed: 1.0,
@@ -89,6 +102,8 @@ function newWorker(): Worker {
     trip_phase: "idle",
   };
 }
+
+const HIRE_COST_BASE = 500;
 
 function newMachine(): BrewingMachine {
   return {
@@ -118,7 +133,7 @@ export interface WelcomeBack {
 
 interface GameState {
   coins: number;
-  worker: Worker;
+  workers: Worker[];
   machine: BrewingMachine;
   ingredientInv: IngredientInventory;
   potionInv: PotionInventory;
@@ -131,10 +146,11 @@ interface GameState {
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
 
-  // worker
-  assignWorker: (locationId: string | null) => void;
-  completeTrip: () => void;
-  setTripPhase: (phase: Worker["trip_phase"]) => void;
+  // workers
+  assignWorker: (workerIndex: number, locationId: string | null) => void;
+  completeTrip: (workerIndex: number) => void;
+  setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
+  hireWorker: () => void;
 
   // machine
   programSlot: (index: number, ingredientId: string | null) => void;
@@ -147,8 +163,8 @@ interface GameState {
   sellAll: () => void;
 
   // upgrades
-  buyWorkerSpeed: () => void;
-  buyWorkerSize: () => void;
+  buyWorkerSpeed: (workerIndex?: number) => void;
+  buyWorkerSize: (workerIndex?: number) => void;
   buyBrewSpeed: () => void;
   buyMultiBrew: () => void;
   buySlot: () => void;
@@ -180,7 +196,7 @@ export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       coins: 100,
-      worker: newWorker(),
+      workers: [newWorker(0)],
       machine: newMachine(),
       ingredientInv: {},
       potionInv: {},
@@ -193,42 +209,44 @@ export const useGameStore = create<GameState>()(
       lastSeen: now(),
       welcomeBack: null,
 
-      assignWorker: (locationId) =>
+      assignWorker: (workerIndex, locationId) =>
         set((s) => {
           const cfg = useConfigStore.getState();
           const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
           const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
-          return {
-            worker: {
-              ...s.worker,
-              assigned_location: locationId,
-              trip_phase: phase,
-              trip_started_at: locationId ? now() : null,
-              flavor_status: statusFor(phase, danger),
-            },
-          };
+          const workers = s.workers.map((w, i) =>
+            i === workerIndex
+              ? { ...w, assigned_location: locationId, trip_phase: phase,
+                  trip_started_at: locationId ? now() : null,
+                  flavor_status: statusFor(phase, danger) }
+              : w
+          );
+          return { workers };
         }),
 
-      setTripPhase: (phase) =>
+      setTripPhase: (workerIndex, phase) =>
         set((s) => {
           const cfg = useConfigStore.getState();
-          const loc = s.worker.assigned_location;
-          const danger = loc ? cfg.locations[loc]?.danger ?? 0 : 0;
-          return {
-            worker: { ...s.worker, trip_phase: phase, flavor_status: statusFor(phase, danger) },
-          };
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          const danger = w.assigned_location ? cfg.locations[w.assigned_location]?.danger ?? 0 : 0;
+          const workers = s.workers.map((wk, i) =>
+            i === workerIndex
+              ? { ...wk, trip_phase: phase, flavor_status: statusFor(phase, danger) }
+              : wk
+          );
+          return { workers };
         }),
 
-      completeTrip: () => {
+      completeTrip: (workerIndex) => {
         const s = get();
         const cfg = useConfigStore.getState();
-        const loc = s.worker.assigned_location
-          ? cfg.locations[s.worker.assigned_location]
-          : null;
+        const w = s.workers[workerIndex];
+        if (!w) return;
+        const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
         if (!loc) return;
 
-        // resolve yield
-        const size = s.worker.retrieval_size;
+        const size = w.retrieval_size;
         let count = Math.floor(size);
         if (Math.random() < size - count) count += 1;
 
@@ -242,10 +260,9 @@ export const useGameStore = create<GameState>()(
           discovered.add(id);
         }
 
-        // worker xp + levels
         const gained = Math.round(5 + loc.distance + loc.danger * 3);
-        const leveled = applyLevels(s.worker.level, s.worker.xp + gained, cfg.formulas);
-        const levelsGained = leveled.level - s.worker.level;
+        const leveled = applyLevels(w.level, w.xp + gained, cfg.formulas);
+        const levelsGained = leveled.level - w.level;
         const levelBonus = levelsGained * 0.05;
 
         const explored = new Set(s.exploredLocations);
@@ -256,6 +273,16 @@ export const useGameStore = create<GameState>()(
           discoveredAttributes = unlockAttributes(id, discoveredAttributes, cfg);
         }
 
+        const workers = s.workers.map((wk, i) =>
+          i === workerIndex
+            ? { ...wk, xp: leveled.xp, level: leveled.level,
+                gather_speed: wk.gather_speed + levelBonus,
+                upgrade_tokens: (wk.upgrade_tokens ?? 0) + levelsGained,
+                trip_phase: "outbound" as const, trip_started_at: now(),
+                flavor_status: statusFor("outbound", loc.danger) }
+            : wk
+        );
+
         set({
           ingredientInv: inv,
           discovered: Array.from(discovered),
@@ -264,16 +291,7 @@ export const useGameStore = create<GameState>()(
           machine: s.machine.brew_stalled
             ? { ...s.machine, brew_stalled: false, brew_started_at: now() }
             : s.machine,
-          worker: {
-            ...s.worker,
-            xp: leveled.xp,
-            level: leveled.level,
-            gather_speed: s.worker.gather_speed + levelBonus,
-            upgrade_tokens: (s.worker.upgrade_tokens ?? 0) + levelsGained,
-            trip_phase: "outbound",
-            trip_started_at: now(),
-            flavor_status: statusFor("outbound", loc.danger),
-          },
+          workers,
         });
 
         for (const [id, n] of Object.entries(gathered)) {
@@ -281,6 +299,16 @@ export const useGameStore = create<GameState>()(
           pushToast(`+${n} ${name}`, "green");
         }
       },
+
+      hireWorker: () =>
+        set((s) => {
+          const cost = HIRE_COST_BASE * Math.pow(s.workers.length, 2);
+          if (s.coins < cost) return {};
+          return {
+            coins: s.coins - cost,
+            workers: [...s.workers, newWorker(s.workers.length)],
+          };
+        }),
 
       programSlot: (index, ingredientId) =>
         set((s) => {
@@ -297,6 +325,7 @@ export const useGameStore = create<GameState>()(
             machine: {
               ...s.machine,
               running,
+              brew_stalled: false,
               brew_started_at: running ? now() : null,
             },
           };
@@ -405,39 +434,43 @@ export const useGameStore = create<GameState>()(
           return { coins, potionInv: {} };
         }),
 
-      buyWorkerSpeed: () =>
+      buyWorkerSpeed: (workerIndex = 0) =>
         set((s) => {
           const cfg = useConfigStore.getState();
-          const tokens = s.worker.upgrade_tokens ?? 0;
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          const tokens = w.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(s.worker.speed_upgrades, cfg.formulas);
+          const cost = upgradeCost(w.speed_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
-            worker: {
-              ...s.worker,
-              gather_speed: s.worker.gather_speed + 0.25,
-              speed_upgrades: s.worker.speed_upgrades + 1,
-              upgrade_tokens: tokens - 1,
-            },
+            workers: s.workers.map((wk, i) =>
+              i === workerIndex
+                ? { ...wk, gather_speed: wk.gather_speed + 0.25,
+                    speed_upgrades: wk.speed_upgrades + 1, upgrade_tokens: tokens - 1 }
+                : wk
+            ),
           };
         }),
 
-      buyWorkerSize: () =>
+      buyWorkerSize: (workerIndex = 0) =>
         set((s) => {
           const cfg = useConfigStore.getState();
-          const tokens = s.worker.upgrade_tokens ?? 0;
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          const tokens = w.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(s.worker.size_upgrades, cfg.formulas);
+          const cost = upgradeCost(w.size_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
-            worker: {
-              ...s.worker,
-              retrieval_size: s.worker.retrieval_size + 1,
-              size_upgrades: s.worker.size_upgrades + 1,
-              upgrade_tokens: tokens - 1,
-            },
+            workers: s.workers.map((wk, i) =>
+              i === workerIndex
+                ? { ...wk, retrieval_size: wk.retrieval_size + 1,
+                    size_upgrades: wk.size_upgrades + 1, upgrade_tokens: tokens - 1 }
+                : wk
+            ),
           };
         }),
 
@@ -516,24 +549,18 @@ export const useGameStore = create<GameState>()(
           const discovered = new Set(s.discovered);
           let totalGathers = 0;
 
-          const loc = s.worker.assigned_location
-            ? cfg.locations[s.worker.assigned_location]
-            : null;
-          if (loc && elapsed > 1) {
-            const gathers = offlineGathers(
-              elapsed,
-              loc.distance,
-              s.worker.gather_speed,
-              s.worker.retrieval_size
-            );
-            totalGathers = Math.floor(gathers);
-            // distribute by expected drop weight (EV, O(1))
-            const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
-            for (const d of loc.drops) {
-              const ev = Math.round((totalGathers * d.weight) / totalW);
-              if (ev > 0) {
-                inv[d.ingredientId] = (inv[d.ingredientId] ?? 0) + ev;
-                discovered.add(d.ingredientId);
+          for (const w of s.workers) {
+            const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
+            if (loc && elapsed > 1) {
+              const gathers = offlineGathers(elapsed, loc.distance, w.gather_speed, w.retrieval_size);
+              totalGathers += Math.floor(gathers);
+              const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
+              for (const d of loc.drops) {
+                const ev = Math.round((Math.floor(gathers) * d.weight) / totalW);
+                if (ev > 0) {
+                  inv[d.ingredientId] = (inv[d.ingredientId] ?? 0) + ev;
+                  discovered.add(d.ingredientId);
+                }
               }
             }
           }
@@ -544,17 +571,14 @@ export const useGameStore = create<GameState>()(
               ? { seconds: Math.floor(elapsed), gathers: totalGathers }
               : null;
 
-          // Only reset timers when returning from a genuine offline session.
-          // For normal refreshes (elapsed < threshold) preserve the original timestamps
-          // so the game loop resumes from exactly where it left off.
           const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;
-          const worker: Worker = isLongOffline
-            ? {
-                ...s.worker,
-                trip_started_at: s.worker.assigned_location ? now() : null,
-                trip_phase: s.worker.assigned_location ? "outbound" : "idle",
-              }
-            : s.worker;
+          const workers = isLongOffline
+            ? s.workers.map((w) => ({
+                ...w,
+                trip_started_at: w.assigned_location ? now() : null,
+                trip_phase: (w.assigned_location ? "outbound" : "idle") as Worker["trip_phase"],
+              }))
+            : s.workers;
           const machine: BrewingMachine = isLongOffline
             ? { ...s.machine, brew_started_at: s.machine.running ? now() : null }
             : s.machine;
@@ -562,7 +586,7 @@ export const useGameStore = create<GameState>()(
           return {
             ingredientInv: inv,
             discovered: Array.from(discovered),
-            worker,
+            workers,
             machine,
             welcomeBack,
             lastSeen: now(),
@@ -574,7 +598,7 @@ export const useGameStore = create<GameState>()(
       hardReset: () =>
         set({
           coins: 100,
-          worker: newWorker(),
+          workers: [newWorker(0)],
           machine: newMachine(),
           ingredientInv: {},
           potionInv: {},
@@ -589,7 +613,7 @@ export const useGameStore = create<GameState>()(
       name: "idle-potion-brewer",
       partialize: (s) => ({
         coins: s.coins,
-        worker: s.worker,
+        workers: s.workers,
         machine: s.machine,
         ingredientInv: s.ingredientInv,
         potionInv: s.potionInv,

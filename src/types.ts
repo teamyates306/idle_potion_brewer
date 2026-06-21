@@ -55,8 +55,6 @@ export interface Ingredient {
   rarity: Rarity;
   base_value: number;
   attributes: Attributes;
-  complexity: number;
-  stability: number;
   description: string;
 }
 
@@ -68,6 +66,7 @@ export interface DropEntry {
 export interface Location {
   id: string;
   name: string;
+  flavor: string;
   /** travel distance — divided by gather_speed to get trip time */
   distance: number;
   /** danger tier drives the lore tone of worker statuses */
@@ -79,6 +78,7 @@ export interface Location {
 export interface Worker {
   id: number;
   name: string;
+  color: string; // robe colour, persisted
   level: number;
   xp: number;
   gather_speed: number;

@@ -3,6 +3,7 @@ import { MapPin, Gauge, Package, ArrowUpCircle, UserPlus } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
+import { useGameLoop } from "../hooks/useGameLoop";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt from "./art/WorkerArt";
@@ -15,6 +16,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const coins = useGameStore((s) => s.coins);
   const hireWorker = useGameStore((s) => s.hireWorker);
   const cfg = useConfigStore();
+  const loopProgress = useGameLoop();
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
 
   const hireCost = HIRE_COST_BASE * Math.pow(workers.length, 2);
@@ -28,15 +30,15 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         {/* Worker roster */}
         <div className="space-y-2">
           {workers.map((worker, idx) => {
-            const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
             const tokens = worker.upgrade_tokens ?? 0;
-            const xpNeed = xpRequired(worker.level, cfg.formulas);
-            const xpPct = Math.min(100, (worker.xp / xpNeed) * 100);
-            const statusLabel =
-              worker.trip_phase === "outbound" ? `Outbound → ${loc?.name ?? "…"}`
-              : worker.trip_phase === "inbound" ? "Returning with ingredients"
-              : loc ? `Idle at ${loc.name}`
-              : "Unassigned";
+            // Use loopProgress as a 12fps tick; compute trip fraction from raw timestamps
+            void loopProgress;
+            const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+            const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
+            const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
+            const tripPct = totalMs > 0 && elapsedMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
+            const workerPhase = worker.trip_phase ?? "idle";
+            const tripColor = workerPhase === "inbound" ? "#22d3ee" : "#6ee7b7";
 
             return (
               <button
@@ -48,7 +50,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                     : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
                 }`}
               >
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl overflow-hidden ${
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${
                   tokens > 0 ? "ring-2 ring-yellow-500/50" : ""
                 }`} style={{ background: `${worker.color}33` }}>
                   <WorkerArt size={44} color={worker.color} />
@@ -61,9 +63,12 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                       <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>
                     )}
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-400 truncate">{statusLabel}</div>
-                  <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-700">
-                    <div className="h-full rounded-full bg-cyan-400 transition-[width]" style={{ width: `${xpPct}%` }} />
+                  <div className="mt-0.5 text-xs text-slate-400 italic truncate">"{worker.flavor_status}"</div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-75"
+                      style={{ width: `${tripPct}%`, background: tripColor }}
+                    />
                   </div>
                 </div>
                 <span className="text-slate-600">›</span>

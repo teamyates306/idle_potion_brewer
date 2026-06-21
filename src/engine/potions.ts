@@ -103,9 +103,14 @@ export function describePotion(
   ) as unknown as Attributes;
 
   const baseValue = ingredients.reduce((a, i) => a + i.base_value, 0);
-  const toxicityBonus = 1 + Math.max(0, stats.toxicity) * f.toxicity_value_mult;
-  const strengthBonus = 1 + Math.max(0, stats.strength) * 0.02;
-  const value = Math.max(1, Math.round(baseValue * toxicityBonus * strengthBonus));
+  // Each positive attribute point adds value; toxicity has its own named multiplier
+  const attrBonus = ATTR_KEYS.reduce((mult, k) => {
+    const v = stats[k];
+    if (v <= 0) return mult;
+    const rate = k === "toxicity" ? f.toxicity_value_mult : f.attr_value_mult;
+    return mult * (1 + v * rate);
+  }, 1);
+  const value = Math.max(1, Math.round(baseValue * attrBonus));
 
   const h = strHash(hash);
   const prefixIdx = Math.min(VALUE_PREFIXES.length - 1, Math.floor(value / 25));

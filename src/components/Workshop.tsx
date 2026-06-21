@@ -12,57 +12,28 @@ import IngredientSvg from "./art/IngredientSvg";
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory";
 
 export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
-  const worker = useGameStore((s) => s.worker);
+  const workers = useGameStore((s) => s.workers);
   const machine = useGameStore((s) => s.machine);
   const potionInv = useGameStore((s) => s.potionInv);
   const cfg = useConfigStore();
-  const { workerProgress, workerPhase, brewProgress, brewActive } = useGameLoop();
+  const loopProgress = useGameLoop();
   const dn = useDayNight();
 
   const potionCount = Object.values(potionInv).reduce((a, b) => a + b, 0);
 
-  // Delay visual pile count by conveyor travel time (3.5s) on increases; sell is instant.
-  // isMounted tracks whether the first useEffect has fired — hydration jumps are shown immediately.
   const [displayPotionCount, setDisplayPotionCount] = useState(() => potionCount);
-  const prevCountRef = useRef(potionCount);
   const isMounted = useRef(false);
   useEffect(() => {
     if (!isMounted.current) {
-      // First effect after mount: show persisted count immediately (no conveyor delay)
       isMounted.current = true;
-      if (potionCount !== displayPotionCount) {
-        setDisplayPotionCount(potionCount);
-        prevCountRef.current = potionCount;
-      }
+      setDisplayPotionCount(potionCount);
       return;
     }
-    if (potionCount < prevCountRef.current) {
-      setDisplayPotionCount(potionCount);
-      prevCountRef.current = potionCount;
-    } else if (potionCount > prevCountRef.current) {
-      prevCountRef.current = potionCount;
-      const t = setTimeout(() => setDisplayPotionCount(potionCount), 3500);
-      return () => clearTimeout(t);
-    }
+    setDisplayPotionCount(potionCount);
   }, [potionCount]);
 
-  // Worker moves up toward door (fades through it) and returns
-  const TRACK = 68;
-  let workerUp = 0;
-  let workerOpacity = 1;
-
-  if (workerPhase === "outbound") {
-    workerUp = workerProgress * TRACK;
-    workerOpacity = workerProgress > 0.75 ? Math.max(0, 1 - (workerProgress - 0.75) / 0.25) : 1;
-  } else if (workerPhase === "away") {
-    workerUp = TRACK;
-    workerOpacity = 0;
-  } else if (workerPhase === "inbound") {
-    workerUp = (1 - workerProgress) * TRACK;
-    workerOpacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
-  }
-
-  const carrying = workerPhase === "inbound";
+  const { brewProgress, brewActive } = loopProgress;
+  const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
 
   // Ingredient categories from active recipe slots (for conveyor tokens)
   const recipeCategories = machine.recipe_slots
@@ -70,45 +41,74 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     .filter((id): id is string => !!id)
     .map((id) => cfg.ingredients[id]?.category ?? "root");
 
+  // Per-worker position/opacity computation
+  const TRACK = 68;
+  const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {
+    let up = 0;
+    let opacity = 1;
+    // Stagger workers slightly so they don't perfectly overlap
+    const xOffset = (idx - (workers.length - 1) / 2) * 20;
+    if (workerPhase === "outbound") {
+      up = workerProgress * TRACK;
+      opacity = workerProgress > 0.75 ? Math.max(0, 1 - (workerProgress - 0.75) / 0.25) : 1;
+    } else if (workerPhase === "away") {
+      up = TRACK; opacity = 0;
+    } else if (workerPhase === "inbound") {
+      up = (1 - workerProgress) * TRACK;
+      opacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
+    }
+    return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
+  });
+
   return (
     <div className="mx-auto flex max-w-md flex-col">
 
-      {/* Workshop exterior wall — seamless continuation of stone header */}
-      <WorkshopWall onClick={() => onOpen("map")} workerActive={workerPhase !== "idle"} dn={dn} />
+      {/* Workshop exterior wall */}
+      <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
 
       {/* Worker track */}
       <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
+        {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => (
         <button
+          key={idx}
           onClick={() => onOpen("worker")}
-          className="absolute left-1/2 active:scale-95 transition"
+          className="absolute active:scale-95 transition"
           style={{
             bottom: 10,
-            transform: `translate(-50%, -${workerUp}px)`,
-            opacity: workerOpacity,
+            left: "50%",
+            transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
+            opacity,
           }}
-          title="The Worker"
+          title={workers[idx]?.name ?? "Worker"}
         >
-          <WorkerArt size={52} carrying={carrying} />
+          <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
         </button>
+        ))}
 
-        {/* Worker Management — always visible right of track */}
-        <button
-          onClick={() => onOpen("worker")}
-          className={`absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
-            (worker.upgrade_tokens ?? 0) > 0
-              ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
-              : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
-          }`}
-        >
-          <User size={14} className={(worker.upgrade_tokens ?? 0) > 0 ? "text-yellow-400" : "text-amber-400"} />
-          <span>Worker</span>
-          <span>Mgmt</span>
-          {(worker.upgrade_tokens ?? 0) > 0 && (
-            <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">
-              ✦{worker.upgrade_tokens}
-            </span>
-          )}
-        </button>
+        {/* Worker Management button */}
+        {(() => {
+          const anyTokens = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
+          const totalTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
+          return (
+            <button
+              onClick={() => onOpen("worker")}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
+                anyTokens
+                  ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
+                  : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
+              }`}
+            >
+              <User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />
+              <span>Worker</span>
+              <span>Mgmt</span>
+              {anyTokens && (
+                <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">
+                  ✦{totalTokens}
+                </span>
+              )}
+            </button>
+          );
+        })()}
       </div>
 
       {/* Trough — click to open ingredient inventory */}
