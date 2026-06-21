@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { subscribeToast, type ToastData } from "../../util/toast";
+import { useSettingsStore } from "../../store/settingsStore";
 
 function ToastItem({ toast, onRemove }: { toast: ToastData; onRemove: () => void }) {
   const [visible, setVisible] = useState(false);
@@ -31,9 +32,11 @@ function ToastItem({ toast, onRemove }: { toast: ToastData; onRemove: () => void
 
 export default function ToastContainer() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const toastsEnabled = useSettingsStore((s) => s.toastsEnabled);
 
   useEffect(() => {
     return subscribeToast((t) => {
+      if (!useSettingsStore.getState().toastsEnabled) return;
       setToasts((prev) => [...prev.slice(-4), t]);
     });
   }, []);

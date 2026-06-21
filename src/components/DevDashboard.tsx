@@ -4,7 +4,7 @@ import { useConfigStore, type BaseFormulas } from "../store/configStore";
 import { useGameStore } from "../store/gameStore";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "ingredients" | "locations";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone"];
@@ -20,17 +20,20 @@ const ATTR_GROUPS: { label: string; keys: (keyof import("../types").Attributes)[
   { label: "Cosmic",   keys: ["chrono","gravitas","entropy","soul","mutation"] },
 ];
 
-const FORMULA_LABELS: Record<keyof BaseFormulas, string> = {
+const BASE_FORMULA_KEYS: (keyof BaseFormulas)[] = [
+  "base_brew_time", "xp_base", "xp_growth", "cost_base", "cost_growth",
+  "toxicity_time_mult", "volatility_xp_mult", "volatility_multibrew_penalty", "offline_threshold_hours",
+];
+
+const FORMULA_LABELS: Partial<Record<keyof BaseFormulas, string>> = {
   base_brew_time:              "Base brew time (s)",
   xp_base:                     "XP base",
   xp_growth:                   "XP growth factor",
   cost_base:                   "Upgrade cost base",
   cost_growth:                 "Upgrade cost growth",
-  toxicity_value_mult:         "Toxicity → value mult (override)",
-  toxicity_time_mult:          "Toxicity → time mult",
+  toxicity_time_mult:          "Toxicity → brew time mult",
   volatility_xp_mult:          "Volatility → XP mult",
   volatility_multibrew_penalty:"Volatility → multi-brew penalty",
-  attr_value_mult:             "All attributes → value mult",
   offline_threshold_hours:     "Offline threshold (hrs)",
 };
 
@@ -85,7 +88,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-slate-800 bg-[#0f172a]">
-        {(["cheats","formulas","ingredients","locations"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -102,6 +105,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
       <div className="flex-1 overflow-y-auto p-4">
         {tab === "cheats"      && <CheatsTab />}
         {tab === "formulas"    && <FormulasTab />}
+        {tab === "attributes"  && <AttributeMultsTab />}
         {tab === "ingredients" && <IngredientsTab search={search} />}
         {tab === "locations"   && <LocationsTab search={search} />}
       </div>
@@ -152,10 +156,51 @@ function FormulasTab() {
   const cfg = useConfigStore();
   return (
     <div className="max-w-lg space-y-1">
-      {(Object.keys(cfg.formulas) as (keyof BaseFormulas)[]).map((k) => (
-        <FieldRow key={k} label={FORMULA_LABELS[k]} hint={k}>
-          <NumInput value={cfg.formulas[k]} onChange={(v) => cfg.setFormula(k, v)} />
+      {BASE_FORMULA_KEYS.map((k) => (
+        <FieldRow key={k} label={FORMULA_LABELS[k] ?? k} hint={k}>
+          <NumInput value={cfg.formulas[k] as number} onChange={(v) => cfg.setFormula(k, v)} />
         </FieldRow>
+      ))}
+    </div>
+  );
+}
+
+// ── Attribute Multipliers ───────────────────────────────────────────────────
+
+const ATTR_GROUPS_DISPLAY: { label: string; keys: (keyof import("../types").Attributes)[] }[] = [
+  { label: "Physical",  keys: ["strength","speed","vitality","density","elasticity"] },
+  { label: "Mental",    keys: ["focus","mana","resonance","insight","luck"] },
+  { label: "Elemental", keys: ["heat","cold","shock","aqua","terra","aero","radiance","void"] },
+  { label: "Chemical",  keys: ["toxicity","volatility","acidity","alkalinity","viscosity","stability","solvency"] },
+  { label: "Cosmic",    keys: ["chrono","gravitas","entropy","soul","mutation"] },
+];
+
+function AttributeMultsTab() {
+  const cfg = useConfigStore();
+  return (
+    <div className="max-w-lg space-y-6">
+      <p className="text-xs text-slate-500">
+        Each attribute contributes <code className="text-rose-400">(1 + total × mult)</code> to the brewed potion's sell price.
+        Only positive totals count. Toxicity also affects brew time separately.
+      </p>
+      {ATTR_GROUPS_DISPLAY.map((group) => (
+        <div key={group.label}>
+          <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">{group.label}</p>
+          <div className="space-y-1">
+            {group.keys.map((attr) => {
+              const fKey = `value_mult_${attr}` as keyof BaseFormulas;
+              return (
+                <FieldRow key={attr} label={attr} hint={fKey}>
+                  <NumInput
+                    value={cfg.formulas[fKey] as number}
+                    step={0.001}
+                    onChange={(v) => cfg.setFormula(fKey, v)}
+                  />
+                </FieldRow>
+              );
+            })}
+          </div>
+        </div>
       ))}
     </div>
   );

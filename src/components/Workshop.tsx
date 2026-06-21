@@ -145,6 +145,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
             style={{ width: `${brewProgress * 100}%` }}
           />
         </div>
+        {(() => {
+          const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
+          const stalled = machine.brew_stalled ?? false;
+          if (!hasRecipe)
+            return <span className="mt-1 text-[10px] text-stone-500">No recipe set</span>;
+          if (!machine.running)
+            return <span className="mt-1 text-[10px] text-stone-500">Idle</span>;
+          if (stalled)
+            return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Waiting for ingredients…</span>;
+          return <span className="mt-1 text-[10px] text-amber-300/70">Brewing…</span>;
+        })()}
       </div>
 
       {/* Vertical conveyor: machine → potion pile */}

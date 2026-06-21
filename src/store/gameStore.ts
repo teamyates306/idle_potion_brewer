@@ -374,7 +374,7 @@ export const useGameStore = create<GameState>()(
         const machineLevelsGained = leveled.level - s.machine.level;
         const levelBonus = machineLevelsGained * 0.03;
 
-        const prevDiscovered = s.discoveredPotions ?? [];
+        const prevDiscovered = [...new Set(s.discoveredPotions ?? [])];
         const discoveredPotions = prevDiscovered.includes(potion.hash)
           ? prevDiscovered
           : [...prevDiscovered, potion.hash];
@@ -603,6 +603,9 @@ export const useGameStore = create<GameState>()(
           ingredientInv: {},
           potionInv: {},
           discovered: [],
+          discoveredPotions: [],
+          discoveredAttributes: [],
+          autoSellHashes: [],
           unlockedLocations: ["hollow"],
           exploredLocations: [],
           lastSeen: now(),

@@ -1,21 +1,51 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { Ingredient, Location } from "../types";
 
 // ---- Static registry (see Master Spec §2 configStore + §6 base formulas) ----
 // Live-tweakable at runtime via the Dev Dashboard.
 
 export interface BaseFormulas {
-  base_brew_time: number; // seconds at brew_speed 1.0
-  xp_base: number; // 100
-  xp_growth: number; // 1.5
-  cost_base: number; // 25
-  cost_growth: number; // 1.5
-  toxicity_value_mult: number; // value gain per toxicity point (overrides attr_value_mult for toxicity)
-  toxicity_time_mult: number; // brew-time penalty per toxicity point
-  volatility_xp_mult: number; // bonus xp per volatility point
-  volatility_multibrew_penalty: number; // multi-brew reduction per volatility point
-  attr_value_mult: number; // value gain per positive attribute point (all attributes)
-  offline_threshold_hours: number; // welcome-back modal threshold
+  base_brew_time: number;
+  xp_base: number;
+  xp_growth: number;
+  cost_base: number;
+  cost_growth: number;
+  toxicity_time_mult: number;
+  volatility_xp_mult: number;
+  volatility_multibrew_penalty: number;
+  offline_threshold_hours: number;
+  // Per-attribute value multipliers (applied to positive attribute totals on brewed potions)
+  value_mult_strength: number;
+  value_mult_speed: number;
+  value_mult_vitality: number;
+  value_mult_density: number;
+  value_mult_elasticity: number;
+  value_mult_focus: number;
+  value_mult_mana: number;
+  value_mult_resonance: number;
+  value_mult_insight: number;
+  value_mult_luck: number;
+  value_mult_heat: number;
+  value_mult_cold: number;
+  value_mult_shock: number;
+  value_mult_aqua: number;
+  value_mult_terra: number;
+  value_mult_aero: number;
+  value_mult_radiance: number;
+  value_mult_void: number;
+  value_mult_toxicity: number;
+  value_mult_volatility: number;
+  value_mult_acidity: number;
+  value_mult_alkalinity: number;
+  value_mult_viscosity: number;
+  value_mult_stability: number;
+  value_mult_solvency: number;
+  value_mult_chrono: number;
+  value_mult_gravitas: number;
+  value_mult_entropy: number;
+  value_mult_soul: number;
+  value_mult_mutation: number;
 }
 
 export const INGREDIENTS: Record<string, Ingredient> = {
@@ -203,18 +233,48 @@ const DEFAULT_FORMULAS: BaseFormulas = {
   xp_growth: 1.5,
   cost_base: 25,
   cost_growth: 1.5,
-  toxicity_value_mult: 0.04,
   toxicity_time_mult: 0.03,
   volatility_xp_mult: 0.5,
   volatility_multibrew_penalty: 0.01,
-  attr_value_mult: 0.01,
   offline_threshold_hours: 6,
+  value_mult_strength:   0.01,
+  value_mult_speed:      0.01,
+  value_mult_vitality:   0.01,
+  value_mult_density:    0.01,
+  value_mult_elasticity: 0.01,
+  value_mult_focus:      0.01,
+  value_mult_mana:       0.01,
+  value_mult_resonance:  0.01,
+  value_mult_insight:    0.01,
+  value_mult_luck:       0.01,
+  value_mult_heat:       0.01,
+  value_mult_cold:       0.01,
+  value_mult_shock:      0.01,
+  value_mult_aqua:       0.01,
+  value_mult_terra:      0.01,
+  value_mult_aero:       0.01,
+  value_mult_radiance:   0.01,
+  value_mult_void:       0.01,
+  value_mult_toxicity:   0.04,
+  value_mult_volatility: 0.01,
+  value_mult_acidity:    0.01,
+  value_mult_alkalinity: 0.01,
+  value_mult_viscosity:  0.01,
+  value_mult_stability:  0.01,
+  value_mult_solvency:   0.01,
+  value_mult_chrono:     0.01,
+  value_mult_gravitas:   0.01,
+  value_mult_entropy:    0.01,
+  value_mult_soul:       0.01,
+  value_mult_mutation:   0.01,
 };
 
 // deep-clone the static registries so the Dev Dashboard can mutate copies
 const clone = <T>(o: T): T => JSON.parse(JSON.stringify(o));
 
-export const useConfigStore = create<ConfigState>((set) => ({
+export const useConfigStore = create<ConfigState>()(
+  persist(
+    (set) => ({
   ingredients: clone(INGREDIENTS),
   locations: clone(LOCATIONS),
   formulas: { ...DEFAULT_FORMULAS },
@@ -265,4 +325,19 @@ export const useConfigStore = create<ConfigState>((set) => ({
       locations: clone(LOCATIONS),
       formulas: { ...DEFAULT_FORMULAS },
     }),
-}));
+    }),
+    {
+      name: "ipb-config",
+      // Merge saved formulas over defaults so new formula keys added in code still appear
+      merge: (persisted: unknown, current: ConfigState): ConfigState => {
+        const p = persisted as Partial<ConfigState>;
+        return {
+          ...current,
+          ingredients: p.ingredients ?? current.ingredients,
+          locations: p.locations ?? current.locations,
+          formulas: { ...current.formulas, ...(p.formulas ?? {}) },
+        };
+      },
+    }
+  )
+);

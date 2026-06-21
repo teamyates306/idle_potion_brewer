@@ -52,7 +52,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
               >
                 <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${
                   tokens > 0 ? "ring-2 ring-yellow-500/50" : ""
-                }`} style={{ background: `${worker.color}33` }}>
+                }`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
                   <WorkerArt size={44} color={worker.color} />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -63,7 +63,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                       <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>
                     )}
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-400 italic truncate">"{worker.flavor_status}"</div>
+                  <div className="mt-0.5 text-xs text-slate-400 italic truncate">"{worker.flavor_status ?? "Awaiting orders"}"</div>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
                     <div
                       className="h-full rounded-full transition-[width] duration-75"
@@ -149,7 +149,7 @@ function WorkerDetailModal({
       >
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #22d3ee33" }}>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color}33` }}>
+            <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
               <WorkerArt size={40} color={worker.color} />
             </div>
             <div>
@@ -206,7 +206,7 @@ function WorkerDetailModal({
           )}
         </div>
 
-        <p className="mb-4 text-xs italic text-slate-500">"{worker.flavor_status}"</p>
+        <p className="mb-4 text-xs italic text-slate-500">"{worker.flavor_status ?? "Awaiting orders"}"</p>
 
         {tokens > 0 && (
           <div className="mb-4 space-y-2">

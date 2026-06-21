@@ -177,7 +177,7 @@ function LocationDetailModal({
                     isHere ? "border-green-500/50 bg-green-950/20" : "border-slate-700 bg-slate-800/40"
                   } ${idx === preferredWorkerIndex ? "ring-1 ring-green-400/30" : ""}`}
                 >
-                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${worker.color}33` }}>
+                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
                     <WorkerArt size={36} color={worker.color} carrying={isHere && isActive} />
                   </div>
                   <div className="min-w-0 flex-1">

@@ -103,11 +103,11 @@ export function describePotion(
   ) as unknown as Attributes;
 
   const baseValue = ingredients.reduce((a, i) => a + i.base_value, 0);
-  // Each positive attribute point adds value; toxicity has its own named multiplier
   const attrBonus = ATTR_KEYS.reduce((mult, k) => {
     const v = stats[k];
     if (v <= 0) return mult;
-    const rate = k === "toxicity" ? f.toxicity_value_mult : f.attr_value_mult;
+    const fKey = `value_mult_${k}` as keyof typeof f;
+    const rate = (f[fKey] as number) ?? 0.01;
     return mult * (1 + v * rate);
   }, 1);
   const value = Math.max(1, Math.round(baseValue * attrBonus));
