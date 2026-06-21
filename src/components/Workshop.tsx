@@ -3,6 +3,7 @@ import { User } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
+import { useDayNight } from "../hooks/useDayNight";
 import WorkerArt from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
@@ -16,6 +17,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
   const potionInv = useGameStore((s) => s.potionInv);
   const cfg = useConfigStore();
   const { workerProgress, workerPhase, brewProgress, brewActive } = useGameLoop();
+  const dn = useDayNight();
 
   const potionCount = Object.values(potionInv).reduce((a, b) => a + b, 0);
 
@@ -72,7 +74,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     <div className="mx-auto flex max-w-md flex-col">
 
       {/* Workshop exterior wall — seamless continuation of stone header */}
-      <WorkshopWall onClick={() => onOpen("map")} workerActive={workerPhase !== "idle"} />
+      <WorkshopWall onClick={() => onOpen("map")} workerActive={workerPhase !== "idle"} dn={dn} />
 
       {/* Worker track */}
       <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
@@ -164,13 +166,23 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
 }
 
 // ── Workshop exterior wall ──────────────────────────────────────────────────
+import type { DayNightState } from "../hooks/useDayNight";
+
 function WorkshopWall({
   onClick,
   workerActive,
+  dn,
 }: {
   onClick: () => void;
   workerActive: boolean;
+  dn: DayNightState;
 }) {
+  const wc = dn.windowColor;
+  const stars = dn.starOpacity;
+  const lamp = dn.lampGlow;
+  const lampFlame = `rgba(251,191,36,${(0.5 + lamp * 0.5).toFixed(2)})`;
+  const lampGlow = `rgba(251,191,36,${(lamp * 0.18).toFixed(2)})`;
+
   return (
     <button
       onClick={onClick}
@@ -204,62 +216,55 @@ function WorkshopWall({
 
         {/* === LEFT WINDOW === */}
         <rect x="42" y="20" width="54" height="68" rx="4" fill="#2a1808" />
-        {/* arched glass top */}
-        <rect x="45" y="23" width="48" height="36" rx="22" fill="#091828" />
-        {/* rectangular lower pane */}
-        <rect x="45" y="47" width="48" height="38" fill="#091828" />
-        {/* mullions */}
+        <rect x="45" y="23" width="48" height="36" rx="22" fill={wc} />
+        <rect x="45" y="47" width="48" height="38" fill={wc} />
         <line x1="69" y1="23" x2="69" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="45" y1="52" x2="93" y2="52" stroke="#2a1808" strokeWidth="2" />
-        {/* stars / night sky reflection */}
-        <circle cx="56" cy="34" r="0.9" fill="#c8dcf0" opacity="0.7" />
-        <circle cx="65" cy="29" r="1.1" fill="#e0eeff" opacity="0.6" />
-        <circle cx="80" cy="35" r="0.9" fill="#c8dcf0" opacity="0.5" />
-        <circle cx="74" cy="27" r="0.7" fill="#e0eeff" opacity="0.55" />
-        {/* window frame highlight */}
+        {/* stars — fade out during day */}
+        <circle cx="56" cy="34" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
+        <circle cx="65" cy="29" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
+        <circle cx="80" cy="35" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
+        <circle cx="74" cy="27" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
         <rect x="42" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
 
         {/* === RIGHT WINDOW === */}
         <rect x="304" y="20" width="54" height="68" rx="4" fill="#2a1808" />
-        <rect x="307" y="23" width="48" height="36" rx="22" fill="#091828" />
-        <rect x="307" y="47" width="48" height="38" fill="#091828" />
+        <rect x="307" y="23" width="48" height="36" rx="22" fill={wc} />
+        <rect x="307" y="47" width="48" height="38" fill={wc} />
         <line x1="331" y1="23" x2="331" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="307" y1="52" x2="355" y2="52" stroke="#2a1808" strokeWidth="2" />
-        <circle cx="318" cy="34" r="0.9" fill="#c8dcf0" opacity="0.7" />
-        <circle cx="327" cy="29" r="1.1" fill="#e0eeff" opacity="0.6" />
-        <circle cx="342" cy="35" r="0.9" fill="#c8dcf0" opacity="0.5" />
-        <circle cx="336" cy="27" r="0.7" fill="#e0eeff" opacity="0.55" />
+        <circle cx="318" cy="34" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
+        <circle cx="327" cy="29" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
+        <circle cx="342" cy="35" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
+        <circle cx="336" cy="27" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
         <rect x="304" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
 
         {/* === DOOR === */}
         <rect x="166" y="18" width="68" height="78" rx="5" fill="#3a2008" />
         <rect x="170" y="22" width="60" height="74" rx="3" fill="#2e1a08" />
-        {/* door panels */}
         <rect x="174" y="26" width="23" height="26" rx="2" fill="#221408" opacity="0.7" />
         <rect x="203" y="26" width="23" height="26" rx="2" fill="#221408" opacity="0.7" />
         <rect x="174" y="56" width="52" height="36" rx="2" fill="#221408" opacity="0.6" />
-        {/* handle */}
         <circle cx="224" cy="62" r="3.5" fill="#c8a040" />
         <circle cx="224" cy="62" r="1.8" fill="#f0c870" />
-        {/* warm glow when worker is out */}
         {workerActive && (
           <rect x="170" y="22" width="60" height="74" rx="3" fill="#fbbf24" opacity="0.08" />
         )}
 
-        {/* === LEFT LANTERN === */}
+        {/* === LEFT LANTERN — brighter at night === */}
         <g transform="translate(128,46)">
           <line x1="0" y1="-24" x2="0" y2="-17" stroke="#7a6040" strokeWidth="1.5" />
           <rect x="-7" y="-17" width="14" height="20" rx="2" fill="#3a2810" stroke="#7a6040" strokeWidth="1" />
-          <rect x="-5" y="-15" width="10" height="16" rx="1" fill="#fbbf24" opacity="0.82" />
-          <ellipse cx="0" cy="6" rx="11" ry="4" fill="#fbbf24" opacity="0.1" />
+          <rect x="-5" y="-15" width="10" height="16" rx="1" fill={lampFlame} />
+          <ellipse cx="0" cy="6" rx="11" ry="4" fill={lampGlow} />
         </g>
 
         {/* === RIGHT LANTERN === */}
         <g transform="translate(272,46)">
           <line x1="0" y1="-24" x2="0" y2="-17" stroke="#7a6040" strokeWidth="1.5" />
           <rect x="-7" y="-17" width="14" height="20" rx="2" fill="#3a2810" stroke="#7a6040" strokeWidth="1" />
-          <rect x="-5" y="-15" width="10" height="16" rx="1" fill="#fbbf24" opacity="0.82" />
-          <ellipse cx="0" cy="6" rx="11" ry="4" fill="#fbbf24" opacity="0.1" />
+          <rect x="-5" y="-15" width="10" height="16" rx="1" fill={lampFlame} />
+          <ellipse cx="0" cy="6" rx="11" ry="4" fill={lampGlow} />
         </g>
 
         {/* === SIGN === */}
