@@ -183,6 +183,21 @@ function WorkshopWall({
   const lampFlame = `rgba(251,191,36,${(0.5 + lamp * 0.5).toFixed(2)})`;
   const lampGlow = `rgba(251,191,36,${(lamp * 0.18).toFixed(2)})`;
 
+  // Rolling hill colours — shift with day/night/sunrise/sunset
+  const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
+  const hNear: [number,number,number] = [
+    Math.round(12 + dy * 46 + sr * 28 + ss * 38),
+    Math.round(28 + dy * 94 + sr * 18 - ss * 18),
+    Math.round(8  + dy * 16 - sr * 4  - ss * 6),
+  ];
+  const hFar: [number,number,number] = [
+    Math.round(28 + dy * 52 + sr * 35 + ss * 45),
+    Math.round(48 + dy * 72 + sr * 22 - ss * 12),
+    Math.round(18 + dy * 42 - sr * 8  - ss * 4),
+  ];
+  const hillNear = `rgb(${hNear[0]},${hNear[1]},${hNear[2]})`;
+  const hillFar  = `rgb(${hFar[0]},${hFar[1]},${hFar[2]})`;
+
   return (
     <button
       onClick={onClick}
@@ -214,29 +229,56 @@ function WorkshopWall({
           <rect key={`d${x}`} x={x + 1} y="61" width="49" height="38" rx="2" fill="#5e4228" />
         ))}
 
+        <defs>
+          {/* Clip paths matching each window's arched glass shape */}
+          <clipPath id="lwClip">
+            <rect x="45" y="23" width="48" height="36" rx="22" />
+            <rect x="45" y="47" width="48" height="38" />
+          </clipPath>
+          <clipPath id="rwClip">
+            <rect x="307" y="23" width="48" height="36" rx="22" />
+            <rect x="307" y="47" width="48" height="38" />
+          </clipPath>
+        </defs>
+
         {/* === LEFT WINDOW === */}
         <rect x="42" y="20" width="54" height="68" rx="4" fill="#2a1808" />
-        <rect x="45" y="23" width="48" height="36" rx="22" fill={wc} />
-        <rect x="45" y="47" width="48" height="38" fill={wc} />
+        <g clipPath="url(#lwClip)">
+          {/* sky */}
+          <rect x="45" y="23" width="48" height="62" fill={wc} />
+          {/* far hills */}
+          <path d="M 45,65 Q 57,52 69,60 Q 81,68 93,55 L 93,86 L 45,86 Z" fill={hillFar} />
+          {/* near hills */}
+          <path d="M 45,75 Q 60,63 72,70 Q 84,77 93,67 L 93,86 L 45,86 Z" fill={hillNear} />
+          {/* stars — fade during day */}
+          <circle cx="56" cy="31" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
+          <circle cx="65" cy="27" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
+          <circle cx="80" cy="32" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
+          <circle cx="74" cy="26" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
+        </g>
+        {/* mullions over the scene */}
         <line x1="69" y1="23" x2="69" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="45" y1="52" x2="93" y2="52" stroke="#2a1808" strokeWidth="2" />
-        {/* stars — fade out during day */}
-        <circle cx="56" cy="34" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
-        <circle cx="65" cy="29" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
-        <circle cx="80" cy="35" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
-        <circle cx="74" cy="27" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
         <rect x="42" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
 
         {/* === RIGHT WINDOW === */}
         <rect x="304" y="20" width="54" height="68" rx="4" fill="#2a1808" />
-        <rect x="307" y="23" width="48" height="36" rx="22" fill={wc} />
-        <rect x="307" y="47" width="48" height="38" fill={wc} />
+        <g clipPath="url(#rwClip)">
+          {/* sky */}
+          <rect x="307" y="23" width="48" height="62" fill={wc} />
+          {/* far hills */}
+          <path d="M 307,62 Q 319,50 331,57 Q 343,64 355,53 L 355,86 L 307,86 Z" fill={hillFar} />
+          {/* near hills */}
+          <path d="M 307,73 Q 320,62 333,68 Q 345,74 355,65 L 355,86 L 307,86 Z" fill={hillNear} />
+          {/* stars */}
+          <circle cx="318" cy="31" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
+          <circle cx="327" cy="27" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
+          <circle cx="342" cy="32" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
+          <circle cx="336" cy="26" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
+        </g>
+        {/* mullions */}
         <line x1="331" y1="23" x2="331" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="307" y1="52" x2="355" y2="52" stroke="#2a1808" strokeWidth="2" />
-        <circle cx="318" cy="34" r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
-        <circle cx="327" cy="29" r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
-        <circle cx="342" cy="35" r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
-        <circle cx="336" cy="27" r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
         <rect x="304" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
 
         {/* === DOOR === */}
