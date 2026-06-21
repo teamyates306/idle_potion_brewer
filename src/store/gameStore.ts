@@ -123,6 +123,7 @@ interface GameState {
   discoveredPotions: string[]; // all-time brewed potion hashes
   autoSellHashes: string[];    // per-potion auto-sell, keyed by hash
   discovered: string[];
+  discoveredAttributes: string[]; // attribute keys unlocked via ingredient deposits
   unlockedLocations: string[];
   exploredLocations: string[];
   lastSeen: number;
@@ -159,6 +160,20 @@ interface GameState {
 
 const now = () => Date.now();
 
+function unlockAttributes(
+  ingredientId: string,
+  current: string[],
+  cfg: ReturnType<typeof useConfigStore.getState>
+): string[] {
+  const ing = cfg.ingredients[ingredientId];
+  if (!ing) return current;
+  const set = new Set(current);
+  for (const [key, val] of Object.entries(ing.attributes)) {
+    if (val !== 0) set.add(key);
+  }
+  return set.size === current.length ? current : Array.from(set);
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
@@ -170,6 +185,7 @@ export const useGameStore = create<GameState>()(
       discoveredPotions: [],
       autoSellHashes: [],
       discovered: [],
+      discoveredAttributes: [],
       unlockedLocations: ["hollow"],
       exploredLocations: [],
       lastSeen: now(),
@@ -232,10 +248,16 @@ export const useGameStore = create<GameState>()(
         const explored = new Set(s.exploredLocations);
         explored.add(loc.id);
 
+        let discoveredAttributes = s.discoveredAttributes;
+        for (const id of Object.keys(gathered)) {
+          discoveredAttributes = unlockAttributes(id, discoveredAttributes, cfg);
+        }
+
         set({
           ingredientInv: inv,
           discovered: Array.from(discovered),
           exploredLocations: Array.from(explored),
+          discoveredAttributes,
           machine: s.machine.brew_stalled
             ? { ...s.machine, brew_stalled: false, brew_started_at: now() }
             : s.machine,
@@ -500,16 +522,20 @@ export const useGameStore = create<GameState>()(
               ? { seconds: Math.floor(elapsed), gathers: totalGathers }
               : null;
 
-          // refresh runtime timers so the loop resumes cleanly
-          const worker: Worker = {
-            ...s.worker,
-            trip_started_at: s.worker.assigned_location ? now() : null,
-            trip_phase: s.worker.assigned_location ? "outbound" : "idle",
-          };
-          const machine: BrewingMachine = {
-            ...s.machine,
-            brew_started_at: s.machine.running ? now() : null,
-          };
+          // Only reset timers when returning from a genuine offline session.
+          // For normal refreshes (elapsed < threshold) preserve the original timestamps
+          // so the game loop resumes from exactly where it left off.
+          const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;
+          const worker: Worker = isLongOffline
+            ? {
+                ...s.worker,
+                trip_started_at: s.worker.assigned_location ? now() : null,
+                trip_phase: s.worker.assigned_location ? "outbound" : "idle",
+              }
+            : s.worker;
+          const machine: BrewingMachine = isLongOffline
+            ? { ...s.machine, brew_started_at: s.machine.running ? now() : null }
+            : s.machine;
 
           return {
             ingredientInv: inv,

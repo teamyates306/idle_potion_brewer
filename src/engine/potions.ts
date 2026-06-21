@@ -1,10 +1,48 @@
 // ---- Procedural potion generation (see Master Spec §7) ----
-// Potions are NOT stored as objects. They are stored as a sorted hash of the
-// ingredient ids used, e.g. "firepetal+rootmoss". The hash deterministically
-// derives the name, value and stats so saves stay tiny.
 import type { BaseFormulas } from "../store/configStore";
 import type { Attributes, Ingredient } from "../types";
 import { sumAttr } from "./formulas";
+
+export const ATTR_KEYS: (keyof Attributes)[] = [
+  "strength", "speed", "vitality", "density", "elasticity",
+  "focus", "mana", "resonance", "insight", "luck",
+  "heat", "cold", "shock", "aqua", "terra", "aero", "radiance", "void",
+  "toxicity", "volatility", "acidity", "alkalinity", "viscosity", "stability", "solvency",
+  "chrono", "gravitas", "entropy", "soul", "mutation",
+];
+
+export const ATTRIBUTE_SUFFIX_REGISTRY: Record<keyof Attributes, string> = {
+  strength:   "Might",
+  speed:      "Swiftness",
+  vitality:   "Life",
+  density:    "Iron",
+  elasticity: "the Spring",
+  focus:      "Clarity",
+  mana:       "Arcane Power",
+  resonance:  "Harmony",
+  insight:    "the Third Eye",
+  luck:       "Fortune",
+  heat:       "Flameburst",
+  cold:       "Frost",
+  shock:      "Thunder",
+  aqua:       "the Tide",
+  terra:      "the Earth",
+  aero:       "the Gale",
+  radiance:   "Light",
+  void:       "the Abyss",
+  toxicity:   "Blight",
+  volatility: "Chaos",
+  acidity:    "Acid",
+  alkalinity: "Purity",
+  viscosity:  "the Current",
+  stability:  "Balance",
+  solvency:   "Dissolution",
+  chrono:     "Time",
+  gravitas:   "Gravity",
+  entropy:    "Ruin",
+  soul:       "the Soul",
+  mutation:   "Transformation",
+};
 
 /** Stable sorted-hash key from a set of ingredient ids. */
 export function potionHash(ingredientIds: string[]): string {
@@ -31,7 +69,6 @@ const CATEGORY_TYPE: Record<string, string> = {
   bone: "Decoction",
 };
 
-/** A small deterministic hash so equal recipes always read the same. */
 function strHash(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -42,20 +79,18 @@ function strHash(s: string): number {
 }
 
 function dominantSuffix(stats: Attributes): string {
-  const entries: [string, number][] = [
-    ["Flameburst", stats.strength],
-    ["Quickstep", stats.speed],
-    ["Venom", stats.toxicity],
-    ["Chaos", stats.volatility],
-  ];
-  entries.sort((a, b) => b[1] - a[1]);
-  return entries[0][0];
+  let maxKey: keyof Attributes = "strength";
+  let maxAbs = 0;
+  for (const key of ATTR_KEYS) {
+    const abs = Math.abs(stats[key]);
+    if (abs > maxAbs) {
+      maxAbs = abs;
+      maxKey = key;
+    }
+  }
+  return ATTRIBUTE_SUFFIX_REGISTRY[maxKey];
 }
 
-/**
- * Derive a full potion descriptor from the ingredients used in a brew.
- * Pure & deterministic for a given recipe + config.
- */
 export function describePotion(
   ingredients: Ingredient[],
   f: BaseFormulas
@@ -63,51 +98,33 @@ export function describePotion(
   const ids = ingredients.map((i) => i.id);
   const hash = potionHash(ids);
 
-  const stats: Attributes = {
-    strength: sumAttr(ingredients, "strength"),
-    speed: sumAttr(ingredients, "speed"),
-    toxicity: sumAttr(ingredients, "toxicity"),
-    volatility: sumAttr(ingredients, "volatility"),
-  };
+  const stats = Object.fromEntries(
+    ATTR_KEYS.map((k) => [k, sumAttr(ingredients, k)])
+  ) as unknown as Attributes;
 
-  // base value = sum of ingredient base values, modified by attributes.
   const baseValue = ingredients.reduce((a, i) => a + i.base_value, 0);
   const toxicityBonus = 1 + Math.max(0, stats.toxicity) * f.toxicity_value_mult;
   const strengthBonus = 1 + Math.max(0, stats.strength) * 0.02;
   const value = Math.max(1, Math.round(baseValue * toxicityBonus * strengthBonus));
 
-  // name = [Prefix] [Category-based Type] of [Attribute Suffix]
   const h = strHash(hash);
-  const prefixIdx = Math.min(
-    VALUE_PREFIXES.length - 1,
-    Math.floor(value / 25)
-  );
+  const prefixIdx = Math.min(VALUE_PREFIXES.length - 1, Math.floor(value / 25));
   const prefix = VALUE_PREFIXES[Math.max(prefixIdx, h % 2)];
   const primaryCategory = ingredients[0]?.category ?? "root";
   const type = CATEGORY_TYPE[primaryCategory] ?? "Tonic";
   const suffix = dominantSuffix(stats);
   const name = `${prefix} ${type} of ${suffix}`;
 
-  return {
-    hash,
-    name,
-    value,
-    stats,
-    toxicity: stats.toxicity,
-    volatility: stats.volatility,
-  };
+  return { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility };
 }
 
-/** Rebuild a descriptor from a stored hash (for the Potion Pile UI). */
 export function describeFromHash(
   hash: string,
   ingredientRegistry: Record<string, Ingredient>,
   f: BaseFormulas
 ): PotionDescriptor | null {
   const ids = hash.split("+");
-  const ingredients = ids
-    .map((id) => ingredientRegistry[id])
-    .filter(Boolean) as Ingredient[];
+  const ingredients = ids.map((id) => ingredientRegistry[id]).filter(Boolean) as Ingredient[];
   if (ingredients.length === 0) return null;
   return describePotion(ingredients, f);
 }

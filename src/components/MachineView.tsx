@@ -133,19 +133,21 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
             </div>
             {potionExpanded && (
               <div className="mt-2 grid grid-cols-4 gap-1.5">
-                {(Object.entries(preview.stats) as [string, number][]).map(([attr, val]) => (
-                  <div key={attr} className="rounded bg-slate-900/70 p-1.5 text-center">
-                    <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
-                    <div
-                      className={`text-sm font-semibold ${
-                        val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
-                      }`}
-                    >
-                      {val > 0 ? "+" : ""}
-                      {val}
+                {(Object.entries(preview.stats) as [string, number][])
+                  .filter(([, val]) => val !== 0)
+                  .map(([attr, val]) => (
+                    <div key={attr} className="rounded bg-slate-900/70 p-1.5 text-center">
+                      <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
+                      <div
+                        className={`text-sm font-semibold ${
+                          val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
+                        }`}
+                      >
+                        {val > 0 ? "+" : ""}
+                        {val}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </>

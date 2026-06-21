@@ -11,10 +11,41 @@ export type IngredientCategory =
   | "bone";
 
 export interface Attributes {
+  // Physical
   strength: number;
   speed: number;
+  vitality: number;
+  density: number;
+  elasticity: number;
+  // Mental
+  focus: number;
+  mana: number;
+  resonance: number;
+  insight: number;
+  luck: number;
+  // Elemental
+  heat: number;
+  cold: number;
+  shock: number;
+  aqua: number;
+  terra: number;
+  aero: number;
+  radiance: number;
+  void: number;
+  // Chemical
   toxicity: number;
   volatility: number;
+  acidity: number;
+  alkalinity: number;
+  viscosity: number;
+  stability: number;
+  solvency: number;
+  // Cosmic
+  chrono: number;
+  gravitas: number;
+  entropy: number;
+  soul: number;
+  mutation: number;
 }
 
 export interface Ingredient {

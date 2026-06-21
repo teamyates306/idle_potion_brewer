@@ -36,6 +36,44 @@ export function machineBrewSeconds(): number {
   return brewTime(g.machine, toxicity, cfg.formulas);
 }
 
+/** Compute the correct loop state right now from persisted store timestamps. */
+function snapshotProgress(): LoopProgress {
+  const g = useGameStore.getState();
+  const now = Date.now();
+
+  let workerProgress = 0;
+  let workerPhase: LoopProgress["workerPhase"] = "idle";
+
+  if (g.worker.assigned_location && g.worker.trip_started_at) {
+    const total = workerTripSeconds();
+    const elapsed = (now - g.worker.trip_started_at) / 1000;
+    if (total > 0 && elapsed < total) {
+      const walkSecs = Math.min(WALK_SECS, total * 0.4);
+      if (elapsed < walkSecs) {
+        workerPhase = "outbound";
+        workerProgress = elapsed / walkSecs;
+      } else if (elapsed < total - walkSecs) {
+        workerPhase = "away";
+      } else {
+        workerPhase = "inbound";
+        workerProgress = (elapsed - (total - walkSecs)) / walkSecs;
+      }
+    }
+    // elapsed >= total → trip completes on first tick; keep idle defaults
+  }
+
+  const brewStalled = g.machine.brew_stalled ?? false;
+  const brewActive = g.machine.running && !brewStalled;
+  let brewProgress = 0;
+  if (brewActive && g.machine.brew_started_at) {
+    const total = machineBrewSeconds();
+    const elapsed = (now - g.machine.brew_started_at) / 1000;
+    if (total > 0 && elapsed < total) brewProgress = elapsed / total;
+  }
+
+  return { workerProgress, workerPhase, brewProgress, brewActive };
+}
+
 /**
  * Central game loop. Ticks ~12fps, advances worker trips & machine brews using
  * timestamps (no catch-up loops), and forces re-render so animations track
@@ -43,12 +81,7 @@ export function machineBrewSeconds(): number {
  */
 export function useGameLoop(): LoopProgress {
   const [, setTick] = useState(0);
-  const progRef = useRef<LoopProgress>({
-    workerProgress: 0,
-    workerPhase: "idle",
-    brewProgress: 0,
-    brewActive: false,
-  });
+  const progRef = useRef<LoopProgress>(snapshotProgress());
 
   useEffect(() => {
     let raf = 0;

@@ -169,16 +169,18 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
 
-              {/* Stat grid */}
+              {/* Stat grid — only non-zero attributes */}
               <div className="mb-4 grid grid-cols-4 gap-1.5">
-                {(Object.entries(detailPotion.stats) as [string, number][]).map(([attr, val]) => (
-                  <div key={attr} className="rounded-lg bg-slate-800 p-2 text-center">
-                    <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
-                    <div className={`text-base font-bold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"}`}>
-                      {val > 0 ? "+" : ""}{val}
+                {(Object.entries(detailPotion.stats) as [string, number][])
+                  .filter(([, val]) => val !== 0)
+                  .map(([attr, val]) => (
+                    <div key={attr} className="rounded-lg bg-slate-800 p-2 text-center">
+                      <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
+                      <div className={`text-base font-bold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"}`}>
+                        {val > 0 ? "+" : ""}{val}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
 
               {/* Total value */}
