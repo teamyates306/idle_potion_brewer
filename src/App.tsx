@@ -9,6 +9,7 @@ import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
 import Modal from "./components/ui/Modal";
 import ToastContainer from "./components/ui/ToastContainer";
+import Atmosphere from "./components/Atmosphere";
 import { useGameStore } from "./store/gameStore";
 import { fmt, fmtDuration } from "./util/format";
 
@@ -27,6 +28,7 @@ export default function App() {
 
   return (
     <div className="relative flex h-full flex-col">
+      <Atmosphere />
       {/* HUD — styled as the top of the stone wall */}
       <header
         className="flex items-center justify-between px-4 py-2.5"
