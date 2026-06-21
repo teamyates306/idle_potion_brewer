@@ -57,7 +57,7 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {entries.length === 0 ? (
+        {tab === "sell" && entries.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">No potions yet. Brew something!</p>
         ) : tab === "sell" ? (
           <>
