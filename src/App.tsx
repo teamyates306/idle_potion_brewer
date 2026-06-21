@@ -31,7 +31,7 @@ export default function App() {
       <Atmosphere />
       {/* HUD — styled as the top of the stone wall */}
       <header
-        className="flex items-center justify-between px-4 py-2.5"
+        className="relative z-[2] flex items-center justify-between px-4 py-2.5"
         style={{
           background: "linear-gradient(to bottom, #3d2810 0%, #5a4028 100%)",
           borderBottom: "2px solid #3a2008",
@@ -44,7 +44,7 @@ export default function App() {
       </header>
 
       {/* Workshop scene */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="relative z-[2] flex-1 overflow-y-auto">
         <Workshop onOpen={(p) => setPanel(p)} />
       </main>
 
