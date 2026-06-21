@@ -201,7 +201,7 @@ interface ConfigState {
 }
 
 const DEFAULT_FORMULAS: BaseFormulas = {
-  base_brew_time: 6,
+  base_brew_time: 1,
   xp_base: 100,
   xp_growth: 1.5,
   cost_base: 25,
