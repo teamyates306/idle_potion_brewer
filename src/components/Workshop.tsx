@@ -19,10 +19,21 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
 
   const potionCount = Object.values(potionInv).reduce((a, b) => a + b, 0);
 
-  // Delay visual pile count by conveyor travel time (3.5s) on increases; sell is instant
+  // Delay visual pile count by conveyor travel time (3.5s) on increases; sell is instant.
+  // isMounted tracks whether the first useEffect has fired — hydration jumps are shown immediately.
   const [displayPotionCount, setDisplayPotionCount] = useState(() => potionCount);
   const prevCountRef = useRef(potionCount);
+  const isMounted = useRef(false);
   useEffect(() => {
+    if (!isMounted.current) {
+      // First effect after mount: show persisted count immediately (no conveyor delay)
+      isMounted.current = true;
+      if (potionCount !== displayPotionCount) {
+        setDisplayPotionCount(potionCount);
+        prevCountRef.current = potionCount;
+      }
+      return;
+    }
     if (potionCount < prevCountRef.current) {
       setDisplayPotionCount(potionCount);
       prevCountRef.current = potionCount;
