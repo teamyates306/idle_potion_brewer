@@ -1,10 +1,10 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, Layers, FlaskConical } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { upgradeCost, brewTime } from "../engine/formulas";
+import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
 import { fmt, fmtDuration } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
@@ -36,6 +36,8 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
   const multiCost = upgradeCost(machine.multi_upgrades, cfg.formulas);
   const slotCost = upgradeCost(machine.slot_upgrades + 3, cfg.formulas);
   const tokens = machine.upgrade_tokens ?? 0;
+  const xpNeed = xpRequired(machine.level, cfg.formulas);
+  const xpPct = Math.min(100, (machine.xp / xpNeed) * 100);
 
   return (
     <Modal title={`${machine.name} · Lvl ${machine.level}`} onClose={onClose} accent={tokens > 0 ? "#eab308" : "#f59e0b"}>
@@ -46,6 +48,50 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
           <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
         </div>
       )}
+
+      {/* XP bar */}
+      <div className="mb-3 rounded-lg bg-slate-800/60 p-3">
+        <div className="mb-1.5 flex justify-between text-xs text-slate-400">
+          <span>XP</span>
+          <span>{Math.floor(machine.xp)} / {xpNeed}</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+          <div
+            className="h-full rounded-full bg-amber-400 transition-[width] duration-300"
+            style={{ width: `${xpPct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Machine stats */}
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-slate-800/60 p-2.5">
+          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
+            <Gauge size={11} /> Speed
+          </div>
+          <div className="text-sm font-semibold text-slate-100">{machine.brew_speed.toFixed(2)}×</div>
+        </div>
+        <div className="rounded-lg bg-slate-800/60 p-2.5">
+          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
+            <Copy size={11} /> Multi-Brew
+          </div>
+          <div className="text-sm font-semibold text-slate-100">{Math.round(machine.multi_brew_chance * 100)}%</div>
+        </div>
+        <div className="rounded-lg bg-slate-800/60 p-2.5">
+          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
+            <Layers size={11} /> Slots
+          </div>
+          <div className="text-sm font-semibold text-slate-100">{machine.unlocked_slots} / 5</div>
+        </div>
+        <div className="col-span-3 rounded-lg bg-slate-800/60 p-2.5">
+          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
+            <FlaskConical size={11} /> Current Brew Time
+          </div>
+          <div className="text-sm font-semibold text-slate-100">
+            {preview ? fmtDuration(bt) : <span className="text-slate-600 italic">no recipe set</span>}
+          </div>
+        </div>
+      </div>
 
       {/* Recipe slots */}
       <div className="mb-3 grid grid-cols-5 gap-2">
