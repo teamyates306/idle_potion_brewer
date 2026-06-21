@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: #9c8260;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='40'><rect width='60' height='40' fill='%239c8260'/><rect x='1' y='1' width='27' height='17' rx='2' fill='%23b09270'/><rect x='31' y='1' width='27' height='17' rx='2' fill='%23a88060'/><rect x='-14' y='21' width='27' height='17' rx='2' fill='%23a88060'/><rect x='16' y='21' width='27' height='17' rx='2' fill='%23b09270'/><rect x='46' y='21' width='27' height='17' rx='2' fill='%23a88060'/></svg>");
+  color: #e2e8f0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+
+/* Vertical conveyor belt — warm wood, flows downward */
+@keyframes convey-v {
+  to { background-position: 0 24px; }
+}
+.conveyor-on {
+  background-image: repeating-linear-gradient(
+    0deg,
+    #78502a 0,
+    #78502a 12px,
+    #5c3a1e 12px,
+    #5c3a1e 24px
+  );
+  animation: convey-v 0.55s linear infinite;
+}
+
+/* Ingredient tokens sliding top → bottom */
+@keyframes slide-ingredient-v {
+  0%   { top: -24px; opacity: 0; }
+  8%   { opacity: 1; }
+  92%  { opacity: 1; }
+  100% { top: calc(100% + 24px); opacity: 0; }
+}
+.conveyor-ingredient {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: slide-ingredient-v 2.8s linear infinite;
+  animation-fill-mode: backwards;
+  pointer-events: none;
+}
+
+/* Potion token sliding top → bottom */
+@keyframes slide-potion-v {
+  0%   { top: -20px; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: calc(100% + 20px); opacity: 0; }
+}
+.conveyor-potion {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  animation: slide-potion-v 3.5s linear infinite;
+  animation-fill-mode: backwards;
+  pointer-events: none;
+}
+
+/* Machine bubbles */
+@keyframes bubble-rise {
+  0%   { transform: translateY(0) scale(1); opacity: 0.8; }
+  100% { transform: translateY(-18px) scale(0.3); opacity: 0; }
+}
+.animate-bubble {
+  animation: bubble-rise 1.3s ease-out infinite;
+}
