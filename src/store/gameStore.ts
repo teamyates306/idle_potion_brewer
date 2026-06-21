@@ -97,7 +97,7 @@ function newMachine(): BrewingMachine {
     level: 1,
     xp: 0,
     brew_speed: 1.0,
-    multi_brew_chance: 1.0,
+    multi_brew_chance: 0,
     recipe_slots: [null, null, null, null, null],
     unlocked_slots: 2,
     auto_sell: false,
