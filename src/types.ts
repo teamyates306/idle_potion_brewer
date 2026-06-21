@@ -88,6 +88,8 @@ export interface Worker {
   // upgrade counters (for cost scaling)
   speed_upgrades: number;
   size_upgrades: number;
+  // upgrade tokens earned from levelling up
+  upgrade_tokens: number;
   // runtime trip tracking
   trip_started_at: number | null;
   trip_phase: "idle" | "outbound" | "inbound";
@@ -107,6 +109,8 @@ export interface BrewingMachine {
   speed_upgrades: number;
   multi_upgrades: number;
   slot_upgrades: number;
+  // upgrade tokens earned from levelling up
+  upgrade_tokens: number;
   brew_started_at: number | null;
   brew_stalled: boolean; // true when running but inventory too low to brew
 }

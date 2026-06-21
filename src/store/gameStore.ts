@@ -84,6 +84,7 @@ function newWorker(): Worker {
     flavor_status: pick(STATUS_IDLE),
     speed_upgrades: 0,
     size_upgrades: 0,
+    upgrade_tokens: 0,
     trip_started_at: null,
     trip_phase: "idle",
   };
@@ -104,6 +105,7 @@ function newMachine(): BrewingMachine {
     speed_upgrades: 0,
     multi_upgrades: 0,
     slot_upgrades: 0,
+    upgrade_tokens: 0,
     brew_started_at: null,
     brew_stalled: false,
   };
@@ -243,7 +245,8 @@ export const useGameStore = create<GameState>()(
         // worker xp + levels
         const gained = Math.round(5 + loc.distance + loc.danger * 3);
         const leveled = applyLevels(s.worker.level, s.worker.xp + gained, cfg.formulas);
-        const levelBonus = (leveled.level - s.worker.level) * 0.05;
+        const levelsGained = leveled.level - s.worker.level;
+        const levelBonus = levelsGained * 0.05;
 
         const explored = new Set(s.exploredLocations);
         explored.add(loc.id);
@@ -266,6 +269,7 @@ export const useGameStore = create<GameState>()(
             xp: leveled.xp,
             level: leveled.level,
             gather_speed: s.worker.gather_speed + levelBonus,
+            upgrade_tokens: (s.worker.upgrade_tokens ?? 0) + levelsGained,
             trip_phase: "outbound",
             trip_started_at: now(),
             flavor_status: statusFor("outbound", loc.danger),
@@ -338,7 +342,8 @@ export const useGameStore = create<GameState>()(
 
         const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
         const leveled = applyLevels(s.machine.level, s.machine.xp + gainedXp, cfg.formulas);
-        const levelBonus = (leveled.level - s.machine.level) * 0.03;
+        const machineLevelsGained = leveled.level - s.machine.level;
+        const levelBonus = machineLevelsGained * 0.03;
 
         const prevDiscovered = s.discoveredPotions ?? [];
         const discoveredPotions = prevDiscovered.includes(potion.hash)
@@ -355,6 +360,7 @@ export const useGameStore = create<GameState>()(
             xp: leveled.xp,
             level: leveled.level,
             brew_speed: s.machine.brew_speed + levelBonus,
+            upgrade_tokens: (s.machine.upgrade_tokens ?? 0) + machineLevelsGained,
             brew_started_at: now(),
             brew_stalled: false,
           },
@@ -402,6 +408,8 @@ export const useGameStore = create<GameState>()(
       buyWorkerSpeed: () =>
         set((s) => {
           const cfg = useConfigStore.getState();
+          const tokens = s.worker.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
           const cost = upgradeCost(s.worker.speed_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
@@ -410,6 +418,7 @@ export const useGameStore = create<GameState>()(
               ...s.worker,
               gather_speed: s.worker.gather_speed + 0.25,
               speed_upgrades: s.worker.speed_upgrades + 1,
+              upgrade_tokens: tokens - 1,
             },
           };
         }),
@@ -417,6 +426,8 @@ export const useGameStore = create<GameState>()(
       buyWorkerSize: () =>
         set((s) => {
           const cfg = useConfigStore.getState();
+          const tokens = s.worker.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
           const cost = upgradeCost(s.worker.size_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
@@ -425,6 +436,7 @@ export const useGameStore = create<GameState>()(
               ...s.worker,
               retrieval_size: s.worker.retrieval_size + 1,
               size_upgrades: s.worker.size_upgrades + 1,
+              upgrade_tokens: tokens - 1,
             },
           };
         }),
@@ -432,6 +444,8 @@ export const useGameStore = create<GameState>()(
       buyBrewSpeed: () =>
         set((s) => {
           const cfg = useConfigStore.getState();
+          const tokens = s.machine.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
           const cost = upgradeCost(s.machine.speed_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
@@ -440,6 +454,7 @@ export const useGameStore = create<GameState>()(
               ...s.machine,
               brew_speed: s.machine.brew_speed + 0.25,
               speed_upgrades: s.machine.speed_upgrades + 1,
+              upgrade_tokens: tokens - 1,
             },
           };
         }),
@@ -447,6 +462,8 @@ export const useGameStore = create<GameState>()(
       buyMultiBrew: () =>
         set((s) => {
           const cfg = useConfigStore.getState();
+          const tokens = s.machine.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
           const cost = upgradeCost(s.machine.multi_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
@@ -455,6 +472,7 @@ export const useGameStore = create<GameState>()(
               ...s.machine,
               multi_brew_chance: s.machine.multi_brew_chance + 0.1,
               multi_upgrades: s.machine.multi_upgrades + 1,
+              upgrade_tokens: tokens - 1,
             },
           };
         }),
@@ -463,6 +481,8 @@ export const useGameStore = create<GameState>()(
         set((s) => {
           if (s.machine.unlocked_slots >= 5) return {};
           const cfg = useConfigStore.getState();
+          const tokens = s.machine.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
           const cost = upgradeCost(s.machine.slot_upgrades + 3, cfg.formulas); // slots are pricier
           if (s.coins < cost) return {};
           return {
@@ -471,6 +491,7 @@ export const useGameStore = create<GameState>()(
               ...s.machine,
               unlocked_slots: s.machine.unlocked_slots + 1,
               slot_upgrades: s.machine.slot_upgrades + 1,
+              upgrade_tokens: tokens - 1,
             },
           };
         }),

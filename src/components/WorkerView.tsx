@@ -12,6 +12,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const [showDetail, setShowDetail] = useState(false);
 
   const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+  const tokens = worker.upgrade_tokens ?? 0;
 
   const statusLabel =
     worker.trip_phase === "outbound" ? `Outbound → ${loc?.name ?? "…"}`
@@ -24,13 +25,19 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
       <Modal title="Worker Management" onClose={onClose} accent="#22d3ee">
         <p className="mb-3 text-xs text-slate-500">Tap a worker to view their full profile.</p>
 
-        {/* Worker roster — one card per worker */}
+        {/* Worker roster card */}
         <button
           onClick={() => setShowDetail(true)}
-          className="flex w-full items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition hover:border-cyan-500/40 hover:bg-slate-700/60 active:scale-[0.99]"
+          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+            tokens > 0
+              ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 hover:bg-yellow-950/30 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
+              : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
+          }`}
         >
           {/* Avatar */}
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-purple-900/60 text-2xl">
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl ${
+            tokens > 0 ? "bg-yellow-900/50 ring-2 ring-yellow-500/50" : "bg-purple-900/60"
+          }`}>
             🧙
           </div>
 
@@ -39,6 +46,11 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             <div className="flex items-baseline gap-2">
               <span className="font-semibold text-slate-100">{worker.name}</span>
               <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
+              {tokens > 0 && (
+                <span className="ml-auto text-xs font-semibold text-yellow-400">
+                  ✦ {tokens} upgrade{tokens > 1 ? "s" : ""} ready
+                </span>
+              )}
             </div>
             <div className="mt-0.5 text-xs text-slate-400 truncate">{statusLabel}</div>
             <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-700">
@@ -49,11 +61,9 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
           <span className="text-slate-600">›</span>
         </button>
 
-        {/* Future workers would appear here */}
         <p className="mt-4 text-center text-xs text-slate-600 italic">More workers can be hired later.</p>
       </Modal>
 
-      {/* Worker detail popup — appears on top of roster */}
       {showDetail && (
         <WorkerDetailModal
           onClose={() => setShowDetail(false)}
@@ -83,6 +93,7 @@ function WorkerDetailModal({ onClose, onOpenMap }: { onClose: () => void; onOpen
   const sizeCost = upgradeCost(worker.size_upgrades, cfg.formulas);
   const xpNeed = xpRequired(worker.level, cfg.formulas);
   const xpPct = Math.min(100, (worker.xp / xpNeed) * 100);
+  const tokens = worker.upgrade_tokens ?? 0;
 
   return (
     <div
@@ -113,6 +124,15 @@ function WorkerDetailModal({ onClose, onOpenMap }: { onClose: () => void; onOpen
             <div className="h-full rounded-full bg-cyan-400 transition-[width]" style={{ width: `${xpPct}%` }} />
           </div>
         </div>
+
+        {/* Upgrade tokens */}
+        {tokens > 0 && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2.5 text-sm">
+            <span className="text-yellow-400">✦</span>
+            <span className="text-yellow-200 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
+            <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
+          </div>
+        )}
 
         {/* Location */}
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-slate-800/60 px-3 py-2.5 text-sm">
@@ -148,11 +168,14 @@ function WorkerDetailModal({ onClose, onOpenMap }: { onClose: () => void; onOpen
         {/* Flavor text */}
         <p className="mb-4 text-xs italic text-slate-500">"{worker.flavor_status}"</p>
 
-        {/* Upgrades */}
-        <div className="mb-4 space-y-2">
-          <UpgradeBtn label="+0.25 Gather Speed" cost={speedCost} affordable={coins >= speedCost} onClick={buySpeed} />
-          <UpgradeBtn label="+1 Retrieval Size" cost={sizeCost} affordable={coins >= sizeCost} onClick={buySize} />
-        </div>
+        {/* Upgrades — only shown when tokens available */}
+        {tokens > 0 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
+            <UpgradeBtn label="+0.25 Gather Speed" cost={speedCost} affordable={coins >= speedCost} onClick={buySpeed} />
+            <UpgradeBtn label="+1 Retrieval Size" cost={sizeCost} affordable={coins >= sizeCost} onClick={buySize} />
+          </div>
+        )}
 
         <button onClick={onOpenMap} className="w-full rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500">
           Assign to a Location →
@@ -168,7 +191,9 @@ function UpgradeBtn({ label, cost, affordable, onClick }: { label: string; cost:
       onClick={onClick}
       disabled={!affordable}
       className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-        affordable ? "bg-purple-600 text-white hover:bg-purple-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+        affordable
+          ? "bg-yellow-600 text-white hover:bg-yellow-500 shadow-[0_0_8px_1px_rgba(234,179,8,0.3)]"
+          : "cursor-not-allowed bg-slate-800 text-slate-500"
       }`}
     >
       <span>{label}</span>

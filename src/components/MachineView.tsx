@@ -35,9 +35,17 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
   const speedCost = upgradeCost(machine.speed_upgrades, cfg.formulas);
   const multiCost = upgradeCost(machine.multi_upgrades, cfg.formulas);
   const slotCost = upgradeCost(machine.slot_upgrades + 3, cfg.formulas);
+  const tokens = machine.upgrade_tokens ?? 0;
 
   return (
-    <Modal title={`${machine.name} · Lvl ${machine.level}`} onClose={onClose} accent="#f59e0b">
+    <Modal title={`${machine.name} · Lvl ${machine.level}`} onClose={onClose} accent={tokens > 0 ? "#eab308" : "#f59e0b"}>
+      {tokens > 0 && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2 text-sm">
+          <span className="text-yellow-400">✦</span>
+          <span className="text-yellow-200 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
+          <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
+        </div>
+      )}
 
       {/* Recipe slots */}
       <div className="mb-3 grid grid-cols-5 gap-2">
@@ -170,13 +178,18 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
         {machine.running ? <><Pause size={18} /> Stop Brewing</> : <><Play size={18} /> Set to Brew</>}
       </button>
 
-      <div className="space-y-2">
-        <UpgradeBtn icon={<Zap size={15} />} label="+0.25 Brew Speed" cost={speedCost} affordable={coins >= speedCost} onClick={buyBrewSpeed} />
-        <UpgradeBtn icon={<Copy size={15} />} label={`+10% Multi-Brew (now ${Math.round(machine.multi_brew_chance * 100)}%)`} cost={multiCost} affordable={coins >= multiCost} onClick={buyMultiBrew} />
-        {machine.unlocked_slots < 5 && (
-          <UpgradeBtn icon={<Plus size={15} />} label={`Unlock Slot ${machine.unlocked_slots + 1}`} cost={slotCost} affordable={coins >= slotCost} onClick={buySlot} />
-        )}
-      </div>
+      {tokens > 0 ? (
+        <div className="space-y-2">
+          <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
+          <UpgradeBtn icon={<Zap size={15} />} label="+0.25 Brew Speed" cost={speedCost} affordable={coins >= speedCost} onClick={buyBrewSpeed} />
+          <UpgradeBtn icon={<Copy size={15} />} label={`+10% Multi-Brew (now ${Math.round(machine.multi_brew_chance * 100)}%)`} cost={multiCost} affordable={coins >= multiCost} onClick={buyMultiBrew} />
+          {machine.unlocked_slots < 5 && (
+            <UpgradeBtn icon={<Plus size={15} />} label={`Unlock Slot ${machine.unlocked_slots + 1}`} cost={slotCost} affordable={coins >= slotCost} onClick={buySlot} />
+          )}
+        </div>
+      ) : (
+        <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
+      )}
     </Modal>
   );
 }
@@ -191,7 +204,9 @@ function UpgradeBtn({
       onClick={onClick}
       disabled={!affordable}
       className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-        affordable ? "bg-amber-600 text-white hover:bg-amber-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+        affordable
+          ? "bg-yellow-600 text-white hover:bg-yellow-500 shadow-[0_0_8px_1px_rgba(234,179,8,0.3)]"
+          : "cursor-not-allowed bg-slate-800 text-slate-500"
       }`}
     >
       <span className="flex items-center gap-2">{icon}{label}</span>

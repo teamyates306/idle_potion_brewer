@@ -81,11 +81,20 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
         {/* Worker Management — always visible right of track */}
         <button
           onClick={() => onOpen("worker")}
-          className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border border-amber-800/50 bg-stone-900/60 px-2.5 py-2 text-[9px] uppercase tracking-wider text-amber-300/80 backdrop-blur-sm transition hover:bg-stone-900/80 active:scale-95"
+          className={`absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
+            (worker.upgrade_tokens ?? 0) > 0
+              ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
+              : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
+          }`}
         >
-          <User size={14} className="text-amber-400" />
+          <User size={14} className={(worker.upgrade_tokens ?? 0) > 0 ? "text-yellow-400" : "text-amber-400"} />
           <span>Worker</span>
           <span>Mgmt</span>
+          {(worker.upgrade_tokens ?? 0) > 0 && (
+            <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">
+              ✦{worker.upgrade_tokens}
+            </span>
+          )}
         </button>
       </div>
 
@@ -105,9 +114,18 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
 
       {/* Machine */}
       <div className="flex flex-col items-center">
-        <button onClick={() => onOpen("machine")} className="active:scale-95 transition" title="The Brewing Machine">
+        <button
+          onClick={() => onOpen("machine")}
+          className={`active:scale-95 transition rounded-full ${(machine.upgrade_tokens ?? 0) > 0 ? "shadow-[0_0_16px_4px_rgba(234,179,8,0.35)]" : ""}`}
+          title="The Brewing Machine"
+        >
           <MachineArt size={108} brewing={brewActive} progress={brewProgress} />
         </button>
+        {(machine.upgrade_tokens ?? 0) > 0 && (
+          <span className="mt-0.5 rounded-full bg-yellow-500 px-2 text-[9px] font-bold text-black leading-tight">
+            ✦ {machine.upgrade_tokens} upgrade{(machine.upgrade_tokens ?? 0) > 1 ? "s" : ""} ready
+          </span>
+        )}
         <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
           <div
             className="h-full bg-amber-400 transition-[width] duration-75"
