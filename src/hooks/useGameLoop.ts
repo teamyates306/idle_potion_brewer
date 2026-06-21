@@ -29,11 +29,9 @@ export function machineBrewSeconds(): number {
   const ids = g.machine.recipe_slots
     .slice(0, g.machine.unlocked_slots)
     .filter((x): x is string => !!x);
-  const toxicity = ids.reduce(
-    (a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0),
-    0
-  );
-  return brewTime(g.machine, toxicity, cfg.formulas);
+  const ingredients = ids.map((id) => cfg.ingredients[id]).filter(Boolean);
+  const toxicity = ingredients.reduce((a, ing) => a + ing.attributes.toxicity, 0);
+  return brewTime(g.machine, toxicity, cfg.formulas, ingredients);
 }
 
 /** Compute the correct loop state right now from persisted store timestamps. */

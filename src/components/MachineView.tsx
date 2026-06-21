@@ -30,7 +30,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
   const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
   const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
   const preview = ingredients.length ? describePotion(ingredients, cfg.formulas) : null;
-  const bt = brewTime(machine, toxicity, cfg.formulas);
+  const bt = brewTime(machine, toxicity, cfg.formulas, ingredients);
 
   const speedCost = upgradeCost(machine.speed_upgrades, cfg.formulas);
   const multiCost = upgradeCost(machine.multi_upgrades, cfg.formulas);

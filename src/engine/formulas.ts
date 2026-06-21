@@ -17,17 +17,39 @@ export function gatherYield(worker: Worker): number {
   return worker.retrieval_size;
 }
 
+const RARITY_WEIGHT: Record<string, number> = {
+  common: 1,
+  uncommon: 1.5,
+  rare: 2.5,
+  epic: 4,
+  legendary: 7,
+};
+
 /**
- * brew_time = base_brew_time / brew_speed, then lengthened by total toxicity.
- * (High Toxicity ingredients multiply value but increase brew_time.)
+ * brew_time = base_brew_time / brew_speed
+ *   × ingredient complexity (count + rarity)
+ *   × toxicity penalty
+ *
+ * Each ingredient adds its rarity weight; the result is normalised so a single
+ * common ingredient keeps roughly the base time. More slots and rarer ingredients
+ * scale time up significantly.
  */
 export function brewTime(
   machine: BrewingMachine,
   totalToxicity: number,
-  f: BaseFormulas
+  f: BaseFormulas,
+  ingredients: Ingredient[] = []
 ): number {
   const base = f.base_brew_time / Math.max(0.0001, machine.brew_speed);
-  return base * (1 + Math.max(0, totalToxicity) * f.toxicity_time_mult);
+
+  // Sum rarity weights; fall back to 1 if no ingredients passed (preview-less call)
+  const raritySum = ingredients.length
+    ? ingredients.reduce((acc, ing) => acc + (RARITY_WEIGHT[ing.rarity] ?? 1), 0)
+    : 1;
+  // Normalise: a single common ingredient = multiplier of 1.0
+  const complexityMult = raritySum / 1;
+
+  return base * complexityMult * (1 + Math.max(0, totalToxicity) * f.toxicity_time_mult);
 }
 
 /**
