@@ -330,7 +330,7 @@ export const useGameStore = create<GameState>()(
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
-        if (s.autoSellHashes.includes(potion.hash)) {
+        if ((s.autoSellHashes ?? []).includes(potion.hash)) {
           coins += potion.value * outputs;
           } else {
             potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
@@ -340,9 +340,10 @@ export const useGameStore = create<GameState>()(
         const leveled = applyLevels(s.machine.level, s.machine.xp + gainedXp, cfg.formulas);
         const levelBonus = (leveled.level - s.machine.level) * 0.03;
 
-        const discoveredPotions = s.discoveredPotions.includes(potion.hash)
-          ? s.discoveredPotions
-          : [...s.discoveredPotions, potion.hash];
+        const prevDiscovered = s.discoveredPotions ?? [];
+        const discoveredPotions = prevDiscovered.includes(potion.hash)
+          ? prevDiscovered
+          : [...prevDiscovered, potion.hash];
 
         set({
           coins,
@@ -359,7 +360,7 @@ export const useGameStore = create<GameState>()(
           },
         });
 
-        const autoSell = s.autoSellHashes.includes(potion.hash);
+        const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
         pushToast(autoSell ? `${label} sold` : `${label} brewed`, "purple");
       },
