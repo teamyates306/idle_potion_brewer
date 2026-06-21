@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, Layers, FlaskConical } from "lucide-react";
+import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, FlaskConical } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -79,16 +79,10 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
         </div>
         <div className="rounded-lg bg-slate-800/60 p-2.5">
           <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
-            <Layers size={11} /> Slots
-          </div>
-          <div className="text-sm font-semibold text-slate-100">{machine.unlocked_slots} / 5</div>
-        </div>
-        <div className="col-span-3 rounded-lg bg-slate-800/60 p-2.5">
-          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
-            <FlaskConical size={11} /> Current Brew Time
+            <FlaskConical size={11} /> Brew Time
           </div>
           <div className="text-sm font-semibold text-slate-100">
-            {preview ? fmtDuration(bt) : <span className="text-slate-600 italic">no recipe set</span>}
+            {preview ? `${bt.toFixed(2)}s` : <span className="text-slate-600 italic">—</span>}
           </div>
         </div>
       </div>
