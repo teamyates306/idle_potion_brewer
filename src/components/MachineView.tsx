@@ -1,12 +1,12 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, FlaskConical } from "lucide-react";
+import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
-import { fmt, fmtDuration } from "../util/format";
+import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 
 export default function MachineView({ onClose }: { onClose: () => void }) {
@@ -76,14 +76,6 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
             <Copy size={11} /> Multi-Brew
           </div>
           <div className="text-sm font-semibold text-slate-100">{Math.round(machine.multi_brew_chance * 100)}%</div>
-        </div>
-        <div className="rounded-lg bg-slate-800/60 p-2.5">
-          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
-            <FlaskConical size={11} /> Brew Time
-          </div>
-          <div className="text-sm font-semibold text-slate-100">
-            {preview ? `${bt.toFixed(2)}s` : <span className="text-slate-600 italic">—</span>}
-          </div>
         </div>
       </div>
 
@@ -176,7 +168,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
               {potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
             </div>
             <div className="mt-0.5 text-xs text-slate-400">
-              🪙 {fmt(preview.value)} · {fmtDuration(bt)} brew
+              🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew
               {!potionExpanded && " · tap for stats"}
             </div>
             {potionExpanded && (
