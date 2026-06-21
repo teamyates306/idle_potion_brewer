@@ -21,6 +21,7 @@ export default function App() {
   const applyOffline = useGameStore((s) => s.applyOffline);
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const [panel, setPanel] = useState<Panel>(null);
+  const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
 
   useEffect(() => {
     applyOffline();
@@ -59,8 +60,8 @@ export default function App() {
 
       {/* Panels */}
       {panel === "inventory" && <IngredientInventoryView onClose={() => setPanel(null)} />}
-      {panel === "map"    && <MapView    onClose={() => setPanel(null)} />}
-      {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={() => setPanel("map")} />}
+      {panel === "map"    && <MapView    onClose={() => setPanel(null)} workerIndex={workerIndexForMap} />}
+      {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} />}
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}

@@ -4,11 +4,12 @@ import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { fmt, RARITY_COLOR } from "../util/format";
 
-export default function MapView({ onClose }: { onClose: () => void }) {
+export default function MapView({ onClose, workerIndex = 0 }: { onClose: () => void; workerIndex?: number }) {
   const unlocked = useGameStore((s) => s.unlockedLocations);
   const explored = useGameStore((s) => s.exploredLocations);
   const coins = useGameStore((s) => s.coins);
-  const worker = useGameStore((s) => s.worker);
+  const workers = useGameStore((s) => s.workers);
+  const worker = workers[workerIndex];
   const assignWorker = useGameStore((s) => s.assignWorker);
   const unlockLocation = useGameStore((s) => s.unlockLocation);
   const cfg = useConfigStore();
@@ -71,7 +72,7 @@ export default function MapView({ onClose }: { onClose: () => void }) {
               </div>
 
               <button
-                onClick={() => assignWorker(isAssigned ? null : loc.id)}
+                onClick={() => assignWorker(workerIndex, isAssigned ? null : loc.id)}
                 className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium ${
                   isAssigned ? "bg-slate-700 text-slate-200 hover:bg-slate-600" : "bg-green-600 text-white hover:bg-green-500"
                 }`}
