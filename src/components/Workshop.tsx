@@ -414,6 +414,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const [dragging, setDragging] = useState(false);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Don't hijack clicks on buttons/links inside the scroll area
+    if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
     const el = scrollRef.current;
     if (!el) return;
     drag.current = { active: true, startX: e.clientX, startLeft: el.scrollLeft };
@@ -565,7 +567,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           </div>
 
           {/* Trough strip */}
-          <div ref={troughRef} className="flex flex-col items-center py-2">
+          <div ref={troughRef} className="flex flex-col items-center">
             <div
               className="relative h-8 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
               style={{ width: Math.min(totalWidth - 32, Math.max(160, machines.length * 80)) }}

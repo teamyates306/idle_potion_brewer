@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
@@ -29,49 +28,49 @@ export default function MachineView({ onClose, initialMachineId = 1 }: { onClose
   const nextCost = machines.length < 5 ? MACHINE_COSTS[machines.length] : null;
   const canAffordNext = nextCost != null && coins >= nextCost;
 
-  return (
-    <Modal title="Manage Brewers" onClose={onClose} accent={accent}>
-      {/* Machine tabs */}
-      <div className="mb-3 flex gap-1 overflow-x-auto pb-1">
-        {machines.map((m, idx) => {
-          const ac = MACHINE_ACCENT[idx] ?? "#f59e0b";
-          const hasTokens = (m.upgrade_tokens ?? 0) > 0;
-          return (
-            <button
-              key={m.id}
-              onClick={() => setActiveMachineId(m.id)}
-              className={`relative shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                m.id === activeMachineId
-                  ? "text-white shadow"
-                  : "bg-slate-800 text-slate-400 hover:text-slate-200"
-              }`}
-              style={m.id === activeMachineId ? { background: ac } : undefined}
-            >
-              {m.name}
-              {hasTokens && (
-                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-yellow-400" />
-              )}
-            </button>
-          );
-        })}
-        {/* Buy new machine */}
-        {nextCost != null && (
+  const tabBar = (
+    <div className="flex gap-1 overflow-x-auto pt-1 pb-0.5">
+      {machines.map((m, idx) => {
+        const ac = MACHINE_ACCENT[idx] ?? "#f59e0b";
+        const hasTokens = (m.upgrade_tokens ?? 0) > 0;
+        return (
           <button
-            onClick={buyMachine}
-            disabled={!canAffordNext}
-            className={`shrink-0 flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-              canAffordNext
-                ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
-                : "cursor-not-allowed border-slate-700 bg-slate-900 text-slate-600"
+            key={m.id}
+            onClick={() => setActiveMachineId(m.id)}
+            className={`relative shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+              m.id === activeMachineId
+                ? "text-white shadow"
+                : "bg-slate-800 text-slate-400 hover:text-slate-200"
             }`}
-            title={`Buy Brewer ${machines.length + 1} for 🪙 ${fmt(nextCost)}`}
+            style={m.id === activeMachineId ? { background: ac } : undefined}
           >
-            <Plus size={12} />
-            <span className="hidden sm:inline">🪙 {fmt(nextCost)}</span>
+            {m.name}
+            {hasTokens && (
+              <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-yellow-400" />
+            )}
           </button>
-        )}
-      </div>
+        );
+      })}
+      {nextCost != null && (
+        <button
+          onClick={buyMachine}
+          disabled={!canAffordNext}
+          className={`shrink-0 flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+            canAffordNext
+              ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
+              : "cursor-not-allowed border-slate-700 bg-slate-900 text-slate-600"
+          }`}
+          title={`Buy Brewer ${machines.length + 1} for 🪙 ${fmt(nextCost)}`}
+        >
+          <Plus size={12} />
+          <span>🪙 {fmt(nextCost)}</span>
+        </button>
+      )}
+    </div>
+  );
 
+  return (
+    <Modal title="Manage Brewers" onClose={onClose} accent={accent} subHeader={tabBar}>
       {activeMachine && (
         <MachinePanelBody
           key={activeMachine.id}
@@ -302,11 +301,39 @@ function MachinePanelBody({
       {tokens > 0 ? (
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
-          <UpgradeBtn icon={<Zap size={15} />} label="+0.25 Brew Speed" cost={speedCost} affordable={coins >= speedCost} onClick={() => buyBrewSpeed(machine.id)} />
-          <UpgradeBtn icon={<Copy size={15} />} label={`+10% Multi-Brew (now ${Math.round(machine.multi_brew_chance * 100)}%)`} cost={multiCost} affordable={coins >= multiCost} onClick={() => buyMultiBrew(machine.id)} />
-          {machine.unlocked_slots < 5 && (
-            <UpgradeBtn icon={<Plus size={15} />} label={`Unlock Slot ${machine.unlocked_slots + 1}`} cost={slotCost} affordable={coins >= slotCost} onClick={() => buySlot(machine.id)} />
-          )}
+          <TokenUpgrades
+            options={[
+              {
+                key: "speed",
+                icon: <Zap size={14} />,
+                label: "+0.25 Brew Speed",
+                detail: `${machine.brew_speed.toFixed(2)}× → ${(machine.brew_speed + 0.25).toFixed(2)}×`,
+                cost: speedCost,
+                affordable: coins >= speedCost,
+                onBuy: () => buyBrewSpeed(machine.id),
+              },
+              {
+                key: "multi",
+                icon: <Copy size={14} />,
+                label: "+10% Multi-Brew",
+                detail: `${Math.round(machine.multi_brew_chance * 100)}% → ${Math.round((machine.multi_brew_chance + 0.1) * 100)}%`,
+                cost: multiCost,
+                affordable: coins >= multiCost,
+                onBuy: () => buyMultiBrew(machine.id),
+              },
+              ...(machine.unlocked_slots < 5
+                ? [{
+                    key: "slot",
+                    icon: <ShoppingBag size={14} />,
+                    label: `Unlock Slot ${machine.unlocked_slots + 1}`,
+                    detail: `${machine.unlocked_slots} → ${machine.unlocked_slots + 1} ingredient slots`,
+                    cost: slotCost,
+                    affordable: coins >= slotCost,
+                    onBuy: () => buySlot(machine.id),
+                  }]
+                : []),
+            ]}
+          />
         </div>
       ) : (
         <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
@@ -315,23 +342,57 @@ function MachinePanelBody({
   );
 }
 
-function UpgradeBtn({
-  icon, label, cost, affordable, onClick,
-}: {
-  icon: ReactNode; label: string; cost: number; affordable: boolean; onClick: () => void;
-}) {
+interface UpgradeOption {
+  key: string;
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  cost: number;
+  affordable: boolean;
+  onBuy: () => void;
+}
+
+function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
+  const [spendingKey, setSpendingKey] = useState<string | null>(null);
+  const [revealKey, setRevealKey] = useState(0);
+
+  const handle = (opt: UpgradeOption) => {
+    if (!opt.affordable || spendingKey) return;
+    setSpendingKey(opt.key);
+    window.setTimeout(() => {
+      opt.onBuy();
+      setSpendingKey(null);
+      setRevealKey((k) => k + 1);
+    }, 460);
+  };
+
   return (
-    <button
-      onClick={onClick}
-      disabled={!affordable}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-        affordable
-          ? "bg-yellow-600 text-white hover:bg-yellow-500 shadow-[0_0_8px_1px_rgba(234,179,8,0.3)]"
-          : "cursor-not-allowed bg-slate-800 text-slate-500"
-      }`}
-    >
-      <span className="flex items-center gap-2">{icon}{label}</span>
-      <span>🪙 {fmt(cost)}</span>
-    </button>
+    <div className="space-y-2">
+      {options.map((opt, i) => {
+        const isSpending = spendingKey === opt.key;
+        const dim = spendingKey !== null && !isSpending;
+        return (
+          <div key={`${opt.key}:${revealKey}`} className="token-reveal" style={{ animationDelay: `${i * 70}ms` }}>
+            <button
+              onClick={() => handle(opt)}
+              disabled={!opt.affordable || spendingKey !== null}
+              className={`relative flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-opacity duration-300 ${
+                opt.affordable ? "bg-yellow-700/30 hover:bg-yellow-700/50" : "cursor-not-allowed bg-slate-800/60 opacity-60"
+              } ${dim ? "!opacity-5" : ""} ${isSpending ? "token-vanish" : ""}`}
+            >
+              <span className={opt.affordable ? "text-yellow-300" : "text-slate-500"}>{opt.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
+                <span className="block text-[11px] text-slate-400">{opt.detail}</span>
+              </span>
+              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-yellow-200" : "text-slate-500"}`}>
+                🪙 {fmt(opt.cost)}
+              </span>
+              {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}
+            </button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
