@@ -379,6 +379,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   // Refs for the scrollable container and each content section
   const scrollRef        = useRef<HTMLDivElement>(null);
   const outerRef         = useRef<HTMLDivElement>(null);
+  const contentRef       = useRef<HTMLDivElement>(null);
   const workerSectionRef = useRef<HTMLDivElement>(null);
   const troughRef        = useRef<HTMLDivElement>(null);
   const machineSectionRef= useRef<HTMLDivElement>(null);
@@ -390,7 +391,19 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   useLayoutEffect(() => {
     const measure = () => {
       const outer = outerRef.current;
+      const content = contentRef.current;
       if (!outer) return;
+
+      // Scale content down via CSS zoom so it always fits vertically without scroll
+      if (content) {
+        content.style.zoom = '';                        // reset to measure natural height
+        const naturalH = content.scrollHeight;
+        const availH = outer.clientHeight;
+        const s = naturalH > 0 && availH > 0 ? Math.min(1, availH / naturalH) : 1;
+        content.style.zoom = s < 1 ? String(s) : '';
+      }
+
+      // Measure badge Y positions in visual (post-zoom) space
       const outerTop = outer.getBoundingClientRect().top;
       const center = (el: HTMLElement | null) => {
         if (!el) return 0;
@@ -498,7 +511,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const totalWidth = Math.max(448, machines.length * COL_W);
 
   return (
-    <div ref={outerRef} className="relative overflow-hidden">
+    <div ref={outerRef} className="relative h-full overflow-hidden">
 
       {/* ── Right-rail badges — outside scroll, always fixed to the right ── */}
       <div className="pointer-events-none absolute inset-0 z-20">
@@ -536,13 +549,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       <div
         ref={scrollRef}
         className={dragging ? "cursor-grabbing overflow-x-scroll" : "cursor-grab overflow-x-scroll"}
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x" } as React.CSSProperties}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x", height: "100%", overflowY: "hidden" } as React.CSSProperties}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
       >
-        <div className="mx-auto flex flex-col" style={{ minWidth: totalWidth, maxWidth: Math.max(totalWidth, 600) }}>
+        <div ref={contentRef} className="mx-auto flex flex-col" style={{ minWidth: totalWidth, maxWidth: Math.max(totalWidth, 600) }}>
 
           {/* Workshop wall */}
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />

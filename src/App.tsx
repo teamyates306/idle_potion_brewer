@@ -72,7 +72,7 @@ export default function App() {
       </header>
 
       {/* Workshop scene */}
-      <main className="relative z-[2] flex-1 overflow-y-auto">
+      <main className="relative z-[2] flex-1 overflow-hidden">
         <Workshop onOpen={(p, machineId?) => { if (p === "map") setMapLockedWorker(null); if (machineId) setMachineTabId(machineId); setPanel(p); }} />
       </main>
 
