@@ -213,7 +213,7 @@ export const useGameStore = create<GameState>()(
       discovered: [],
       discoveredAttributes: [],
       unlockedLocations: ["hollow"],
-      exploredLocations: [],
+      exploredLocations: ["hollow"],
       lastSeen: now(),
       welcomeBack: null,
 
@@ -229,7 +229,12 @@ export const useGameStore = create<GameState>()(
                   flavor_status: statusFor(phase, danger) }
               : w
           );
-          return { workers };
+          // Dispatching to a location reveals it (fog of war).
+          const exploredLocations =
+            locationId && !s.exploredLocations.includes(locationId)
+              ? [...s.exploredLocations, locationId]
+              : s.exploredLocations;
+          return { workers, exploredLocations };
         }),
 
       setTripPhase: (workerIndex, phase) =>

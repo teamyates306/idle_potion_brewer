@@ -154,6 +154,66 @@ export const INGREDIENTS: Record<string, Ingredient> = {
     },
     description: "It does not reflect the lamplight. The Guild advises against making eye contact.",
   },
+  brimstone: {
+    id: "brimstone",
+    name: "Brimstone",
+    category: "crystal",
+    rarity: "rare",
+    base_value: 28,
+    attributes: {
+      strength: 5, speed: 2, vitality: -2, density: 4, elasticity: 0,
+      focus: 0, mana: 2, resonance: 0, insight: 0, luck: 0,
+      heat: 12, cold: -4, shock: 6, aqua: -3, terra: 2, aero: 1, radiance: 4, void: 0,
+      toxicity: 4, volatility: 9, acidity: 5, alkalinity: 0, viscosity: 0, stability: -3, solvency: 0,
+      chrono: 0, gravitas: 1, entropy: 5, soul: 0, mutation: 0,
+    },
+    description: "Smoulders even in the rain. Workers are issued tongs and a stern reminder about eyebrows.",
+  },
+  tidecoral: {
+    id: "tidecoral",
+    name: "Tidecoral",
+    category: "petal",
+    rarity: "rare",
+    base_value: 26,
+    attributes: {
+      strength: 1, speed: 3, vitality: 6, density: 1, elasticity: 4,
+      focus: 2, mana: 3, resonance: 4, insight: 0, luck: 1,
+      heat: -4, cold: 5, shock: 0, aqua: 12, terra: 0, aero: 0, radiance: 0, void: 0,
+      toxicity: 0, volatility: 0, acidity: 0, alkalinity: 4, viscosity: 6, stability: 4, solvency: 3,
+      chrono: 0, gravitas: 0, entropy: 0, soul: 1, mutation: 0,
+    },
+    description: "Still damp with seawater from a sea no map records. It hums when you hold it to your ear.",
+  },
+  luminite: {
+    id: "luminite",
+    name: "Luminite",
+    category: "crystal",
+    rarity: "epic",
+    base_value: 48,
+    attributes: {
+      strength: 2, speed: 3, vitality: 2, density: 2, elasticity: 0,
+      focus: 7, mana: 9, resonance: 5, insight: 6, luck: 3,
+      heat: 2, cold: 0, shock: 2, aqua: 0, terra: 0, aero: 0, radiance: 14, void: -6,
+      toxicity: 0, volatility: 2, acidity: 0, alkalinity: 2, viscosity: 0, stability: 3, solvency: 0,
+      chrono: 1, gravitas: 0, entropy: -2, soul: 4, mutation: 0,
+    },
+    description: "Glows with a steady inner light. Reading by it is pleasant; the faint humming, less so.",
+  },
+  frostspore: {
+    id: "frostspore",
+    name: "Frostspore",
+    category: "fungus",
+    rarity: "uncommon",
+    base_value: 20,
+    attributes: {
+      strength: 0, speed: -2, vitality: 3, density: 1, elasticity: 0,
+      focus: 3, mana: 1, resonance: 0, insight: 2, luck: 0,
+      heat: -8, cold: 11, shock: 0, aqua: 4, terra: 0, aero: 2, radiance: 0, void: 0,
+      toxicity: 3, volatility: 1, acidity: 0, alkalinity: 0, viscosity: 7, stability: 2, solvency: 0,
+      chrono: 0, gravitas: 0, entropy: 0, soul: 0, mutation: 1,
+    },
+    description: "Cold to the point of rudeness. Releases a puff of blue spores when startled, which is often.",
+  },
 };
 
 export const LOCATIONS: Record<string, Location> = {
@@ -207,6 +267,45 @@ export const LOCATIONS: Record<string, Location> = {
       { ingredientId: "marrowroot", weight: 45 },
       { ingredientId: "voidessence", weight: 25 },
       { ingredientId: "nightbloom", weight: 30 },
+    ],
+  },
+  sunken: {
+    id: "sunken",
+    name: "The Sunken Ruins",
+    flavor: "A drowned colonnade that surfaces only at low tide, give or take a century. Workers report the water is warm, the statues have moved since last time, and nobody remembers building any of it.",
+    distance: 13,
+    danger: 2,
+    unlockCost: 1200,
+    drops: [
+      { ingredientId: "tidecoral", weight: 45 },
+      { ingredientId: "dewcap", weight: 30 },
+      { ingredientId: "nightbloom", weight: 25 },
+    ],
+  },
+  barrens: {
+    id: "barrens",
+    name: "The Ashen Barrens",
+    flavor: "Nothing grows here but heat-haze and regret. The ground is warm underfoot, then hot, then a strongly-worded suggestion to leave. The Guild insists the brimstone is worth it.",
+    distance: 20,
+    danger: 2,
+    unlockCost: 1800,
+    drops: [
+      { ingredientId: "brimstone", weight: 45 },
+      { ingredientId: "firepetal", weight: 30 },
+      { ingredientId: "marrowroot", weight: 25 },
+    ],
+  },
+  peak: {
+    id: "peak",
+    name: "The Crystal Peak",
+    flavor: "So high the air forgets to be air. The summit is a single immense crystal that rings like a bell when the wind hits it just so. Beautiful. Cold enough to relieve you of several toes.",
+    distance: 24,
+    danger: 3,
+    unlockCost: 2600,
+    drops: [
+      { ingredientId: "luminite", weight: 35 },
+      { ingredientId: "frostspore", weight: 40 },
+      { ingredientId: "glimmershard", weight: 25 },
     ],
   },
 };
@@ -333,8 +432,11 @@ export const useConfigStore = create<ConfigState>()(
         const p = persisted as Partial<ConfigState>;
         return {
           ...current,
-          ingredients: p.ingredients ?? current.ingredients,
-          locations: p.locations ?? current.locations,
+          // Spread persisted over code defaults so new ingredients/locations
+          // added in code always appear, while runtime (Dev Dashboard) edits to
+          // existing entries are preserved.
+          ingredients: { ...current.ingredients, ...(p.ingredients ?? {}) },
+          locations: { ...current.locations, ...(p.locations ?? {}) },
           formulas: { ...current.formulas, ...(p.formulas ?? {}) },
         };
       },
