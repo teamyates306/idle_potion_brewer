@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { MapPin, Lock, Footprints, HelpCircle } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
@@ -10,67 +10,61 @@ import type { Location } from "../types";
 
 // ── Spatial layout ────────────────────────────────────────────────────────────
 // Known locations get hand-placed branching positions; unknown (dev-added) ones
-// are appended in a chain below.
-const NODE_W = 340;
-const ROW_H = 132;
-const TOP = 58;
+// are appended in a chain below. The canvas is larger than the viewport so the
+// player pans around it by dragging.
+const CANVAS_W = 540;
+const ROW_H = 168;
+const TOP = 80;
+const VIEWPORT_H = 420;
 
-interface LayoutSpec { col: number; row: number; parent?: string }
+interface LayoutSpec { col: number; row: number }
 const MAP_LAYOUT: Record<string, LayoutSpec> = {
   hollow:  { col: 0.50, row: 0 },
-  crags:   { col: 0.26, row: 1, parent: "hollow" },
-  sunken:  { col: 0.74, row: 1, parent: "hollow" },
-  thicket: { col: 0.16, row: 2, parent: "crags" },
-  barrens: { col: 0.50, row: 2, parent: "crags" },
-  peak:    { col: 0.84, row: 2, parent: "sunken" },
-  abyss:   { col: 0.34, row: 3, parent: "thicket" },
+  crags:   { col: 0.24, row: 1 },
+  sunken:  { col: 0.76, row: 1 },
+  thicket: { col: 0.15, row: 2 },
+  barrens: { col: 0.50, row: 2 },
+  peak:    { col: 0.85, row: 2 },
+  abyss:   { col: 0.33, row: 3 },
 };
 
 const DANGER_COLOR = ["#4ade80", "#facc15", "#fb923c", "#f87171", "#c084fc"];
 
-interface PlacedNode { loc: Location; x: number; y: number; parent?: string }
+interface PlacedNode { loc: Location; x: number; y: number }
 
 function buildLayout(locations: Location[]): { nodes: PlacedNode[]; height: number } {
-  const byId = new Map(locations.map((l) => [l.id, l]));
   let maxRow = 0;
   const nodes: PlacedNode[] = [];
 
-  // Known locations
   for (const loc of locations) {
     const spec = MAP_LAYOUT[loc.id];
     if (!spec) continue;
     maxRow = Math.max(maxRow, spec.row);
-    nodes.push({
-      loc,
-      x: spec.col * NODE_W,
-      y: TOP + spec.row * ROW_H,
-      parent: spec.parent && byId.has(spec.parent) ? spec.parent : undefined,
-    });
+    nodes.push({ loc, x: spec.col * CANVAS_W, y: TOP + spec.row * ROW_H });
   }
 
-  // Unknown locations → append in a zig-zag chain below the known graph
   const unknown = locations
     .filter((l) => !MAP_LAYOUT[l.id])
     .sort((a, b) => a.distance - b.distance);
-  let prevId: string | undefined = nodes.length
-    ? [...nodes].sort((a, b) => b.y - a.y)[0].loc.id
-    : undefined;
   unknown.forEach((loc, i) => {
     const row = maxRow + 1 + i;
-    nodes.push({
-      loc,
-      x: (i % 2 === 0 ? 0.3 : 0.7) * NODE_W,
-      y: TOP + row * ROW_H,
-      parent: prevId,
-    });
-    prevId = loc.id;
+    nodes.push({ loc, x: (i % 2 === 0 ? 0.3 : 0.7) * CANVAS_W, y: TOP + row * ROW_H });
     maxRow = row;
   });
 
-  return { nodes, height: TOP + maxRow * ROW_H + 96 };
+  return { nodes, height: TOP + maxRow * ROW_H + 110 };
 }
 
-export default function MapView({ onClose, workerIndex = 0 }: { onClose: () => void; workerIndex?: number }) {
+export default function MapView({
+  onClose,
+  workerIndex = 0,
+  lockedWorkerIndex = null,
+}: {
+  onClose: () => void;
+  workerIndex?: number;
+  /** When set, the location modal only offers to (re)assign this one worker. */
+  lockedWorkerIndex?: number | null;
+}) {
   const unlocked = useGameStore((s) => s.unlockedLocations);
   const explored = useGameStore((s) => s.exploredLocations);
   const workers = useGameStore((s) => s.workers);
@@ -79,59 +73,75 @@ export default function MapView({ onClose, workerIndex = 0 }: { onClose: () => v
 
   const locations = Object.values(cfg.locations);
   const { nodes, height } = buildLayout(locations);
-  const posById = new Map(nodes.map((n) => [n.loc.id, n]));
+
+  // ── Drag to pan ─────────────────────────────────────────────────────────────
+  const vpRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ x: 0, y: 0, sl: 0, st: 0, active: false });
+  const moved = useRef(false);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    const vp = vpRef.current;
+    if (!vp) return;
+    drag.current = { x: e.clientX, y: e.clientY, sl: vp.scrollLeft, st: vp.scrollTop, active: true };
+    moved.current = false;
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drag.current.active) return;
+    const vp = vpRef.current;
+    if (!vp) return;
+    const dx = e.clientX - drag.current.x;
+    const dy = e.clientY - drag.current.y;
+    if (Math.abs(dx) + Math.abs(dy) > 5) moved.current = true;
+    vp.scrollLeft = drag.current.sl - dx;
+    vp.scrollTop = drag.current.st - dy;
+  };
+  const endDrag = () => { drag.current.active = false; };
+  // Swallow the click that ends a drag so it doesn't open a node.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; }
+  };
 
   return (
     <>
       <Modal title="The Map" onClose={onClose} accent="#4ade80">
-        <p className="mb-3 text-xs text-slate-400">Tap a location to send workers or learn more.</p>
+        <p className="mb-3 text-xs text-slate-400">Drag to explore. Tap a location to send workers or learn more.</p>
 
         <div
-          className="relative mx-auto overflow-hidden rounded-xl border border-slate-800"
-          style={{
-            width: NODE_W,
-            height,
-            backgroundColor: "#0b1220",
-            backgroundImage:
-              "radial-gradient(circle at 20% 30%, rgba(74,222,128,0.06), transparent 45%)," +
-              "radial-gradient(circle at 80% 70%, rgba(96,165,250,0.06), transparent 45%)," +
-              "radial-gradient(rgba(148,163,184,0.10) 1px, transparent 1px)",
-            backgroundSize: "auto, auto, 22px 22px",
-          }}
+          ref={vpRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerLeave={endDrag}
+          onClickCapture={onClickCapture}
+          className="relative cursor-grab touch-none overflow-auto overscroll-contain rounded-xl border border-slate-800 active:cursor-grabbing"
+          style={{ height: VIEWPORT_H }}
         >
-          {/* Connectors */}
-          <svg width={NODE_W} height={height} className="absolute inset-0" style={{ pointerEvents: "none" }}>
-            {nodes.map((n) => {
-              if (!n.parent) return null;
-              const p = posById.get(n.parent);
-              if (!p) return null;
-              const lit = unlocked.includes(n.loc.id) && unlocked.includes(p.loc.id);
-              return (
-                <line
-                  key={`c-${n.loc.id}`}
-                  x1={p.x} y1={p.y} x2={n.x} y2={n.y}
-                  stroke={lit ? "#4ade80" : "#475569"}
-                  strokeWidth={2}
-                  strokeDasharray="5 6"
-                  opacity={lit ? 0.55 : 0.3}
-                />
-              );
-            })}
-          </svg>
-
-          {/* Nodes */}
-          {nodes.map((n) => (
-            <MapNode
-              key={n.loc.id}
-              node={n}
-              isUnlocked={unlocked.includes(n.loc.id)}
-              isExplored={explored.includes(n.loc.id)}
-              workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
-              workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
-              ingredients={n.loc.drops}
-              onClick={() => setSelected(n.loc)}
-            />
-          ))}
+          <div
+            className="relative"
+            style={{
+              width: CANVAS_W,
+              height,
+              backgroundColor: "#0b1220",
+              backgroundImage:
+                "radial-gradient(circle at 20% 25%, rgba(74,222,128,0.06), transparent 45%)," +
+                "radial-gradient(circle at 80% 70%, rgba(96,165,250,0.06), transparent 45%)," +
+                "radial-gradient(rgba(148,163,184,0.10) 1px, transparent 1px)",
+              backgroundSize: "auto, auto, 24px 24px",
+            }}
+          >
+            {nodes.map((n) => (
+              <MapNode
+                key={n.loc.id}
+                node={n}
+                isUnlocked={unlocked.includes(n.loc.id)}
+                isExplored={explored.includes(n.loc.id)}
+                workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
+                workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
+                ingredients={n.loc.drops}
+                onClick={() => setSelected(n.loc)}
+              />
+            ))}
+          </div>
         </div>
       </Modal>
 
@@ -139,6 +149,7 @@ export default function MapView({ onClose, workerIndex = 0 }: { onClose: () => v
         <LocationDetailModal
           loc={selected}
           preferredWorkerIndex={workerIndex}
+          lockedWorkerIndex={lockedWorkerIndex}
           onClose={() => setSelected(null)}
         />
       )}
@@ -203,7 +214,7 @@ function MapNode({
             ? "radial-gradient(circle at 35% 30%, #1e293b, #0f172a)"
             : `radial-gradient(circle at 35% 30%, ${dangerColor}33, #0f172a)`,
           boxShadow: dim ? "none" : `0 0 12px ${dangerColor}44`,
-          opacity: dim ? 0.78 : 1,
+          opacity: dim ? 0.82 : 1,
         }}
         title={node.loc.name}
       >
@@ -216,12 +227,12 @@ function MapNode({
         )}
       </button>
 
-      {/* Label */}
-      <div className="absolute left-1/2 top-full mt-1.5 w-40 -translate-x-1/2 text-center">
-        <div className={`truncate text-[11px] font-semibold ${dim ? "text-slate-400" : "text-slate-100"}`}>
+      {/* Label — wraps so the full name and all ingredient pills stay visible */}
+      <div className="absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
+        <div className={`text-[11px] font-semibold leading-tight ${dim ? "text-slate-400" : "text-slate-100"}`}>
           {node.loc.name}
         </div>
-        <div className="mt-0.5 flex flex-wrap justify-center gap-0.5">
+        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
           {!isExplored ? (
             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">??? Uncharted</span>
           ) : (
@@ -249,10 +260,12 @@ function MapNode({
 function LocationDetailModal({
   loc,
   preferredWorkerIndex,
+  lockedWorkerIndex,
   onClose,
 }: {
   loc: Location;
   preferredWorkerIndex: number;
+  lockedWorkerIndex: number | null;
   onClose: () => void;
 }) {
   const workers = useGameStore((s) => s.workers);
@@ -264,6 +277,7 @@ function LocationDetailModal({
   const isExplored = useGameStore((s) => s.exploredLocations.includes(loc.id));
 
   const baseTrip = gatherRoundTrip(loc.distance, 1);
+  const lockedWorker = lockedWorkerIndex != null ? workers[lockedWorkerIndex] : null;
 
   return (
     <div
@@ -316,7 +330,7 @@ function LocationDetailModal({
           </div>
         </div>
 
-        {/* Locked → unlock; unlocked → workers */}
+        {/* Locked → unlock; unlocked → worker assignment */}
         {!isUnlocked ? (
           <div className="rounded-xl border border-slate-700 bg-slate-800/40 p-4 text-center">
             <Lock size={20} className="mx-auto mb-2 text-slate-400" />
@@ -331,7 +345,43 @@ function LocationDetailModal({
               Unlock 🪙 {fmt(loc.unlockCost)}
             </button>
           </div>
+        ) : lockedWorker ? (
+          /* Single-worker assignment (came from Worker Management → Assign) */
+          (() => {
+            const isHere = lockedWorker.assigned_location === loc.id;
+            const tripSecs = gatherRoundTrip(loc.distance, lockedWorker.gather_speed);
+            return (
+              <div>
+                <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Assignment</p>
+                <div className="flex items-center gap-3 rounded-xl border border-green-500/40 bg-green-950/20 p-3">
+                  <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${lockedWorker.color ?? "#7c3aed"}33` }}>
+                    <WorkerArt size={36} color={lockedWorker.color} carrying={isHere} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-slate-100">{lockedWorker.name}</div>
+                    <div className="text-xs text-slate-500">{fmtDuration(tripSecs)} round trip</div>
+                  </div>
+                </div>
+                {isHere ? (
+                  <button
+                    onClick={() => { assignWorker(lockedWorkerIndex!, null); onClose(); }}
+                    className="mt-3 w-full rounded-lg bg-rose-700 py-2.5 text-sm font-semibold text-white hover:bg-rose-600 active:scale-[0.99]"
+                  >
+                    Recall {lockedWorker.name}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { assignWorker(lockedWorkerIndex!, loc.id); onClose(); }}
+                    className="mt-3 w-full rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-500 active:scale-[0.99]"
+                  >
+                    Assign {lockedWorker.name} to {loc.name}
+                  </button>
+                )}
+              </div>
+            );
+          })()
         ) : (
+          /* All workers (came from the home-screen map) */
           <div>
             <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Your workers</p>
             <div className="space-y-2">

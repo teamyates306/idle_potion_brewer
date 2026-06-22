@@ -26,6 +26,9 @@ export default function App() {
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const [panel, setPanel] = useState<Panel>(null);
   const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
+  // When the map is opened via "Assign to Location" from a worker, lock it to
+  // that single worker; opening the map from the home screen shows all workers.
+  const [mapLockedWorker, setMapLockedWorker] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { toastsEnabled, toggleToasts } = useSettingsStore();
 
@@ -68,7 +71,7 @@ export default function App() {
 
       {/* Workshop scene */}
       <main className="relative z-[2] flex-1 overflow-y-auto">
-        <Workshop onOpen={(p) => setPanel(p)} />
+        <Workshop onOpen={(p) => { if (p === "map") setMapLockedWorker(null); setPanel(p); }} />
       </main>
 
       {/* Quests entry point — left edge, only once unlocked (>=5 unique potion names) */}
@@ -94,8 +97,8 @@ export default function App() {
 
       {/* Panels */}
       {panel === "inventory" && <IngredientInventoryView onClose={() => setPanel(null)} />}
-      {panel === "map"    && <MapView    onClose={() => setPanel(null)} workerIndex={workerIndexForMap} />}
-      {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setPanel("map"); }} />}
+      {panel === "map"    && <MapView    onClose={() => setPanel(null)} workerIndex={workerIndexForMap} lockedWorkerIndex={mapLockedWorker} />}
+      {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setMapLockedWorker(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} />}
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
       {panel === "quests" && <QuestView   onClose={() => setPanel(null)} />}

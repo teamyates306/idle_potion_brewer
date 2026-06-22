@@ -22,8 +22,6 @@ import { describePotion } from "../engine/potions";
 import {
   CLICK_SPEED_STEP,
   autoClickSpeedLevel,
-  autoClickSpeedCost,
-  autoClickPowerCost,
   autoClickReductionPerSec,
   autoClickXpPerSec,
 } from "../engine/autoclick";
@@ -31,7 +29,6 @@ import {
   type Quest,
   type QuestDifficulty,
   groupHashesByName,
-  generateQuestSet,
   generateQuest,
   questProgress,
   deductQuest,
@@ -39,6 +36,7 @@ import {
 import { pushGameEvent } from "../util/gameEvents";
 
 const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
+export const QUEST_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between fresh quests
 
 // ---- Worker flavor statuses (see §8 — dry RuneScape humour, dread late game) ----
 const STATUS_IDLE = [
@@ -176,6 +174,8 @@ interface GameState {
   // quests
   questsUnlocked: boolean;
   activeQuests: Quest[];
+  /** difficulty -> timestamp when a fresh quest of that tier may be generated */
+  questCooldowns: Partial<Record<QuestDifficulty, number>>;
 
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
@@ -259,6 +259,7 @@ export const useGameStore = create<GameState>()(
       welcomeBack: null,
       questsUnlocked: false,
       activeQuests: [],
+      questCooldowns: {},
 
       assignWorker: (workerIndex, locationId) =>
         set((s) => {
@@ -296,16 +297,18 @@ export const useGameStore = create<GameState>()(
 
       buyClickSpeed: (workerIndex) =>
         set((s) => {
+          const cfg = useConfigStore.getState();
           const w = s.workers[workerIndex];
           if (!w) return {};
-          const level = autoClickSpeedLevel(w.auto_click_speed);
-          const cost = autoClickSpeedCost(level);
+          const tokens = w.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
+          const cost = upgradeCost(autoClickSpeedLevel(w.auto_click_speed), cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, auto_click_speed: wk.auto_click_speed + CLICK_SPEED_STEP }
+                ? { ...wk, auto_click_speed: wk.auto_click_speed + CLICK_SPEED_STEP, upgrade_tokens: tokens - 1 }
                 : wk
             ),
           };
@@ -313,15 +316,18 @@ export const useGameStore = create<GameState>()(
 
       buyClickPower: (workerIndex) =>
         set((s) => {
+          const cfg = useConfigStore.getState();
           const w = s.workers[workerIndex];
           if (!w) return {};
-          const cost = autoClickPowerCost(w.click_power_level);
+          const tokens = w.upgrade_tokens ?? 0;
+          if (tokens < 1) return {};
+          const cost = upgradeCost(w.click_power_level, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, click_power_level: wk.click_power_level + 1 }
+                ? { ...wk, click_power_level: wk.click_power_level + 1, upgrade_tokens: tokens - 1 }
                 : wk
             ),
           };
@@ -609,21 +615,25 @@ export const useGameStore = create<GameState>()(
         const cfg = useConfigStore.getState();
         const groups = uniqueNameGroups(s.discoveredPotions, cfg);
         const unlocked = s.questsUnlocked || groups.length >= UNIQUE_NAMES_TO_UNLOCK_QUESTS;
-        if (!unlocked) return;
-        // First unlock, or repair a set that lost quests → regenerate to 3 (one per tier).
-        if (!s.questsUnlocked || s.activeQuests.length < 3) {
-          const have = new Set(s.activeQuests.map((q) => q.difficulty));
-          const filled = [...s.activeQuests];
-          for (const d of (["Easy", "Medium", "Challenging"] as QuestDifficulty[])) {
-            if (!have.has(d)) filled.push(generateQuest(d, groups, cfg.ingredients));
-          }
-          set({
-            questsUnlocked: true,
-            activeQuests: filled.length === 3 ? filled : generateQuestSet(groups, cfg.ingredients),
-          });
-        } else if (!s.questsUnlocked) {
-          set({ questsUnlocked: true });
+        if (!unlocked || groups.length === 0) return;
+
+        const nowT = now();
+        const present = new Set(s.activeQuests.map((q) => q.difficulty));
+        const cooldowns = { ...(s.questCooldowns ?? {}) };
+        const activeQuests = [...s.activeQuests];
+        let changed = !s.questsUnlocked;
+
+        // Fill any missing tier whose cooldown has elapsed (or was never set).
+        for (const d of (["Easy", "Medium", "Challenging"] as QuestDifficulty[])) {
+          if (present.has(d)) continue;
+          const readyAt = cooldowns[d];
+          if (readyAt && nowT < readyAt) continue; // still cooling down
+          activeQuests.push(generateQuest(d, groups, cfg.ingredients));
+          delete cooldowns[d];
+          changed = true;
         }
+
+        if (changed) set({ questsUnlocked: true, activeQuests, questCooldowns: cooldowns });
       },
 
       completeQuest: (questId) => {
@@ -635,12 +645,11 @@ export const useGameStore = create<GameState>()(
         if (!complete) return;
 
         const potionInv = deductQuest(quest, s.potionInv, cfg.ingredients, cfg.formulas);
-        // Replace with a fresh quest of the SAME difficulty tier.
-        const groups = uniqueNameGroups(s.discoveredPotions, cfg);
-        const replacement = generateQuest(quest.difficulty, groups, cfg.ingredients);
-        const activeQuests = s.activeQuests.map((q) => (q.id === questId ? replacement : q));
+        // Remove the quest and start a 1-hour cooldown before its tier regenerates.
+        const activeQuests = s.activeQuests.filter((q) => q.id !== questId);
+        const questCooldowns = { ...(s.questCooldowns ?? {}), [quest.difficulty]: now() + QUEST_COOLDOWN_MS };
 
-        set({ coins: s.coins + quest.reward, potionInv, activeQuests });
+        set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
       },
 
@@ -1009,6 +1018,7 @@ export const useGameStore = create<GameState>()(
         exploredLocations: s.exploredLocations,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
+        questCooldowns: s.questCooldowns,
         lastSeen: s.lastSeen,
       }),
       // Backfill fields added in newer versions onto persisted workers.
@@ -1029,9 +1039,11 @@ export const useGameStore = create<GameState>()(
   )
 );
 
-// keep lastSeen fresh so offline EV is accurate
+// keep lastSeen fresh so offline EV is accurate, and regenerate any quests whose
+// cooldown has elapsed even while the menu is closed.
 if (typeof window !== "undefined") {
   setInterval(() => {
     useGameStore.setState({ lastSeen: now() });
+    useGameStore.getState().refreshQuests();
   }, 5000);
 }

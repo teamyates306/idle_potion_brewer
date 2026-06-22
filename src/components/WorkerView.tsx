@@ -7,9 +7,7 @@ import { useGameLoop } from "../hooks/useGameLoop";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
 import {
   autoClickPower,
-  autoClickPowerCost,
   autoClickSpeedLevel,
-  autoClickSpeedCost,
   autoClickReductionPerSec,
 } from "../engine/autoclick";
 import { fmt, fmtDuration } from "../util/format";
@@ -150,12 +148,12 @@ function WorkerDetailModal({
   const xpPct = Math.min(100, (worker.xp / xpNeed) * 100);
   const tokens = worker.upgrade_tokens ?? 0;
 
-  // Auto-click stats
+  // Auto-click stats — upgrades are token-gated, costed exactly like gather upgrades
   const power = autoClickPower(worker.click_power_level);
   const nextPower = autoClickPower(worker.click_power_level + 1);
-  const powerCost = autoClickPowerCost(worker.click_power_level);
   const speedLevel = autoClickSpeedLevel(worker.auto_click_speed);
-  const clickSpeedCost = autoClickSpeedCost(speedLevel);
+  const clickSpeedCost = upgradeCost(speedLevel, cfg.formulas);
+  const clickPowerCost = upgradeCost(worker.click_power_level, cfg.formulas);
   const reductionPerSec = autoClickReductionPerSec(worker.auto_click_speed, worker.click_power_level);
 
   return (
@@ -228,6 +226,14 @@ function WorkerDetailModal({
             <div className="flex items-center gap-1.5 text-xs text-slate-400"><Package size={13} /> Retrieval Size</div>
             <div className="mt-0.5 font-semibold text-slate-100">×{worker.retrieval_size.toFixed(0)}</div>
           </div>
+          <div className="rounded-lg bg-slate-800/60 p-2.5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400"><Timer size={13} /> Click Speed</div>
+            <div className="mt-0.5 font-semibold text-slate-100">{worker.auto_click_speed.toFixed(1)}×</div>
+          </div>
+          <div className="rounded-lg bg-slate-800/60 p-2.5">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400"><Zap size={13} /> Click Power</div>
+            <div className="mt-0.5 font-semibold text-slate-100">−{power.toFixed(2)}s/hit</div>
+          </div>
           {loc && (
             <div className="col-span-2 rounded-lg bg-slate-800/60 p-2.5">
               <div className="flex items-center gap-1.5 text-xs text-slate-400"><ArrowUpCircle size={13} /> Round Trip</div>
@@ -240,38 +246,30 @@ function WorkerDetailModal({
 
         {tokens > 0 && (
           <div className="mb-4 space-y-2">
-            <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
-            <UpgradeBtn label="+0.25 Gather Speed" cost={speedCost} affordable={coins >= speedCost} onClick={() => buySpeed(workerIndex)} />
-            <UpgradeBtn label="+1 Retrieval Size" cost={sizeCost} affordable={coins >= sizeCost} onClick={() => buySize(workerIndex)} />
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
+              {reductionPerSec > 0 && (
+                <span className="text-[10px] text-amber-300/80">Cauldron −{reductionPerSec.toFixed(2)}s/s</span>
+              )}
+            </div>
+            <TokenUpgrades
+              options={[
+                { key: "gspeed", icon: <Gauge size={14} />, label: "+0.25 Gather Speed",
+                  detail: `${worker.gather_speed.toFixed(2)} → ${(worker.gather_speed + 0.25).toFixed(2)}`,
+                  cost: speedCost, affordable: coins >= speedCost, onBuy: () => buySpeed(workerIndex) },
+                { key: "gsize", icon: <Package size={14} />, label: "+1 Retrieval Size",
+                  detail: `×${worker.retrieval_size.toFixed(0)} → ×${(worker.retrieval_size + 1).toFixed(0)}`,
+                  cost: sizeCost, affordable: coins >= sizeCost, onBuy: () => buySize(workerIndex) },
+                { key: "cspeed", icon: <Timer size={14} />, label: "+0.2× Click Speed",
+                  detail: `${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + 0.2).toFixed(1)}×`,
+                  cost: clickSpeedCost, affordable: coins >= clickSpeedCost, onBuy: () => buyClickSpeed(workerIndex) },
+                { key: "cpower", icon: <Zap size={14} />, label: "Click Power",
+                  detail: `−${power.toFixed(2)}s → −${nextPower.toFixed(2)}s per hit`,
+                  cost: clickPowerCost, affordable: coins >= clickPowerCost, onBuy: () => buyClickPower(workerIndex) },
+              ]}
+            />
           </div>
         )}
-
-        {/* Auto-click (cauldron) upgrades — coin-purchased, scale the worker's hits */}
-        <div className="mb-4 space-y-2 rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-400">
-              <Hammer size={13} /> Cauldron Work
-            </span>
-            <span className="text-[11px] text-amber-300/80">−{reductionPerSec.toFixed(2)}s per sec</span>
-          </div>
-
-          <ClickUpgradeBtn
-            icon={<Timer size={14} />}
-            label="Click Speed"
-            detail={`${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + 0.2).toFixed(1)}×`}
-            cost={clickSpeedCost}
-            affordable={coins >= clickSpeedCost}
-            onClick={() => buyClickSpeed(workerIndex)}
-          />
-          <ClickUpgradeBtn
-            icon={<Zap size={14} />}
-            label="Click Power"
-            detail={`Current: −${power.toFixed(2)}s/hit → Next: −${nextPower.toFixed(2)}s/hit`}
-            cost={powerCost}
-            affordable={coins >= powerCost}
-            onClick={() => buyClickPower(workerIndex)}
-          />
-        </div>
 
         {/* Assignment controls */}
         <div className="flex gap-2">
@@ -302,42 +300,62 @@ function WorkerDetailModal({
   );
 }
 
-function ClickUpgradeBtn({
-  icon, label, detail, cost, affordable, onClick,
-}: {
-  icon: React.ReactNode; label: string; detail: string; cost: number; affordable: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={!affordable}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition ${
-        affordable ? "bg-amber-800/40 hover:bg-amber-800/60" : "cursor-not-allowed bg-slate-800/60 opacity-60"
-      }`}
-    >
-      <span className={affordable ? "text-amber-300" : "text-slate-500"}>{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-slate-100">{label}</span>
-        <span className="block text-[11px] text-slate-400">{detail}</span>
-      </span>
-      <span className={`shrink-0 text-sm font-semibold ${affordable ? "text-amber-200" : "text-slate-500"}`}>🪙 {fmt(cost)}</span>
-    </button>
-  );
+interface UpgradeOption {
+  key: string;
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  cost: number;
+  affordable: boolean;
+  onBuy: () => void;
 }
 
-function UpgradeBtn({ label, cost, affordable, onClick }: { label: string; cost: number; affordable: boolean; onClick: () => void }) {
+/**
+ * Token-spend upgrade list with a "crunchy" purchase animation: the clicked
+ * option sparkles left→right and vanishes, the others fade to darkness, then the
+ * refreshed list reveals itself with a staggered delay.
+ */
+function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
+  const [spendingKey, setSpendingKey] = useState<string | null>(null);
+  const [revealKey, setRevealKey] = useState(0);
+
+  const handle = (opt: UpgradeOption) => {
+    if (!opt.affordable || spendingKey) return;
+    setSpendingKey(opt.key);
+    window.setTimeout(() => {
+      opt.onBuy();
+      setSpendingKey(null);
+      setRevealKey((k) => k + 1); // remount → re-trigger the reveal animation
+    }, 460);
+  };
+
   return (
-    <button
-      onClick={onClick}
-      disabled={!affordable}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-        affordable
-          ? "bg-yellow-600 text-white hover:bg-yellow-500 shadow-[0_0_8px_1px_rgba(234,179,8,0.3)]"
-          : "cursor-not-allowed bg-slate-800 text-slate-500"
-      }`}
-    >
-      <span>{label}</span>
-      <span>🪙 {fmt(cost)}</span>
-    </button>
+    <div className="space-y-2">
+      {options.map((opt, i) => {
+        const isSpending = spendingKey === opt.key;
+        const dim = spendingKey !== null && !isSpending;
+        return (
+          <div key={`${opt.key}:${revealKey}`} className="token-reveal" style={{ animationDelay: `${i * 70}ms` }}>
+            <button
+              onClick={() => handle(opt)}
+              disabled={!opt.affordable || spendingKey !== null}
+              className={`relative flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-opacity duration-300 ${
+                opt.affordable ? "bg-yellow-700/30 hover:bg-yellow-700/50" : "cursor-not-allowed bg-slate-800/60 opacity-60"
+              } ${dim ? "!opacity-5" : ""} ${isSpending ? "token-vanish" : ""}`}
+            >
+              <span className={opt.affordable ? "text-yellow-300" : "text-slate-500"}>{opt.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
+                <span className="block text-[11px] text-slate-400">{opt.detail}</span>
+              </span>
+              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-yellow-200" : "text-slate-500"}`}>
+                🪙 {fmt(opt.cost)}
+              </span>
+              {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}
+            </button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
