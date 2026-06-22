@@ -401,11 +401,10 @@ export const useGameStore = create<GameState>()(
         });
 
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
+        const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
+        pushToast(`${label} brewed`, "purple");
         if (autoSell) {
           pushToast(`Potion sold for 🪙 ${(potion.value * outputs).toLocaleString()}`, "amber");
-        } else {
-          const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
-          pushToast(`${label} brewed`, "purple");
         }
       },
 
