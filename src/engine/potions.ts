@@ -59,6 +59,8 @@ export interface PotionDescriptor {
 }
 
 const VALUE_PREFIXES = ["Lesser", "Common", "Greater", "Potent", "Grand", "Mythic"];
+// Thresholds: Lesser<30, Common≥30, Greater≥80, Potent≥180, Grand≥350, Mythic≥700
+const VALUE_THRESHOLDS = [30, 80, 180, 350, 700];
 
 const CATEGORY_TYPE: Record<string, string> = {
   root: "Tonic",
@@ -113,9 +115,15 @@ export function describePotion(
   const value = Math.max(1, Math.round(baseValue * attrBonus));
 
   const h = strHash(hash);
-  const prefixIdx = Math.min(VALUE_PREFIXES.length - 1, Math.floor(value / 25));
+  const prefixIdx = VALUE_THRESHOLDS.filter((t) => value >= t).length;
   const prefix = VALUE_PREFIXES[Math.max(prefixIdx, h % 2)];
-  const primaryCategory = ingredients[0]?.category ?? "root";
+
+  // Dominant category by summed base_value
+  const categoryTotals: Record<string, number> = {};
+  for (const ing of ingredients) {
+    categoryTotals[ing.category] = (categoryTotals[ing.category] ?? 0) + ing.base_value;
+  }
+  const primaryCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "root";
   const type = CATEGORY_TYPE[primaryCategory] ?? "Tonic";
   const suffix = dominantSuffix(stats);
   const name = `${prefix} ${type} of ${suffix}`;
