@@ -13,6 +13,20 @@ import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
 
+interface Spark {
+  id: number;
+  x: number; y: number;   // px within cauldron div
+  dx: number; dy: number; // animation end offset
+  size: number;
+  color: string;
+  createdAt: number;
+}
+
+const HEAT_PER_CLICK  = 0.12;
+const HEAT_DECAY      = 0.22; // units/sec
+const MAX_SPARKS      = 20;
+const SPARK_COLORS    = ["#ff9a30", "#ffcc00", "#ff6600", "#fff0a0", "#ffdd80"];
+
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory";
 
 const CHANNEL_COLOR = {
@@ -27,7 +41,6 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
   const machine     = useGameStore((s) => s.machine);
   const potionInv   = useGameStore((s) => s.potionInv);
   const clickBrew   = useGameStore((s) => s.clickBrew);
-  const sellRandom  = useGameStore((s) => s.sellRandom);
   const cfg         = useConfigStore();
   const loopProgress = useGameLoop();
   const dn          = useDayNight();
@@ -39,6 +52,40 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
 
   // ── Cauldron bump animation ────────────────────────────────────────────────
   const [bumping, setBumping] = useState(false);
+
+  // ── Cauldron heat system ───────────────────────────────────────────────────
+  const heatRef      = useRef(0);
+  const [heatDisplay, setHeatDisplay] = useState(0);
+  const [sparks, setSparks]     = useState<Spark[]>([]);
+  const sparkIdRef   = useRef(0);
+
+  // Decay heat toward 0 at 60fps
+  useEffect(() => {
+    let raf: number;
+    let lastT = 0;
+    const tick = (t: number) => {
+      raf = requestAnimationFrame(tick);
+      if (!lastT) { lastT = t; return; }
+      const dt = (t - lastT) / 1000;
+      lastT = t;
+      if (heatRef.current > 0) {
+        heatRef.current = Math.max(0, heatRef.current - HEAT_DECAY * dt);
+        setHeatDisplay(heatRef.current);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Remove sparks after their animation finishes
+  useEffect(() => {
+    if (sparks.length === 0) return;
+    const t = setTimeout(() => {
+      const cutoff = Date.now() - 620;
+      setSparks((prev) => prev.filter((s) => s.createdAt > cutoff));
+    }, 650);
+    return () => clearTimeout(t);
+  }, [sparks]);
 
   // ── Subscribe game events → FAT ───────────────────────────────────────────
   useEffect(() => {
@@ -124,6 +171,33 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
 
     clickBrew();
 
+    // Heat: increment, cap at 1
+    const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
+    heatRef.current = newHeat;
+    setHeatDisplay(newHeat);
+
+    // Spawn sparks (scales with heat, hard-capped)
+    const sparkCount = Math.floor(2 + newHeat * 6); // 2–8 per click
+    const now = Date.now();
+    setSparks((prev) => {
+      const trimmed = prev.length + sparkCount > MAX_SPARKS
+        ? prev.slice(prev.length + sparkCount - MAX_SPARKS)
+        : prev;
+      return [
+        ...trimmed,
+        ...Array.from({ length: sparkCount }, () => ({
+          id:        sparkIdRef.current++,
+          x:         18 + Math.random() * 72, // within 108px wide div
+          y:         12 + Math.random() * 58,
+          dx:        (Math.random() - 0.5) * 65,
+          dy:        -(28 + Math.random() * 50),
+          size:      2 + Math.random() * 2.5,
+          color:     SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
+          createdAt: now,
+        })),
+      ];
+    });
+
     // Bump animation
     setBumping(false);
     requestAnimationFrame(() => setBumping(true));
@@ -159,6 +233,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
               left: "50%",
               transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
               opacity,
+              transition: "transform 90ms linear, opacity 90ms linear",
             }}
           >
             <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
@@ -204,12 +279,54 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
         <div
           ref={cauldronRef}
           onClick={handleCauldronClick}
-          className={`cursor-pointer select-none transition-transform active:scale-95 rounded-full ${
-            (machine.upgrade_tokens ?? 0) > 0 ? "shadow-[0_0_16px_4px_rgba(234,179,8,0.35)]" : ""
-          } ${bumping ? "cauldron-bump" : ""}`}
+          className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${
+            bumping ? "cauldron-bump" : ""
+          }`}
+          style={{
+            boxShadow: [
+              heatDisplay > 0.08
+                ? `0 0 ${Math.round(heatDisplay * 32)}px ${Math.round(heatDisplay * 14)}px rgba(255,120,0,${(heatDisplay * 0.55).toFixed(2)})`
+                : null,
+              (machine.upgrade_tokens ?? 0) > 0
+                ? "0 0 16px 4px rgba(234,179,8,0.35)"
+                : null,
+            ].filter(Boolean).join(", ") || undefined,
+          }}
           title={machine.running && !machine.brew_stalled ? "Click to speed up brewing!" : ""}
         >
-          <MachineArt size={108} brewing={brewActive} progress={brewProgress} />
+          <div
+            style={{
+              filter: heatDisplay > 0
+                ? `sepia(${heatDisplay * 0.45}) saturate(${1 + heatDisplay * 1.4}) hue-rotate(${-30 * heatDisplay}deg) brightness(${1 + heatDisplay * 0.18})`
+                : undefined,
+            }}
+          >
+            <MachineArt size={108} brewing={brewActive} progress={brewProgress} />
+          </div>
+          {/* Sparks */}
+          {sparks.map((spark) => (
+            <div
+              key={spark.id}
+              style={
+                {
+                  position: "absolute",
+                  left: spark.x,
+                  top: spark.y,
+                  width: spark.size,
+                  height: spark.size,
+                  borderRadius: "50%",
+                  background: spark.color,
+                  pointerEvents: "none",
+                  "--sx": `${spark.dx}px`,
+                  "--sy": `${spark.dy}px`,
+                  animationName: "spark-fly",
+                  animationDuration: "0.55s",
+                  animationTimingFunction: "ease-out",
+                  animationFillMode: "forwards",
+                } as React.CSSProperties
+              }
+            />
+          ))}
         </div>
 
         {(machine.upgrade_tokens ?? 0) > 0 && (
@@ -247,14 +364,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
       {/* Conveyor: machine → potion pile */}
       <ConveyorWithPotion running={brewActive} />
 
-      {/* ── Potion Pile — active click sells 1 random potion ── */}
+      {/* ── Potion Pile ── */}
       <div className="relative flex flex-col items-center pb-3">
-        <div
-          ref={pileRef}
-          onClick={sellRandom}
-          className="relative cursor-pointer select-none active:scale-95 transition-transform"
-          title={potionCount > 0 ? "Tap to sell a potion!" : ""}
-        >
+        <div ref={pileRef} className="relative">
           <PotionPileArt count={displayPotionCount} size={130} />
           {displayPotionCount > 0 && (
             <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">

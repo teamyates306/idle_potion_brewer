@@ -166,7 +166,6 @@ interface GameState {
   // economy
   sellPotion: (hash: string, count: number) => void;
   sellAll: () => void;
-  sellRandom: () => void;
 
   // active-click
   clickBrew: () => void;
@@ -450,22 +449,6 @@ export const useGameStore = create<GameState>()(
         }
         set({ coins, potionInv: {} });
         if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
-      },
-
-      sellRandom: () => {
-        const s = get();
-        const cfg = useConfigStore.getState();
-        const entries = Object.entries(s.potionInv).filter(([, c]) => c > 0);
-        if (entries.length === 0) return;
-        const [hash] = entries[Math.floor(Math.random() * entries.length)];
-        const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
-        if (ingredients.length === 0) return;
-        const potion = describePotion(ingredients, cfg.formulas);
-        const potionInv = { ...s.potionInv };
-        potionInv[hash] = (potionInv[hash] ?? 1) - 1;
-        if (potionInv[hash] <= 0) delete potionInv[hash];
-        set({ coins: s.coins + potion.value, potionInv });
-        pushGameEvent("pile", `+${potion.value.toLocaleString()} 🪙`);
       },
 
       clickBrew: () => {
