@@ -412,38 +412,38 @@ export const useGameStore = create<GameState>()(
             : [...s.autoSellHashes, hash],
         })),
 
-      sellPotion: (hash, count) =>
-        set((s) => {
-          const have = s.potionInv[hash] ?? 0;
-          if (have <= 0) return {};
-          const cfg = useConfigStore.getState();
-          const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
-          if (ingredients.length === 0) return {};
-          const potion = describePotion(ingredients, cfg.formulas);
-          const n = Math.min(count, have);
-          const earned = potion.value * n;
-          const potionInv = { ...s.potionInv };
-          potionInv[hash] = have - n;
-          if (potionInv[hash] <= 0) delete potionInv[hash];
-          pushToast(`🪙 +${earned.toLocaleString()} — ${potion.name}`, "amber");
-          return { coins: s.coins + earned, potionInv };
-        }),
+      sellPotion: (hash, count) => {
+        const s = get();
+        const have = s.potionInv[hash] ?? 0;
+        if (have <= 0) return;
+        const cfg = useConfigStore.getState();
+        const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
+        if (ingredients.length === 0) return;
+        const potion = describePotion(ingredients, cfg.formulas);
+        const n = Math.min(count, have);
+        const earned = potion.value * n;
+        const potionInv = { ...s.potionInv };
+        potionInv[hash] = have - n;
+        if (potionInv[hash] <= 0) delete potionInv[hash];
+        set({ coins: s.coins + earned, potionInv });
+        pushToast(`🪙 +${earned.toLocaleString()} — ${potion.name}`, "amber");
+      },
 
-      sellAll: () =>
-        set((s) => {
-          const cfg = useConfigStore.getState();
-          let coins = s.coins;
-          let totalEarned = 0;
-          for (const [hash, count] of Object.entries(s.potionInv)) {
-            const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
-            if (ingredients.length === 0) continue;
-            const earned = describePotion(ingredients, cfg.formulas).value * count;
-            coins += earned;
-            totalEarned += earned;
-          }
-          if (totalEarned > 0) pushToast(`🪙 +${totalEarned.toLocaleString()} — sold everything`, "amber");
-          return { coins, potionInv: {} };
-        }),
+      sellAll: () => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        let coins = s.coins;
+        let totalEarned = 0;
+        for (const [hash, count] of Object.entries(s.potionInv)) {
+          const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
+          if (ingredients.length === 0) continue;
+          const earned = describePotion(ingredients, cfg.formulas).value * count;
+          coins += earned;
+          totalEarned += earned;
+        }
+        set({ coins, potionInv: {} });
+        if (totalEarned > 0) pushToast(`🪙 +${totalEarned.toLocaleString()} — sold everything`, "amber");
+      },
 
       buyWorkerSpeed: (workerIndex = 0) =>
         set((s) => {
