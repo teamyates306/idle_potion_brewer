@@ -1,19 +1,103 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge } from "lucide-react";
+import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag } from "lucide-react";
 import Modal from "./ui/Modal";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
+import type { BrewingMachine } from "../types";
 
-export default function MachineView({ onClose }: { onClose: () => void }) {
-  const machine = useGameStore((s) => s.machine);
+// Per-machine hue-rotate for the cauldron tint in the tab indicator
+const MACHINE_ACCENT = ["#f59e0b", "#22c55e", "#38bdf8", "#a855f7", "#ef4444"];
+
+export default function MachineView({ onClose, initialMachineId = 1 }: { onClose: () => void; initialMachineId?: number }) {
+  const machines = useGameStore((s) => s.machines);
+  const coins = useGameStore((s) => s.coins);
+  const buyMachine = useGameStore((s) => s.buyMachine);
+
+  const [activeMachineId, setActiveMachineId] = useState(() => {
+    return machines.some((m) => m.id === initialMachineId) ? initialMachineId : machines[0]?.id ?? 1;
+  });
+
+  const activeMachine = machines.find((m) => m.id === activeMachineId) ?? machines[0];
+  const machineIdx = machines.findIndex((m) => m.id === activeMachineId);
+  const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
+
+  const nextCost = machines.length < 5 ? MACHINE_COSTS[machines.length] : null;
+  const canAffordNext = nextCost != null && coins >= nextCost;
+
+  return (
+    <Modal title="Manage Brewers" onClose={onClose} accent={accent}>
+      {/* Machine tabs */}
+      <div className="mb-3 flex gap-1 overflow-x-auto pb-1">
+        {machines.map((m, idx) => {
+          const ac = MACHINE_ACCENT[idx] ?? "#f59e0b";
+          const hasTokens = (m.upgrade_tokens ?? 0) > 0;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setActiveMachineId(m.id)}
+              className={`relative shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                m.id === activeMachineId
+                  ? "text-white shadow"
+                  : "bg-slate-800 text-slate-400 hover:text-slate-200"
+              }`}
+              style={m.id === activeMachineId ? { background: ac } : undefined}
+            >
+              {m.name}
+              {hasTokens && (
+                <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-yellow-400" />
+              )}
+            </button>
+          );
+        })}
+        {/* Buy new machine */}
+        {nextCost != null && (
+          <button
+            onClick={buyMachine}
+            disabled={!canAffordNext}
+            className={`shrink-0 flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+              canAffordNext
+                ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
+                : "cursor-not-allowed border-slate-700 bg-slate-900 text-slate-600"
+            }`}
+            title={`Buy Brewer ${machines.length + 1} for 🪙 ${fmt(nextCost)}`}
+          >
+            <Plus size={12} />
+            <span className="hidden sm:inline">🪙 {fmt(nextCost)}</span>
+          </button>
+        )}
+      </div>
+
+      {activeMachine && (
+        <MachinePanelBody
+          key={activeMachine.id}
+          machine={activeMachine}
+          machineIdx={machineIdx}
+          coins={coins}
+          accent={accent}
+        />
+      )}
+    </Modal>
+  );
+}
+
+function MachinePanelBody({
+  machine,
+  machineIdx,
+  coins,
+  accent,
+}: {
+  machine: BrewingMachine;
+  machineIdx: number;
+  coins: number;
+  accent: string;
+}) {
   const discovered = useGameStore((s) => s.discovered);
   const inv = useGameStore((s) => s.ingredientInv);
-  const coins = useGameStore((s) => s.coins);
   const programSlot = useGameStore((s) => s.programSlot);
   const toggleRunning = useGameStore((s) => s.toggleRunning);
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
@@ -40,7 +124,11 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
   const xpPct = Math.min(100, (machine.xp / xpNeed) * 100);
 
   return (
-    <Modal title={`${machine.name} · Lvl ${machine.level}`} onClose={onClose} accent={tokens > 0 ? "#eab308" : "#f59e0b"}>
+    <>
+      <div className="mb-1 text-xs font-semibold" style={{ color: accent }}>
+        {machine.name} · Lvl {machine.level}
+      </div>
+
       {tokens > 0 && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2 text-sm">
           <span className="text-yellow-400">✦</span>
@@ -57,8 +145,8 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-700">
           <div
-            className="h-full rounded-full bg-amber-400 transition-[width] duration-300"
-            style={{ width: `${xpPct}%` }}
+            className="h-full rounded-full transition-[width] duration-300"
+            style={{ width: `${xpPct}%`, background: accent }}
           />
         </div>
       </div>
@@ -76,6 +164,12 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
             <Copy size={11} /> Multi-Brew
           </div>
           <div className="text-sm font-semibold text-slate-100">{Math.round(machine.multi_brew_chance * 100)}%</div>
+        </div>
+        <div className="rounded-lg bg-slate-800/60 p-2.5">
+          <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
+            <ShoppingBag size={11} /> Slots
+          </div>
+          <div className="text-sm font-semibold text-slate-100">{machine.unlocked_slots} / 5</div>
         </div>
       </div>
 
@@ -125,7 +219,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
           </p>
           <div className="flex flex-wrap gap-1.5">
             <button
-              onClick={() => { programSlot(picking, null); setPicking(null); }}
+              onClick={() => { programSlot(machine.id, picking, null); setPicking(null); }}
               className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
             >
               Clear
@@ -140,7 +234,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
               return (
                 <button
                   key={id}
-                  onClick={() => { programSlot(picking, id); setPicking(null); }}
+                  onClick={() => { programSlot(machine.id, picking, id); setPicking(null); }}
                   className="flex items-center gap-1.5 rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700"
                 >
                   <IngredientSvg category={ing.category} size={14} />
@@ -153,7 +247,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* Potion preview — clickable for full stats */}
+      {/* Potion preview */}
       <button
         onClick={() => preview && setPotionExpanded((x) => !x)}
         disabled={!preview}
@@ -178,13 +272,8 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
                   .map(([attr, val]) => (
                     <div key={attr} className="rounded bg-slate-900/70 p-1.5 text-center">
                       <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
-                      <div
-                        className={`text-sm font-semibold ${
-                          val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
-                        }`}
-                      >
-                        {val > 0 ? "+" : ""}
-                        {val}
+                      <div className={`text-sm font-semibold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"}`}>
+                        {val > 0 ? "+" : ""}{val}
                       </div>
                     </div>
                   ))}
@@ -197,7 +286,7 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
       </button>
 
       <button
-        onClick={toggleRunning}
+        onClick={() => toggleRunning(machine.id)}
         disabled={!preview}
         className={`mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 font-semibold transition ${
           !preview
@@ -213,16 +302,16 @@ export default function MachineView({ onClose }: { onClose: () => void }) {
       {tokens > 0 ? (
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
-          <UpgradeBtn icon={<Zap size={15} />} label="+0.25 Brew Speed" cost={speedCost} affordable={coins >= speedCost} onClick={buyBrewSpeed} />
-          <UpgradeBtn icon={<Copy size={15} />} label={`+10% Multi-Brew (now ${Math.round(machine.multi_brew_chance * 100)}%)`} cost={multiCost} affordable={coins >= multiCost} onClick={buyMultiBrew} />
+          <UpgradeBtn icon={<Zap size={15} />} label="+0.25 Brew Speed" cost={speedCost} affordable={coins >= speedCost} onClick={() => buyBrewSpeed(machine.id)} />
+          <UpgradeBtn icon={<Copy size={15} />} label={`+10% Multi-Brew (now ${Math.round(machine.multi_brew_chance * 100)}%)`} cost={multiCost} affordable={coins >= multiCost} onClick={() => buyMultiBrew(machine.id)} />
           {machine.unlocked_slots < 5 && (
-            <UpgradeBtn icon={<Plus size={15} />} label={`Unlock Slot ${machine.unlocked_slots + 1}`} cost={slotCost} affordable={coins >= slotCost} onClick={buySlot} />
+            <UpgradeBtn icon={<Plus size={15} />} label={`Unlock Slot ${machine.unlocked_slots + 1}`} cost={slotCost} affordable={coins >= slotCost} onClick={() => buySlot(machine.id)} />
           )}
         </div>
       ) : (
         <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
       )}
-    </Modal>
+    </>
   );
 }
 

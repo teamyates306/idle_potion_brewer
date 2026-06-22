@@ -130,8 +130,8 @@ function CheatsTab() {
       </Section>
       <Section title="Machine">
         <div className="flex flex-wrap gap-2">
-          <Btn onClick={() => useGameStore.setState((s) => ({ machine: { ...s.machine, xp: s.machine.xp + 500 } }))}>+500 Machine XP</Btn>
-          <Btn onClick={() => useGameStore.setState((s) => ({ machine: { ...s.machine, upgrade_tokens: (s.machine.upgrade_tokens ?? 0) + 1 } }))}>+1 Machine Token</Btn>
+          <Btn onClick={() => useGameStore.setState((s) => ({ machines: s.machines.map((m, i) => i === 0 ? { ...m, xp: m.xp + 500 } : m) }))}>+500 Machine XP</Btn>
+          <Btn onClick={() => useGameStore.setState((s) => ({ machines: s.machines.map((m, i) => i === 0 ? { ...m, upgrade_tokens: (m.upgrade_tokens ?? 0) + 1 } : m) }))}>+1 Machine Token</Btn>
         </div>
       </Section>
       <Section title="Workers">

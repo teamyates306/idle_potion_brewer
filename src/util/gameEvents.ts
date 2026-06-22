@@ -4,14 +4,15 @@ export interface GameEvent {
   id: number;
   channel: GameEventChannel;
   text: string;
+  machineId?: number;
 }
 
 type GameEventListener = (e: GameEvent) => void;
 const listeners: GameEventListener[] = [];
 let uid = 0;
 
-export function pushGameEvent(channel: GameEventChannel, text: string): void {
-  const e: GameEvent = { id: uid++, channel, text };
+export function pushGameEvent(channel: GameEventChannel, text: string, machineId?: number): void {
+  const e: GameEvent = { id: uid++, channel, text, machineId };
   listeners.forEach((l) => l(e));
 }
 

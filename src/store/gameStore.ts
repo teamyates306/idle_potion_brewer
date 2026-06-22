@@ -14,7 +14,6 @@ import {
   brewXp,
   effectiveMultiBrew,
   gatherRoundTrip,
-  offlineGathers,
   rollMultiBrew,
   upgradeCost,
 } from "../engine/formulas";
@@ -36,9 +35,13 @@ import {
 import { pushGameEvent } from "../util/gameEvents";
 
 const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
-export const QUEST_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between fresh quests
+export const QUEST_COOLDOWN_MS = 60 * 60 * 1000;
 
-// ---- Worker flavor statuses (see §8 — dry RuneScape humour, dread late game) ----
+// ---- Machine configuration ------------------------------------------------
+const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
+export const MACHINE_COSTS = [0, 5_000, 250_000, 10_000_000, 100_000_000];
+
+// ---- Worker flavor statuses -----------------------------------------------
 const STATUS_IDLE = [
   "Leaning on a rake, philosophically.",
   "Counting the cracks in the floor. There are eleven.",
@@ -91,14 +94,8 @@ function pickDrop(drops: { ingredientId: string; weight: number }[]): string {
 }
 
 const WORKER_COLORS = [
-  "#7c3aed", // violet (default)
-  "#dc2626", // red
-  "#16a34a", // green
-  "#2563eb", // blue
-  "#d97706", // amber
-  "#0891b2", // cyan
-  "#be185d", // pink
-  "#65a30d", // lime
+  "#7c3aed", "#dc2626", "#16a34a", "#2563eb", "#d97706",
+  "#0891b2", "#be185d", "#65a30d",
 ];
 const WORKER_NAMES = ["Wort", "Midge", "Crumble", "Tuck", "Pell", "Sable", "Fenwick", "Glum"];
 
@@ -126,10 +123,10 @@ function newWorker(index = 0): Worker {
 
 const HIRE_COST_BASE = 500;
 
-function newMachine(): BrewingMachine {
+function newMachine(index = 0): BrewingMachine {
   return {
-    id: 1,
-    name: "The Bubbler",
+    id: index + 1,
+    name: MACHINE_NAMES[index] ?? `Brewer ${index + 1}`,
     level: 1,
     xp: 0,
     brew_speed: 1.0,
@@ -159,13 +156,13 @@ export interface WelcomeBack {
 interface GameState {
   coins: number;
   workers: Worker[];
-  machine: BrewingMachine;
+  machines: BrewingMachine[];
   ingredientInv: IngredientInventory;
   potionInv: PotionInventory;
-  discoveredPotions: string[]; // all-time brewed potion hashes
-  autoSellHashes: string[];    // per-potion auto-sell, keyed by hash
+  discoveredPotions: string[];
+  autoSellHashes: string[];
   discovered: string[];
-  discoveredAttributes: string[]; // attribute keys unlocked via ingredient deposits
+  discoveredAttributes: string[];
   unlockedLocations: string[];
   exploredLocations: string[];
   lastSeen: number;
@@ -174,7 +171,6 @@ interface GameState {
   // quests
   questsUnlocked: boolean;
   activeQuests: Quest[];
-  /** difficulty -> timestamp when a fresh quest of that tier may be generated */
   questCooldowns: Partial<Record<QuestDifficulty, number>>;
 
   // workers
@@ -188,10 +184,11 @@ interface GameState {
   buyClickPower: (workerIndex: number) => void;
   autoClickTick: (dtSeconds: number) => void;
 
-  // machine
-  programSlot: (index: number, ingredientId: string | null) => void;
-  toggleRunning: () => void;
-  completeBrew: () => void;
+  // machines
+  buyMachine: () => void;
+  programSlot: (machineId: number, index: number, ingredientId: string | null) => void;
+  toggleRunning: (machineId: number) => void;
+  completeBrew: (machineId: number) => void;
   toggleAutoSellPotion: (hash: string) => void;
   clearAutoSell: () => void;
   removeAutoSell: (hashes: string[]) => void;
@@ -201,7 +198,7 @@ interface GameState {
   sellAll: () => void;
 
   // active-click
-  clickBrew: () => void;
+  clickBrew: (machineId: number) => void;
 
   // quests
   refreshQuests: () => void;
@@ -210,9 +207,9 @@ interface GameState {
   // upgrades
   buyWorkerSpeed: (workerIndex?: number) => void;
   buyWorkerSize: (workerIndex?: number) => void;
-  buyBrewSpeed: () => void;
-  buyMultiBrew: () => void;
-  buySlot: () => void;
+  buyBrewSpeed: (machineId: number) => void;
+  buyMultiBrew: (machineId: number) => void;
+  buySlot: (machineId: number) => void;
   unlockLocation: (locationId: string) => void;
 
   // lifecycle
@@ -244,12 +241,17 @@ function unlockAttributes(
   return set.size === current.length ? current : Array.from(set);
 }
 
+// Helper: find machine by id within the array
+function getMachineIdx(machines: BrewingMachine[], machineId: number): number {
+  return machines.findIndex((m) => m.id === machineId);
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       coins: 100,
       workers: [newWorker(0)],
-      machine: newMachine(),
+      machines: [newMachine(0)],
       ingredientInv: {},
       potionInv: {},
       discoveredPotions: [],
@@ -264,6 +266,8 @@ export const useGameStore = create<GameState>()(
       activeQuests: [],
       questCooldowns: {},
 
+      // ---- Workers ----------------------------------------------------------
+
       assignWorker: (workerIndex, locationId) =>
         set((s) => {
           const cfg = useConfigStore.getState();
@@ -277,7 +281,6 @@ export const useGameStore = create<GameState>()(
                   flavor_status: statusFor(phase, danger) }
               : w
           );
-          // Dispatching to a location reveals it (fog of war).
           const exploredLocations =
             locationId && !s.exploredLocations.includes(locationId)
               ? [...s.exploredLocations, locationId]
@@ -290,9 +293,10 @@ export const useGameStore = create<GameState>()(
           const workers = s.workers.map((w, i) =>
             i === workerIndex
               ? { ...w, assigned_machine_id: machineId,
-                  // machine work and gathering are mutually exclusive
                   assigned_location: null, trip_started_at: null, trip_phase: "idle" as const,
-                  flavor_status: machineId ? "Hammering the cauldron with great enthusiasm." : pick(STATUS_IDLE) }
+                  flavor_status: machineId
+                    ? `Hammering ${s.machines.find((m) => m.id === machineId)?.name ?? "the cauldron"} with great enthusiasm.`
+                    : pick(STATUS_IDLE) }
               : w
           );
           return { workers };
@@ -303,12 +307,15 @@ export const useGameStore = create<GameState>()(
           const cfg = useConfigStore.getState();
           const idxSet = new Set(workerIndices);
           const exploredSet = new Set(s.exploredLocations);
+          const machineName = machineId
+            ? s.machines.find((m) => m.id === machineId)?.name ?? "the cauldron"
+            : null;
           const workers = s.workers.map((w, i) => {
             if (!idxSet.has(i)) return w;
             if (machineId != null) {
               return { ...w, assigned_machine_id: machineId, assigned_location: null,
                 trip_started_at: null, trip_phase: "idle" as const,
-                flavor_status: "Hammering the cauldron with great enthusiasm." };
+                flavor_status: `Hammering ${machineName} with great enthusiasm.` };
             }
             const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
             const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
@@ -362,15 +369,14 @@ export const useGameStore = create<GameState>()(
         const s = get();
         const machineWorkers = s.workers.filter((w) => w.assigned_machine_id != null);
         if (machineWorkers.length === 0) return;
-        // Only "click" when there is an active brew to speed up.
-        const brewing = s.machine.running && !!s.machine.brew_started_at && !s.machine.brew_stalled;
-        if (!brewing) return;
 
         const cfg = useConfigStore.getState();
-        let totalReductionSecs = 0;
+
+        // Grant XP to workers assigned to actively-brewing machines
         const workers = s.workers.map((w) => {
           if (w.assigned_machine_id == null) return w;
-          totalReductionSecs += autoClickReductionPerSec(w.auto_click_speed, w.click_power_level) * dt;
+          const m = s.machines.find((m) => m.id === w.assigned_machine_id);
+          if (!m || !m.running || m.brew_stalled || !m.brew_started_at) return w;
           const xpGain = autoClickXpPerSec(w.auto_click_speed) * dt;
           const leveled = applyLevels(w.level, w.xp + xpGain, cfg.formulas);
           const levelsGained = leveled.level - w.level;
@@ -383,14 +389,18 @@ export const useGameStore = create<GameState>()(
           };
         });
 
-        // Advance brew start backward (flat seconds removed), clamped so we never
-        // push it earlier than the full brew duration's worth in one step.
-        const reductionMs = totalReductionSecs * 1000;
-        const machine = {
-          ...s.machine,
-          brew_started_at: (s.machine.brew_started_at ?? now()) - reductionMs,
-        };
-        set({ workers, machine });
+        // Per-machine: advance brew timer by workers' click reduction
+        const machines = s.machines.map((machine) => {
+          if (!machine.running || machine.brew_stalled || !machine.brew_started_at) return machine;
+          const assigned = s.workers.filter((w) => w.assigned_machine_id === machine.id);
+          if (assigned.length === 0) return machine;
+          const reductionMs = assigned.reduce(
+            (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level) * dt * 1000, 0
+          );
+          return { ...machine, brew_started_at: machine.brew_started_at - reductionMs };
+        });
+
+        set({ workers, machines });
       },
 
       setTripPhase: (workerIndex, phase) =>
@@ -452,14 +462,17 @@ export const useGameStore = create<GameState>()(
             : wk
         );
 
+        // Restart any stalled machine — new ingredients just arrived
+        const machines = s.machines.map((m) =>
+          m.brew_stalled ? { ...m, brew_stalled: false, brew_started_at: now() } : m
+        );
+
         set({
           ingredientInv: inv,
           discovered: Array.from(discovered),
           exploredLocations: Array.from(explored),
           discoveredAttributes,
-          machine: s.machine.brew_stalled
-            ? { ...s.machine, brew_stalled: false, brew_started_at: now() }
-            : s.machine,
+          machines,
           workers,
         });
 
@@ -479,45 +492,77 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
-      programSlot: (index, ingredientId) =>
-        set((s) => {
-          if (index >= s.machine.unlocked_slots) return {};
-          const slots = [...s.machine.recipe_slots];
-          slots[index] = ingredientId;
-          return { machine: { ...s.machine, recipe_slots: slots } };
-        }),
+      // ---- Machines ---------------------------------------------------------
 
-      toggleRunning: () =>
+      buyMachine: () =>
         set((s) => {
-          const running = !s.machine.running;
+          if (s.machines.length >= 5) return {};
+          const cost = MACHINE_COSTS[s.machines.length];
+          if (cost === undefined || s.coins < cost) return {};
           return {
-            machine: {
-              ...s.machine,
-              running,
-              brew_stalled: false,
-              brew_started_at: running ? now() : null,
-            },
+            coins: s.coins - cost,
+            machines: [...s.machines, newMachine(s.machines.length)],
           };
         }),
 
-      completeBrew: () => {
+      programSlot: (machineId, index, ingredientId) =>
+        set((s) => {
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          if (index >= machine.unlocked_slots) return {};
+          const slots = [...machine.recipe_slots];
+          slots[index] = ingredientId;
+          return {
+            machines: s.machines.map((m, i) => i === mi ? { ...m, recipe_slots: slots } : m),
+          };
+        }),
+
+      toggleRunning: (machineId) =>
+        set((s) => {
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          const running = !machine.running;
+          return {
+            machines: s.machines.map((m, i) =>
+              i === mi
+                ? { ...m, running, brew_stalled: false, brew_started_at: running ? now() : null }
+                : m
+            ),
+          };
+        }),
+
+      completeBrew: (machineId) => {
         const s = get();
         const cfg = useConfigStore.getState();
-        const slotIds = s.machine.recipe_slots
-          .slice(0, s.machine.unlocked_slots)
+        const mi = getMachineIdx(s.machines, machineId);
+        if (mi < 0) return;
+        const machine = s.machines[mi];
+
+        const slotIds = machine.recipe_slots
+          .slice(0, machine.unlocked_slots)
           .filter((x): x is string => !!x);
+
         if (slotIds.length === 0) {
-          set({ machine: { ...s.machine, running: false, brew_started_at: null } });
+          set({
+            machines: s.machines.map((m, i) =>
+              i === mi ? { ...m, running: false, brew_started_at: null } : m
+            ),
+          });
           return;
         }
 
-        // need one of each slot ingredient in inventory
         const need: Record<string, number> = {};
         for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
         const inv = { ...s.ingredientInv };
         for (const [id, n] of Object.entries(need)) {
           if ((inv[id] ?? 0) < n) {
-            set({ machine: { ...s.machine, brew_started_at: now(), brew_stalled: true } });
+            set({
+              machines: s.machines.map((m, i) =>
+                i === mi ? { ...m, brew_started_at: now(), brew_stalled: true } : m
+              ),
+            });
             return;
           }
         }
@@ -525,22 +570,19 @@ export const useGameStore = create<GameState>()(
 
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
         const potion = describePotion(ingredients, cfg.formulas);
-
-        const outputs = rollMultiBrew(
-          effectiveMultiBrew(s.machine, potion.volatility, cfg.formulas)
-        );
+        const outputs = rollMultiBrew(effectiveMultiBrew(machine, potion.volatility, cfg.formulas));
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
         if ((s.autoSellHashes ?? []).includes(potion.hash)) {
           coins += potion.value * outputs;
-          } else {
-            potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
-          }
+        } else {
+          potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
+        }
 
         const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
-        const leveled = applyLevels(s.machine.level, s.machine.xp + gainedXp, cfg.formulas);
-        const machineLevelsGained = leveled.level - s.machine.level;
+        const leveled = applyLevels(machine.level, machine.xp + gainedXp, cfg.formulas);
+        const machineLevelsGained = leveled.level - machine.level;
         const levelBonus = machineLevelsGained * 0.03;
 
         const prevDiscovered = [...new Set(s.discoveredPotions ?? [])];
@@ -548,30 +590,31 @@ export const useGameStore = create<GameState>()(
           ? prevDiscovered
           : [...prevDiscovered, potion.hash];
 
+        const updatedMachine: BrewingMachine = {
+          ...machine,
+          xp: leveled.xp,
+          level: leveled.level,
+          brew_speed: machine.brew_speed + levelBonus,
+          upgrade_tokens: (machine.upgrade_tokens ?? 0) + machineLevelsGained,
+          brew_started_at: now(),
+          brew_stalled: false,
+        };
+
         set({
           coins,
           ingredientInv: inv,
           potionInv,
           discoveredPotions,
-          machine: {
-            ...s.machine,
-            xp: leveled.xp,
-            level: leveled.level,
-            brew_speed: s.machine.brew_speed + levelBonus,
-            upgrade_tokens: (s.machine.upgrade_tokens ?? 0) + machineLevelsGained,
-            brew_started_at: now(),
-            brew_stalled: false,
-          },
+          machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
 
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
-        pushGameEvent("cauldron", label);
+        pushGameEvent("cauldron", label, machineId);
         if (autoSell) {
           pushGameEvent("pile", `+${(potion.value * outputs).toLocaleString()} 🪙`);
         }
 
-        // A newly discovered name may unlock quests / fill an empty quest slot.
         if (!prevDiscovered.includes(potion.hash)) get().refreshQuests();
       },
 
@@ -622,24 +665,29 @@ export const useGameStore = create<GameState>()(
         if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
       },
 
-      clickBrew: () => {
+      clickBrew: (machineId) => {
         const s = get();
-        if (!s.machine.running || !s.machine.brew_started_at || s.machine.brew_stalled) return;
+        const mi = getMachineIdx(s.machines, machineId);
+        if (mi < 0) return;
+        const machine = s.machines[mi];
+        if (!machine.running || !machine.brew_started_at || machine.brew_stalled) return;
         const cfg = useConfigStore.getState();
-        const slotIds = s.machine.recipe_slots
-          .slice(0, s.machine.unlocked_slots)
+        const slotIds = machine.recipe_slots
+          .slice(0, machine.unlocked_slots)
           .filter((x): x is string => !!x);
         if (slotIds.length === 0) return;
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
         if (ingredients.length === 0) return;
         const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
-        const brewSecs = brewTime(s.machine, totalToxicity, cfg.formulas, ingredients);
-        // A human tap removes a flat 0.1s from the remaining brew time.
+        const brewSecs = brewTime(machine, totalToxicity, cfg.formulas, ingredients);
         const boostMs = 100;
-        const elapsedMs = now() - s.machine.brew_started_at;
-        // Clamp so we don't push past 99.9% — the game loop will complete it naturally
+        const elapsedMs = now() - machine.brew_started_at;
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
-        set({ machine: { ...s.machine, brew_started_at: now() - newElapsedMs } });
+        set({
+          machines: s.machines.map((m, i) =>
+            i === mi ? { ...m, brew_started_at: now() - newElapsedMs } : m
+          ),
+        });
       },
 
       refreshQuests: () => {
@@ -655,11 +703,10 @@ export const useGameStore = create<GameState>()(
         const activeQuests = [...s.activeQuests];
         let changed = !s.questsUnlocked;
 
-        // Fill any missing tier whose cooldown has elapsed (or was never set).
         for (const d of (["Easy", "Medium", "Challenging"] as QuestDifficulty[])) {
           if (present.has(d)) continue;
           const readyAt = cooldowns[d];
-          if (readyAt && nowT < readyAt) continue; // still cooling down
+          if (readyAt && nowT < readyAt) continue;
           activeQuests.push(generateQuest(d, groups, cfg.ingredients));
           delete cooldowns[d];
           changed = true;
@@ -677,13 +724,14 @@ export const useGameStore = create<GameState>()(
         if (!complete) return;
 
         const potionInv = deductQuest(quest, s.potionInv, cfg.ingredients, cfg.formulas);
-        // Remove the quest and start a 1-hour cooldown before its tier regenerates.
         const activeQuests = s.activeQuests.filter((q) => q.id !== questId);
         const questCooldowns = { ...(s.questCooldowns ?? {}), [quest.difficulty]: now() + QUEST_COOLDOWN_MS };
 
         set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
       },
+
+      // ---- Worker upgrades --------------------------------------------------
 
       buyWorkerSpeed: (workerIndex = 0) =>
         set((s) => {
@@ -725,58 +773,66 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
-      buyBrewSpeed: () =>
+      // ---- Machine upgrades -------------------------------------------------
+
+      buyBrewSpeed: (machineId) =>
         set((s) => {
           const cfg = useConfigStore.getState();
-          const tokens = s.machine.upgrade_tokens ?? 0;
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          const tokens = machine.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(s.machine.speed_upgrades, cfg.formulas);
+          const cost = upgradeCost(machine.speed_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
-            machine: {
-              ...s.machine,
-              brew_speed: s.machine.brew_speed + 0.25,
-              speed_upgrades: s.machine.speed_upgrades + 1,
-              upgrade_tokens: tokens - 1,
-            },
+            machines: s.machines.map((m, i) =>
+              i === mi
+                ? { ...m, brew_speed: m.brew_speed + 0.25, speed_upgrades: m.speed_upgrades + 1, upgrade_tokens: tokens - 1 }
+                : m
+            ),
           };
         }),
 
-      buyMultiBrew: () =>
+      buyMultiBrew: (machineId) =>
         set((s) => {
           const cfg = useConfigStore.getState();
-          const tokens = s.machine.upgrade_tokens ?? 0;
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          const tokens = machine.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(s.machine.multi_upgrades, cfg.formulas);
+          const cost = upgradeCost(machine.multi_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
-            machine: {
-              ...s.machine,
-              multi_brew_chance: s.machine.multi_brew_chance + 0.1,
-              multi_upgrades: s.machine.multi_upgrades + 1,
-              upgrade_tokens: tokens - 1,
-            },
+            machines: s.machines.map((m, i) =>
+              i === mi
+                ? { ...m, multi_brew_chance: m.multi_brew_chance + 0.1, multi_upgrades: m.multi_upgrades + 1, upgrade_tokens: tokens - 1 }
+                : m
+            ),
           };
         }),
 
-      buySlot: () =>
+      buySlot: (machineId) =>
         set((s) => {
-          if (s.machine.unlocked_slots >= 5) return {};
           const cfg = useConfigStore.getState();
-          const tokens = s.machine.upgrade_tokens ?? 0;
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          if (machine.unlocked_slots >= 5) return {};
+          const tokens = machine.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(s.machine.slot_upgrades + 3, cfg.formulas); // slots are pricier
+          const cost = upgradeCost(machine.slot_upgrades + 3, cfg.formulas);
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
-            machine: {
-              ...s.machine,
-              unlocked_slots: s.machine.unlocked_slots + 1,
-              slot_upgrades: s.machine.slot_upgrades + 1,
-              upgrade_tokens: tokens - 1,
-            },
+            machines: s.machines.map((m, i) =>
+              i === mi
+                ? { ...m, unlocked_slots: m.unlocked_slots + 1, slot_upgrades: m.slot_upgrades + 1, upgrade_tokens: tokens - 1 }
+                : m
+            ),
           };
         }),
 
@@ -792,6 +848,8 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
+      // ---- Offline simulation -----------------------------------------------
+
       applyOffline: () =>
         set((s) => {
           const cfg = useConfigStore.getState();
@@ -800,21 +858,23 @@ export const useGameStore = create<GameState>()(
           const discovered = new Set(s.discovered);
           let discoveredAttributes = s.discoveredAttributes ?? [];
           let totalGathers = 0;
-
-          // ---------------------------------------------------------------
-          // 1. Worker trip simulation — gathers, XP, level-ups
-          // ---------------------------------------------------------------
           let totalWorkerXp = 0;
 
-          // Flat brew-seconds removed per real second by machine-assigned workers.
-          const machineReductionPerSec = s.workers
-            .filter((w) => w.assigned_machine_id != null)
-            .reduce((a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level), 0);
+          // Per-machine reduction rates (workers clicking specific machines)
+          const machineReductionPerSec: Record<number, number> = {};
+          for (const w of s.workers) {
+            if (w.assigned_machine_id == null) continue;
+            machineReductionPerSec[w.assigned_machine_id] =
+              (machineReductionPerSec[w.assigned_machine_id] ?? 0) +
+              autoClickReductionPerSec(w.auto_click_speed, w.click_power_level);
+          }
 
+          // ---- Worker trip simulation ----------------------------------------
           const workersSim = s.workers.map((w) => {
-            // Machine workers earn click XP for the offline window (while the machine ran).
             if (w.assigned_machine_id != null) {
-              if (!s.machine.running || s.machine.brew_stalled || elapsed <= 0) return w;
+              // Grant offline XP if their machine was running
+              const machine = s.machines.find((m) => m.id === w.assigned_machine_id);
+              if (!machine || !machine.running || machine.brew_stalled || elapsed <= 0) return w;
               const xpGained = autoClickXpPerSec(w.auto_click_speed) * elapsed;
               if (xpGained <= 0) return w;
               totalWorkerXp += xpGained;
@@ -833,14 +893,10 @@ export const useGameStore = create<GameState>()(
             if (!loc || !w.trip_started_at) return w;
 
             const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
-            // Use time since the trip actually started (not just since lastSeen) so
-            // progress survives page refreshes. completeTrip resets trip_started_at on
-            // each completion, so this naturally covers only trips not yet counted.
             const timeSinceTripStart = (now() - w.trip_started_at) / 1000;
             const trips = Math.floor(timeSinceTripStart / tripSecs);
             if (trips === 0) return w;
 
-            // Distribute gathered items proportionally by drop weight
             const totalItems = trips * w.retrieval_size;
             totalGathers += Math.floor(totalItems);
             const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
@@ -853,7 +909,6 @@ export const useGameStore = create<GameState>()(
               }
             }
 
-            // XP: same formula as completeTrip (5 + distance + danger×3 per trip)
             const xpPerTrip = Math.round(5 + loc.distance + loc.danger * 3);
             const xpGained = xpPerTrip * trips;
             totalWorkerXp += xpGained;
@@ -866,118 +921,96 @@ export const useGameStore = create<GameState>()(
               level: leveled.level,
               gather_speed: w.gather_speed + levelsGained * 0.05,
               upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
-              // Advance trip_started_at to the start of the current in-progress trip so
-              // the game loop sees the correct partial progress after a refresh.
               trip_started_at: w.trip_started_at + trips * tripSecs * 1000,
               trip_phase: "outbound" as const,
             };
           });
 
-          // ---------------------------------------------------------------
-          // 2. Brewing machine simulation — brews, auto-sell, XP, level-ups
-          //    Runs after gathering so newly collected ingredients are usable.
-          // ---------------------------------------------------------------
+          // ---- Per-machine brew simulation -----------------------------------
           let potionInv = { ...s.potionInv };
           let coins = s.coins;
-          let machineSim = { ...s.machine };
           let discoveredPotions = [...new Set(s.discoveredPotions ?? [])];
           let totalPotionsBrewedCount = 0;
           let totalMachineXp = 0;
 
-          if (s.machine.running && s.machine.brew_started_at) {
-            const slotIds = s.machine.recipe_slots
-              .slice(0, s.machine.unlocked_slots)
+          const machinesSim = s.machines.map((machine) => {
+            if (!machine.running || !machine.brew_started_at) return machine;
+
+            const slotIds = machine.recipe_slots
+              .slice(0, machine.unlocked_slots)
               .filter((x): x is string => !!x);
+            if (slotIds.length === 0) return machine;
 
-            if (slotIds.length > 0) {
-              const ingredients = slotIds
-                .map((id) => cfg.ingredients[id])
-                .filter((x): x is Ingredient => !!x);
+            const ingredients = slotIds
+              .map((id) => cfg.ingredients[id])
+              .filter((x): x is Ingredient => !!x);
+            if (ingredients.length === 0) return machine;
 
-              if (ingredients.length > 0) {
-                const totalToxicity = ingredients.reduce(
-                  (acc, ing) => acc + ing.attributes.toxicity, 0
-                );
+            const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
+            const reductionRate = machineReductionPerSec[machine.id] ?? 0;
+            const realElapsed = machine.brew_stalled
+              ? 0
+              : (now() - machine.brew_started_at) / 1000;
+            let brewElapsedSecs = realElapsed * (1 + reductionRate);
+            let stalled = false;
+            let machineSim = { ...machine };
 
-                // Stalled brews get a fresh timer (stall time doesn't count as brew time).
-                // Machine-assigned workers shave flat seconds off the brew each real
-                // second, so effective brew progress runs at (1 + reduction) speed.
-                const realElapsed = s.machine.brew_stalled
-                  ? 0
-                  : (now() - s.machine.brew_started_at) / 1000;
-                let brewElapsedSecs = realElapsed * (1 + machineReductionPerSec);
-                let stalled = false;
+            let currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
 
-                // Recompute each iteration so machine level-ups affect subsequent brew times
-                let currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
-
-                while (brewElapsedSecs >= currentBrewSecs) {
-                  // Check ingredients
-                  const need: Record<string, number> = {};
-                  for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
-                  let hasAll = true;
-                  for (const [id, n] of Object.entries(need)) {
-                    if ((inv[id] ?? 0) < n) { hasAll = false; break; }
-                  }
-                  if (!hasAll) { stalled = true; break; }
-
-                  // Consume
-                  for (const [id, n] of Object.entries(need)) inv[id] = (inv[id] ?? 0) - n;
-
-                  // Produce
-                  const potion = describePotion(ingredients, cfg.formulas);
-                  const outputs = rollMultiBrew(
-                    effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas)
-                  );
-
-                  // Auto-sell or stockpile
-                  totalPotionsBrewedCount += outputs;
-                  if ((s.autoSellHashes ?? []).includes(potion.hash)) {
-                    coins += potion.value * outputs;
-                  } else {
-                    potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
-                  }
-
-                  // Machine XP and level-ups
-                  const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
-                  totalMachineXp += gainedXp;
-                  const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
-                  const levelsGained = leveled.level - machineSim.level;
-                  machineSim = {
-                    ...machineSim,
-                    xp: leveled.xp,
-                    level: leveled.level,
-                    brew_speed: machineSim.brew_speed + levelsGained * 0.03,
-                    upgrade_tokens: (machineSim.upgrade_tokens ?? 0) + levelsGained,
-                  };
-
-                  // Recalculate brew time after any speed increase from levelling
-                  if (levelsGained > 0) {
-                    currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
-                  }
-
-                  if (!discoveredPotions.includes(potion.hash)) {
-                    discoveredPotions = [...discoveredPotions, potion.hash];
-                  }
-
-                  brewElapsedSecs -= currentBrewSecs;
-                }
-
-                // Preserve partial brew progress so the timer is accurate on resume
-                machineSim = {
-                  ...machineSim,
-                  brew_stalled: stalled,
-                  brew_started_at: stalled
-                    ? now()
-                    : now() - Math.round(Math.max(0, brewElapsedSecs) * 1000),
-                };
+            while (brewElapsedSecs >= currentBrewSecs) {
+              const need: Record<string, number> = {};
+              for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+              let hasAll = true;
+              for (const [id, n] of Object.entries(need)) {
+                if ((inv[id] ?? 0) < n) { hasAll = false; break; }
               }
-            }
-          }
+              if (!hasAll) { stalled = true; break; }
 
-          // ---------------------------------------------------------------
-          // 3. Assemble final state
-          // ---------------------------------------------------------------
+              for (const [id, n] of Object.entries(need)) inv[id] = (inv[id] ?? 0) - n;
+
+              const potion = describePotion(ingredients, cfg.formulas);
+              const outputs = rollMultiBrew(effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas));
+
+              totalPotionsBrewedCount += outputs;
+              if ((s.autoSellHashes ?? []).includes(potion.hash)) {
+                coins += potion.value * outputs;
+              } else {
+                potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
+              }
+
+              const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
+              totalMachineXp += gainedXp;
+              const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
+              const levelsGained = leveled.level - machineSim.level;
+              machineSim = {
+                ...machineSim,
+                xp: leveled.xp,
+                level: leveled.level,
+                brew_speed: machineSim.brew_speed + levelsGained * 0.03,
+                upgrade_tokens: (machineSim.upgrade_tokens ?? 0) + levelsGained,
+              };
+
+              if (levelsGained > 0) {
+                currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+              }
+
+              if (!discoveredPotions.includes(potion.hash)) {
+                discoveredPotions = [...discoveredPotions, potion.hash];
+              }
+
+              brewElapsedSecs -= currentBrewSecs;
+            }
+
+            return {
+              ...machineSim,
+              brew_stalled: stalled,
+              brew_started_at: stalled
+                ? now()
+                : now() - Math.round(Math.max(0, brewElapsedSecs) * 1000),
+            };
+          });
+
+          // ---- Assemble final state -----------------------------------------
           const hoursAway = elapsed / 3600;
           const welcomeBack: WelcomeBack | null =
             hoursAway > cfg.formulas.offline_threshold_hours
@@ -993,13 +1026,9 @@ export const useGameStore = create<GameState>()(
 
           const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;
 
-          // workersSim already has trip_started_at advanced to the current in-progress
-          // trip start, so progress is preserved correctly across any length of refresh.
-          const workers = workersSim;
-
-          const machine: BrewingMachine = isLongOffline
-            ? { ...machineSim, brew_started_at: machineSim.running ? now() : null }
-            : machineSim;
+          const machines: BrewingMachine[] = isLongOffline
+            ? machinesSim.map((m) => ({ ...m, brew_started_at: m.running ? now() : null }))
+            : machinesSim;
 
           return {
             coins,
@@ -1008,8 +1037,8 @@ export const useGameStore = create<GameState>()(
             discoveredPotions,
             discovered: Array.from(discovered),
             discoveredAttributes,
-            workers,
-            machine,
+            workers: workersSim,
+            machines,
             welcomeBack,
             lastSeen: now(),
           };
@@ -1021,7 +1050,7 @@ export const useGameStore = create<GameState>()(
         set({
           coins: 100,
           workers: [newWorker(0)],
-          machine: newMachine(),
+          machines: [newMachine(0)],
           ingredientInv: {},
           potionInv: {},
           discovered: [],
@@ -1042,7 +1071,7 @@ export const useGameStore = create<GameState>()(
       partialize: (s) => ({
         coins: s.coins,
         workers: s.workers,
-        machine: s.machine,
+        machines: s.machines,
         ingredientInv: s.ingredientInv,
         potionInv: s.potionInv,
         discovered: s.discovered,
@@ -1056,9 +1085,8 @@ export const useGameStore = create<GameState>()(
         questCooldowns: s.questCooldowns,
         lastSeen: s.lastSeen,
       }),
-      // Backfill fields added in newer versions onto persisted workers.
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<GameState>;
+        const p = (persisted ?? {}) as Partial<GameState> & { machine?: BrewingMachine };
         const workers = (p.workers ?? current.workers).map((w) => {
           const wp = w as Partial<Worker>;
           return {
@@ -1068,14 +1096,22 @@ export const useGameStore = create<GameState>()(
             click_power_level: wp.click_power_level ?? 0,
           };
         });
-        return { ...current, ...p, workers };
+        // Migrate old single `machine` field to `machines` array
+        let machines: BrewingMachine[];
+        if (Array.isArray(p.machines) && p.machines.length > 0) {
+          machines = p.machines;
+        } else if (p.machine) {
+          machines = [{ ...p.machine, id: 1 }];
+        } else {
+          machines = current.machines;
+        }
+        return { ...current, ...p, workers, machines };
       },
     }
   )
 );
 
-// keep lastSeen fresh so offline EV is accurate, and regenerate any quests whose
-// cooldown has elapsed even while the menu is closed.
+// Keep lastSeen fresh and regenerate elapsed-cooldown quests
 if (typeof window !== "undefined") {
   setInterval(() => {
     useGameStore.setState({ lastSeen: now() });

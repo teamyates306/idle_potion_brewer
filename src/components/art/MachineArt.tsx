@@ -2,11 +2,13 @@ interface Props {
   size?: number;
   brewing?: boolean;
   progress?: number; // 0..1 fills the cauldron glow
+  uid?: string;      // unique suffix to avoid SVG gradient id conflicts when multiple cauldrons render
 }
 
 /** The Bubbler — a cauldron-on-contraption brewing machine. */
-export default function MachineArt({ size = 110, brewing = false, progress = 0 }: Props) {
+export default function MachineArt({ size = 110, brewing = false, progress = 0, uid = "0" }: Props) {
   const glow = 0.3 + Math.min(1, progress) * 0.7;
+  const gradId = `cauldronShade-${uid}`;
   return (
     <svg width={size} height={size} viewBox="0 0 110 110" fill="none">
       <ellipse cx="55" cy="100" rx="34" ry="5" fill="#000" opacity="0.25" />
@@ -15,7 +17,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
       <rect x="82" y="66" width="6" height="30" rx="2" fill="#334155" />
       {/* cauldron body */}
       <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill="#1f2937" />
-      <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill="url(#cauldronShade)" opacity="0.4" />
+      <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill={`url(#${gradId})`} opacity="0.4" />
       <ellipse cx="55" cy="50" rx="35" ry="9" fill="#111827" />
       {/* liquid */}
       <ellipse cx="55" cy="50" rx="30" ry="7" fill="#22d3ee" opacity={glow} />
@@ -42,7 +44,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
         </g>
       )}
       <defs>
-        <linearGradient id="cauldronShade" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor="#000" />
           <stop offset="1" stopColor="#fff" />
         </linearGradient>

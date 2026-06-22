@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState } from "react";
-import { User, Package, FlaskConical, ShoppingBag } from "lucide-react";
+import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
-import { useDayNight } from "../hooks/useDayNight";
+import { useDayNight, type DayNightState } from "../hooks/useDayNight";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -12,20 +12,34 @@ import WorkerArt from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
+import type { BrewingMachine, Worker } from "../types";
+import type { MachineLoopState } from "../hooks/useGameLoop";
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const COL_W = 180; // px per machine column
+const HEAT_PER_CLICK = 0.12;
+const HEAT_DECAY     = 0.22;
+const MAX_SPARKS     = 20;
+
+// Per-machine visual identity
+const MACHINE_HUE    = [0, 120, 200, 270, 330];
+const MACHINE_ACCENT = ["#f59e0b", "#22c55e", "#38bdf8", "#a855f7", "#ef4444"];
+const MACHINE_SPARK_COLORS = [
+  ["#ff9a30","#ffcc00","#ff6600","#fff0a0","#ffdd80"],
+  ["#86efac","#4ade80","#22c55e","#d9f99d","#bbf7d0"],
+  ["#7dd3fc","#38bdf8","#0ea5e9","#e0f2fe","#bae6fd"],
+  ["#d8b4fe","#a855f7","#9333ea","#f3e8ff","#e9d5ff"],
+  ["#fca5a5","#ef4444","#dc2626","#fee2e2","#fecaca"],
+];
 
 interface Spark {
   id: number;
-  x: number; y: number;   // px within cauldron div
-  dx: number; dy: number; // animation end offset
+  x: number; y: number;
+  dx: number; dy: number;
   size: number;
   color: string;
   createdAt: number;
 }
-
-const HEAT_PER_CLICK  = 0.12;
-const HEAT_DECAY      = 0.22; // units/sec
-const MAX_SPARKS      = 20;
-const SPARK_COLORS    = ["#ff9a30", "#ffcc00", "#ff6600", "#fff0a0", "#ffdd80"];
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory";
 
@@ -36,11 +50,10 @@ const CHANNEL_COLOR = {
   "pile-burst": "#fbbf24",
 } as const;
 
-// Stagger machine-workers left/right of the cauldron, 2 deep per side.
 function machineWorkerLayout(order: number) {
   const side: "left" | "right" = order % 2 === 0 ? "left" : "right";
   const depth = Math.floor(order / 2);
-  const horiz = 50 + depth * 16; // px outward from the cauldron edge
+  const horiz = 50 + depth * 16;
   const top = 34 + depth * 6;
   return { side, depth, horiz, top };
 }
@@ -51,30 +64,36 @@ function machineWorkerScreenPos(order: number, rect: DOMRect) {
   return { x, y };
 }
 
-export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
-  const workers     = useGameStore((s) => s.workers);
-  const machine     = useGameStore((s) => s.machine);
-  const potionInv   = useGameStore((s) => s.potionInv);
-  const clickBrew   = useGameStore((s) => s.clickBrew);
-  const cfg         = useConfigStore();
-  const loopProgress = useGameLoop();
-  const dn          = useDayNight();
+// ── MachineColumn ────────────────────────────────────────────────────────────
+function MachineColumn({
+  machine,
+  machineIdx,
+  loopState,
+  workers,
+  onManage,
+}: {
+  machine: BrewingMachine;
+  machineIdx: number;
+  loopState: MachineLoopState;
+  workers: Worker[];
+  onManage: () => void;
+}) {
+  const clickBrew = useGameStore((s) => s.clickBrew);
+  const cfg = useConfigStore();
 
-  // ── Refs for FAT spawn points ──────────────────────────────────────────────
-  const troughRef  = useRef<HTMLDivElement>(null);
-  const cauldronRef = useRef<HTMLDivElement>(null);
-  const pileRef    = useRef<HTMLDivElement>(null);
-
-  // ── Cauldron bump animation ────────────────────────────────────────────────
-  const [bumping, setBumping] = useState(false);
-
-  // ── Cauldron heat system ───────────────────────────────────────────────────
-  const heatRef      = useRef(0);
+  const heatRef    = useRef(0);
   const [heatDisplay, setHeatDisplay] = useState(0);
-  const [sparks, setSparks]     = useState<Spark[]>([]);
-  const sparkIdRef   = useRef(0);
+  const [sparks, setSparks]    = useState<Spark[]>([]);
+  const sparkIdRef = useRef(0);
+  const [bumping, setBumping]  = useState(false);
+  const cauldronRef = useRef<HTMLDivElement>(null);
 
-  // Decay heat toward 0 at 60fps
+  const { brewProgress, brewActive } = loopState;
+  const hue    = MACHINE_HUE[machineIdx] ?? 0;
+  const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
+  const sparkColors = MACHINE_SPARK_COLORS[machineIdx] ?? MACHINE_SPARK_COLORS[0];
+
+  // Decay heat at 60fps
   useEffect(() => {
     let raf: number;
     let lastT = 0;
@@ -92,7 +111,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Remove sparks after their animation finishes
+  // Remove sparks after animation
   useEffect(() => {
     if (sparks.length === 0) return;
     const t = setTimeout(() => {
@@ -102,17 +121,246 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     return () => clearTimeout(t);
   }, [sparks]);
 
-  // ── Subscribe game events → FAT ───────────────────────────────────────────
+  // Subscribe to cauldron events for THIS machine's FAT
+  useEffect(() => {
+    return subscribeGameEvent((evt) => {
+      if (evt.channel !== "cauldron" || evt.machineId !== machine.id) return;
+      if (!useSettingsStore.getState().toastsEnabled) return;
+      if (!cauldronRef.current) return;
+      const rect = cauldronRef.current.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 3;
+      spawnFAT({
+        x: cx + (Math.random() - 0.5) * rect.width * 0.5,
+        y: cy + (Math.random() - 0.5) * 34,
+        text: evt.text,
+        color: CHANNEL_COLOR.cauldron,
+        arcX: (Math.random() - 0.5) * 36,
+        size: "md",
+      });
+    });
+  }, [machine.id]);
+
+  // Machine-assigned workers for this machine
+  const machineWorkers = workers
+    .map((w, i) => ({ w, i }))
+    .filter((x) => x.w.assigned_machine_id === machine.id);
+  const machineWorkersSig = machineWorkers.map(({ w }) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`).join(",");
+
+  // Auto-worker FAT hits
+  useEffect(() => {
+    const ids: number[] = [];
+    machineWorkers.forEach(({ w }, order) => {
+      const period = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
+      const power  = autoClickPower(w.click_power_level);
+      const id = window.setInterval(() => {
+        const g = useGameStore.getState();
+        const m = g.machines.find((m) => m.id === machine.id);
+        if (!m || !m.running || m.brew_stalled || !m.brew_started_at) return;
+        if (!useSettingsStore.getState().toastsEnabled) return;
+        if (!cauldronRef.current) return;
+        const rect = cauldronRef.current.getBoundingClientRect();
+        const { x, y } = machineWorkerScreenPos(order, rect);
+        spawnFAT({ x, y, text: `-${power.toFixed(2)}s`, color: "#86efac", size: "sm", arcX: (Math.random() - 0.5) * 22 });
+      }, period);
+      ids.push(id);
+    });
+    return () => ids.forEach((id) => clearInterval(id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machineWorkersSig, machine.id]);
+
+  const handleCauldronClick = () => {
+    if (!machine.running || machine.brew_stalled || !machine.brew_started_at) return;
+    const slotIds = machine.recipe_slots.slice(0, machine.unlocked_slots).filter((id): id is string => !!id);
+    if (slotIds.length === 0) return;
+
+    clickBrew(machine.id);
+
+    const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
+    heatRef.current = newHeat;
+    setHeatDisplay(newHeat);
+
+    const sparkCount = Math.floor(2 + newHeat * 6);
+    const nowMs = Date.now();
+    setSparks((prev) => {
+      const trimmed = prev.length + sparkCount > MAX_SPARKS
+        ? prev.slice(prev.length + sparkCount - MAX_SPARKS)
+        : prev;
+      return [
+        ...trimmed,
+        ...Array.from({ length: sparkCount }, () => ({
+          id: sparkIdRef.current++,
+          x: 18 + Math.random() * 72,
+          y: 12 + Math.random() * 58,
+          dx: (Math.random() - 0.5) * 65,
+          dy: -(28 + Math.random() * 50),
+          size: 2 + Math.random() * 2.5,
+          color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
+          createdAt: nowMs,
+        })),
+      ];
+    });
+
+    setBumping(false);
+    requestAnimationFrame(() => setBumping(true));
+    setTimeout(() => setBumping(false), 320);
+
+    if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
+      const rect = cauldronRef.current.getBoundingClientRect();
+      spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.25, text: "-0.1s", color: "#ffffff", size: "sm" });
+    }
+  };
+
+  const recipeCategories = machine.recipe_slots
+    .slice(0, machine.unlocked_slots)
+    .filter((id): id is string => !!id)
+    .map((id) => cfg.ingredients[id]?.category ?? "root");
+
+  const hasTokens = (machine.upgrade_tokens ?? 0) > 0;
+
+  return (
+    <div className="flex flex-col items-center" style={{ width: COL_W, flexShrink: 0 }}>
+      {/* Conveyor in */}
+      <ConveyorWithIngredients running={brewActive} categories={recipeCategories} accentColor={accent} />
+
+      {/* Cauldron */}
+      <div
+        ref={cauldronRef}
+        onClick={handleCauldronClick}
+        className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${bumping ? "cauldron-bump" : ""}`}
+        style={{
+          boxShadow: [
+            heatDisplay > 0.08
+              ? `0 0 ${Math.round(heatDisplay * 32)}px ${Math.round(heatDisplay * 14)}px rgba(255,120,0,${(heatDisplay * 0.55).toFixed(2)})`
+              : null,
+            hasTokens ? "0 0 16px 4px rgba(234,179,8,0.35)" : null,
+          ].filter(Boolean).join(", ") || undefined,
+        }}
+        title={machine.running && !machine.brew_stalled ? "Click to speed up brewing!" : ""}
+      >
+        <div
+          style={{
+            filter: [
+              hue ? `hue-rotate(${hue}deg)` : null,
+              heatDisplay > 0
+                ? `sepia(${heatDisplay * 0.45}) saturate(${1 + heatDisplay * 1.4}) brightness(${1 + heatDisplay * 0.18})`
+                : null,
+            ].filter(Boolean).join(" ") || undefined,
+          }}
+        >
+          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} />
+        </div>
+
+        {/* Sparks */}
+        {sparks.map((spark) => (
+          <div
+            key={spark.id}
+            style={{
+              position: "absolute",
+              left: spark.x, top: spark.y,
+              width: spark.size, height: spark.size,
+              borderRadius: "50%",
+              background: spark.color,
+              pointerEvents: "none",
+              "--sx": `${spark.dx}px`,
+              "--sy": `${spark.dy}px`,
+              animationName: "spark-fly",
+              animationDuration: "0.55s",
+              animationTimingFunction: "ease-out",
+              animationFillMode: "forwards",
+            } as React.CSSProperties}
+          />
+        ))}
+
+        {/* Auto-clicker workers */}
+        {machineWorkers.map(({ w }, order) => {
+          const { side, horiz, top } = machineWorkerLayout(order);
+          const dur = Math.max(0.18, 1 / Math.max(0.5, w.auto_click_speed));
+          return (
+            <div
+              key={w.id}
+              style={{
+                position: "absolute", top, [side]: -horiz,
+                pointerEvents: "none",
+                transform: side === "right" ? "scaleX(-1)" : undefined,
+              }}
+            >
+              <div
+                style={{
+                  animationName: "worker-bump",
+                  animationDuration: `${dur}s`,
+                  animationIterationCount: "infinite",
+                  animationTimingFunction: "ease-in-out",
+                  animationPlayState: brewActive ? "running" : "paused",
+                  "--wb-rot": side === "left" ? "8deg" : "-8deg",
+                } as React.CSSProperties}
+              >
+                <WorkerArt size={40} color={w.color} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Upgrade token indicator */}
+      {hasTokens && (
+        <span className="mt-0.5 rounded-full bg-yellow-500 px-2 text-[9px] font-bold text-black leading-tight">
+          ✦ {machine.upgrade_tokens}
+        </span>
+      )}
+
+      {/* Brew progress bar */}
+      <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
+        <div
+          className="h-full transition-[width] duration-75"
+          style={{ width: `${brewProgress * 100}%`, background: accent }}
+        />
+      </div>
+
+      {/* Status text */}
+      {(() => {
+        const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
+        if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-500">No recipe</span>;
+        if (!machine.running) return <span className="mt-1 text-[10px] text-stone-500">Idle</span>;
+        if (machine.brew_stalled) return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Waiting…</span>;
+        return <span className="mt-1 text-[10px] text-amber-300/70">Brewing…</span>;
+      })()}
+
+      {/* Machine name + manage button */}
+      <div className="mt-1.5 text-center">
+        <div className="text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
+        <button
+          onClick={(e) => { e.stopPropagation(); onManage(); }}
+          className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 px-2 py-1 text-[9px] uppercase tracking-wider text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition active:scale-95"
+        >
+          <Settings2 size={10} /> Manage
+        </button>
+      </div>
+
+      {/* Conveyor out */}
+      <ConveyorWithPotion running={brewActive} accentColor={accent} />
+    </div>
+  );
+}
+
+// ── Main Workshop ─────────────────────────────────────────────────────────────
+export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: number) => void }) {
+  const workers     = useGameStore((s) => s.workers);
+  const machines    = useGameStore((s) => s.machines);
+  const potionInv   = useGameStore((s) => s.potionInv);
+  const loopProgress = useGameLoop();
+  const dn          = useDayNight();
+
+  const troughRef = useRef<HTMLDivElement>(null);
+  const pileRef   = useRef<HTMLDivElement>(null);
+
+  // Global FAT subscription (trough, pile, pile-burst only; cauldron is per-column)
   useEffect(() => {
     return subscribeGameEvent((evt) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
+      if (evt.channel === "cauldron") return; // handled per MachineColumn
 
-      const refEl =
-        evt.channel === "trough"
-          ? troughRef.current
-          : evt.channel === "cauldron"
-          ? cauldronRef.current
-          : pileRef.current;
+      const refEl = evt.channel === "trough" ? troughRef.current : pileRef.current;
       if (!refEl) return;
 
       const rect = refEl.getBoundingClientRect();
@@ -123,41 +371,34 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
         const count = 5 + Math.floor(Math.random() * 6);
         for (let i = 0; i < count; i++) {
           spawnFAT({
-            x:     cx + (Math.random() - 0.5) * rect.width  * 0.9,
-            y:     cy + Math.random()         * rect.height * 0.4,
-            text:  evt.text,
+            x: cx + (Math.random() - 0.5) * rect.width  * 0.9,
+            y: cy + Math.random()         * rect.height * 0.4,
+            text: evt.text,
             color: CHANNEL_COLOR["pile-burst"],
-            arcX:  (Math.random() - 0.5) * 130,
+            arcX: (Math.random() - 0.5) * 130,
             delay: Math.floor(Math.random() * 420),
-            size:  "sm",
+            size: "sm",
           });
         }
       } else {
-        // Slight random offset so rapid drops (e.g. multiple ingredients from one
-        // trip) don't stack directly on top of each other.
         spawnFAT({
-          x:     cx + (Math.random() - 0.5) * rect.width * 0.5,
-          y:     cy + (Math.random() - 0.5) * 34,
-          text:  evt.text,
-          color: CHANNEL_COLOR[evt.channel],
-          arcX:  (Math.random() - 0.5) * 36,
-          size:  "md",
+          x: cx + (Math.random() - 0.5) * rect.width * 0.5,
+          y: cy + (Math.random() - 0.5) * 34,
+          text: evt.text,
+          color: CHANNEL_COLOR[evt.channel as keyof typeof CHANNEL_COLOR],
+          arcX: (Math.random() - 0.5) * 36,
+          size: "md",
         });
       }
     });
-  }, []); // refs and getState() are stable
+  }, []);
 
   const potionCount = Object.values(potionInv).reduce((a, b) => a + b, 0);
   const [displayPotionCount, setDisplayPotionCount] = useState(potionCount);
   useEffect(() => { setDisplayPotionCount(potionCount); }, [potionCount]);
 
-  const { brewProgress, brewActive } = loopProgress;
   const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
-
-  const recipeCategories = machine.recipe_slots
-    .slice(0, machine.unlocked_slots)
-    .filter((id): id is string => !!id)
-    .map((id) => cfg.ingredients[id]?.category ?? "root");
+  const anyMachineActive = loopProgress.machines.some((m) => m.brewActive);
 
   const TRACK = 68;
   const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {
@@ -175,309 +416,102 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
   });
 
-  // ── Machine-assigned workers (rendered beside the cauldron) ─────────────────
-  const machineWorkers = workers
-    .map((w, i) => ({ w, i }))
-    .filter((x) => x.w.assigned_machine_id != null);
-  const machineWorkersSig = machineWorkers
-    .map(({ w }) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`)
-    .join(",");
-
-  // Staggered FAT "hits" from each auto-worker, frequency tied to click speed.
-  useEffect(() => {
-    const ids: number[] = [];
-    machineWorkers.forEach(({ w }, order) => {
-      const period = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
-      const power = autoClickPower(w.click_power_level);
-      const id = window.setInterval(() => {
-        const g = useGameStore.getState();
-        if (!g.machine.running || g.machine.brew_stalled || !g.machine.brew_started_at) return;
-        if (!useSettingsStore.getState().toastsEnabled) return;
-        if (!cauldronRef.current) return;
-        const rect = cauldronRef.current.getBoundingClientRect();
-        const { x, y } = machineWorkerScreenPos(order, rect);
-        spawnFAT({ x, y, text: `-${power.toFixed(2)}s`, color: "#86efac", size: "sm", arcX: (Math.random() - 0.5) * 22 });
-      }, period);
-      ids.push(id);
-    });
-    return () => ids.forEach((id) => clearInterval(id));
-  }, [machineWorkersSig]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Cauldron click handler ─────────────────────────────────────────────────
-  const handleCauldronClick = () => {
-    if (!machine.running || machine.brew_stalled || !machine.brew_started_at) return;
-    const slotIds = machine.recipe_slots
-      .slice(0, machine.unlocked_slots)
-      .filter((id): id is string => !!id);
-    if (slotIds.length === 0) return;
-
-    clickBrew(); // removes a flat 0.1s from the remaining brew
-
-    // Heat: increment, cap at 1
-    const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
-    heatRef.current = newHeat;
-    setHeatDisplay(newHeat);
-
-    // Spawn sparks (scales with heat, hard-capped)
-    const sparkCount = Math.floor(2 + newHeat * 6); // 2–8 per click
-    const now = Date.now();
-    setSparks((prev) => {
-      const trimmed = prev.length + sparkCount > MAX_SPARKS
-        ? prev.slice(prev.length + sparkCount - MAX_SPARKS)
-        : prev;
-      return [
-        ...trimmed,
-        ...Array.from({ length: sparkCount }, () => ({
-          id:        sparkIdRef.current++,
-          x:         18 + Math.random() * 72, // within 108px wide div
-          y:         12 + Math.random() * 58,
-          dx:        (Math.random() - 0.5) * 65,
-          dy:        -(28 + Math.random() * 50),
-          size:      2 + Math.random() * 2.5,
-          color:     SPARK_COLORS[Math.floor(Math.random() * SPARK_COLORS.length)],
-          createdAt: now,
-        })),
-      ];
-    });
-
-    // Bump animation
-    setBumping(false);
-    requestAnimationFrame(() => setBumping(true));
-    setTimeout(() => setBumping(false), 320);
-
-    // Spawn click FAT
-    if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
-      const rect = cauldronRef.current.getBoundingClientRect();
-      spawnFAT({
-        x:     rect.left + rect.width / 2,
-        y:     rect.top  + rect.height * 0.25,
-        text:  `-0.1s`,
-        color: "#ffffff",
-        size:  "sm",
-      });
-    }
-  };
+  const totalWidth = Math.max(448, machines.length * COL_W);
+  const anyTokens  = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
+  const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
 
   return (
-    <div className="mx-auto flex max-w-md flex-col">
+    <div className="overflow-x-auto">
+      <div className="mx-auto flex flex-col" style={{ minWidth: totalWidth, maxWidth: Math.max(totalWidth, 600) }}>
 
-      {/* Workshop exterior wall — still opens the Map */}
-      <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
+        {/* Workshop wall */}
+        <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
 
-      {/* ── Worker track (gathering workers only) ── */}
-      <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
-        {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
-          // Machine-assigned workers are drawn at the cauldron, not on the track.
-          if (workers[idx]?.assigned_machine_id != null) return null;
-          return (
-            <div
-              key={idx}
-              className="absolute"
-              style={{
-                bottom: 10,
-                left: "50%",
-                transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
-                opacity,
-                transition: "transform 90ms linear, opacity 90ms linear",
-              }}
-            >
-              <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
-            </div>
-          );
-        })}
-
-        {/* Worker Management badge */}
-        {(() => {
-          const anyTokens = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
-          const totalTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
-          return (
-            <ManagementBadge
-              icon={<User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
-              label="Workers"
-              onClick={() => onOpen("worker")}
-              glow={anyTokens}
-              badge={anyTokens ? `✦${totalTokens}` : undefined}
-            />
-          );
-        })()}
-      </div>
-
-      {/* ── Trough — purely visual, badge opens inventory ── */}
-      <div className="relative flex flex-col items-center">
-        <div
-          ref={troughRef}
-          className="relative h-8 w-40 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
-        >
-          <div className="absolute inset-x-2 top-1 h-1.5 rounded-full bg-amber-800/50" />
-        </div>
-        <ManagementBadge
-          icon={<Package size={14} className="text-amber-400" />}
-          label="Stash"
-          onClick={() => onOpen("inventory")}
-        />
-      </div>
-
-      {/* Conveyor: trough → machine */}
-      <ConveyorWithIngredients running={brewActive} categories={recipeCategories} />
-
-      {/* ── Cauldron — active click boosts brew ── */}
-      <div className="relative flex flex-col items-center">
-        <div
-          ref={cauldronRef}
-          onClick={handleCauldronClick}
-          className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${
-            bumping ? "cauldron-bump" : ""
-          }`}
-          style={{
-            boxShadow: [
-              heatDisplay > 0.08
-                ? `0 0 ${Math.round(heatDisplay * 32)}px ${Math.round(heatDisplay * 14)}px rgba(255,120,0,${(heatDisplay * 0.55).toFixed(2)})`
-                : null,
-              (machine.upgrade_tokens ?? 0) > 0
-                ? "0 0 16px 4px rgba(234,179,8,0.35)"
-                : null,
-            ].filter(Boolean).join(", ") || undefined,
-          }}
-          title={machine.running && !machine.brew_stalled ? "Click to speed up brewing!" : ""}
-        >
-          <div
-            style={{
-              filter: heatDisplay > 0
-                ? `sepia(${heatDisplay * 0.45}) saturate(${1 + heatDisplay * 1.4}) hue-rotate(${-30 * heatDisplay}deg) brightness(${1 + heatDisplay * 0.18})`
-                : undefined,
-            }}
-          >
-            <MachineArt size={108} brewing={brewActive} progress={brewProgress} />
-          </div>
-          {/* Sparks */}
-          {sparks.map((spark) => (
-            <div
-              key={spark.id}
-              style={
-                {
-                  position: "absolute",
-                  left: spark.x,
-                  top: spark.y,
-                  width: spark.size,
-                  height: spark.size,
-                  borderRadius: "50%",
-                  background: spark.color,
-                  pointerEvents: "none",
-                  "--sx": `${spark.dx}px`,
-                  "--sy": `${spark.dy}px`,
-                  animationName: "spark-fly",
-                  animationDuration: "0.55s",
-                  animationTimingFunction: "ease-out",
-                  animationFillMode: "forwards",
-                } as React.CSSProperties
-              }
-            />
-          ))}
-
-          {/* Auto-clicker workers stationed at the cauldron */}
-          {machineWorkers.map(({ w }, order) => {
-            const { side, horiz, top } = machineWorkerLayout(order);
-            const dur = Math.max(0.18, 1 / Math.max(0.5, w.auto_click_speed));
+        {/* Worker track */}
+        <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
+          {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
+            if (workers[idx]?.assigned_machine_id != null) return null;
             return (
               <div
-                key={w.id}
+                key={idx}
+                className="absolute"
                 style={{
-                  position: "absolute",
-                  top,
-                  [side]: -horiz,
-                  pointerEvents: "none",
-                  transform: side === "right" ? "scaleX(-1)" : undefined,
+                  bottom: 10, left: "50%",
+                  transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
+                  opacity,
+                  transition: "transform 90ms linear, opacity 90ms linear",
                 }}
               >
-                <div
-                  style={
-                    {
-                      animationName: "worker-bump",
-                      animationDuration: `${dur}s`,
-                      animationIterationCount: "infinite",
-                      animationTimingFunction: "ease-in-out",
-                      animationPlayState: brewActive ? "running" : "paused",
-                      "--wb-rot": side === "left" ? "8deg" : "-8deg",
-                    } as React.CSSProperties
-                  }
-                >
-                  <WorkerArt size={40} color={w.color} />
-                </div>
+                <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
               </div>
             );
           })}
-        </div>
 
-        {(machine.upgrade_tokens ?? 0) > 0 && (
-          <span className="mt-0.5 rounded-full bg-yellow-500 px-2 text-[9px] font-bold text-black leading-tight">
-            ✦ {machine.upgrade_tokens} upgrade{(machine.upgrade_tokens ?? 0) > 1 ? "s" : ""} ready
-          </span>
-        )}
-        <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
-          <div
-            className="h-full bg-amber-400 transition-[width] duration-75"
-            style={{ width: `${brewProgress * 100}%` }}
+          <ManagementBadge
+            icon={<User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
+            label="Workers"
+            onClick={() => onOpen("worker")}
+            glow={anyTokens}
+            badge={anyTokens ? `✦${totalWorkerTokens}` : undefined}
           />
         </div>
-        {(() => {
-          const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
-          const stalled   = machine.brew_stalled ?? false;
-          if (!hasRecipe)
-            return <span className="mt-1 text-[10px] text-stone-500">No recipe set</span>;
-          if (!machine.running)
-            return <span className="mt-1 text-[10px] text-stone-500">Idle</span>;
-          if (stalled)
-            return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Waiting for ingredients…</span>;
-          return <span className="mt-1 text-[10px] text-amber-300/70">Brewing… <span className="text-stone-600">(tap to boost)</span></span>;
-        })()}
 
-        {/* Recipe badge */}
-        <ManagementBadge
-          icon={<FlaskConical size={14} className="text-purple-400" />}
-          label="Recipe"
-          onClick={() => onOpen("machine")}
-          glow={(machine.upgrade_tokens ?? 0) > 0}
-        />
-      </div>
-
-      {/* Conveyor: machine → potion pile */}
-      <ConveyorWithPotion running={brewActive} />
-
-      {/* ── Potion Pile ── */}
-      <div className="relative flex flex-col items-center pb-3">
-        <div ref={pileRef} className="relative">
-          <PotionPileArt count={displayPotionCount} size={130} />
-          {displayPotionCount > 0 && (
-            <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
-              {displayPotionCount}
-            </span>
-          )}
+        {/* Trough strip */}
+        <div className="relative flex flex-col items-center">
+          <div
+            ref={troughRef}
+            className="relative h-8 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
+            style={{ width: Math.min(totalWidth - 32, Math.max(160, machines.length * 80)) }}
+          >
+            <div className="absolute inset-x-2 top-1 h-1.5 rounded-full bg-amber-800/50" />
+          </div>
+          <ManagementBadge
+            icon={<Package size={14} className="text-amber-400" />}
+            label="Stash"
+            onClick={() => onOpen("inventory")}
+          />
         </div>
 
-        {/* Market badge */}
-        <ManagementBadge
-          icon={<ShoppingBag size={14} className="text-purple-400" />}
-          label="Market"
-          onClick={() => onOpen("potion")}
-        />
+        {/* Machine columns */}
+        <div className="flex justify-center py-1">
+          {machines.map((machine, idx) => (
+            <MachineColumn
+              key={machine.id}
+              machine={machine}
+              machineIdx={idx}
+              loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
+              workers={workers}
+              onManage={() => onOpen("machine", machine.id)}
+            />
+          ))}
+        </div>
+
+        {/* Potion pile strip */}
+        <div className="relative flex flex-col items-center pb-3">
+          <div ref={pileRef} className="relative">
+            <PotionPileArt count={displayPotionCount} size={130} />
+            {displayPotionCount > 0 && (
+              <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
+                {displayPotionCount}
+              </span>
+            )}
+          </div>
+          <ManagementBadge
+            icon={<ShoppingBag size={14} className="text-purple-400" />}
+            label="Market"
+            onClick={() => onOpen("potion")}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Shared management badge ────────────────────────────────────────────────────
+// ── Shared management badge ───────────────────────────────────────────────────
 function ManagementBadge({
-  icon,
-  label,
-  onClick,
-  glow = false,
-  badge,
+  icon, label, onClick, glow = false, badge,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  glow?: boolean;
-  badge?: string;
+  icon: React.ReactNode; label: string; onClick: () => void; glow?: boolean; badge?: string;
 }) {
   return (
     <button
@@ -491,26 +525,14 @@ function ManagementBadge({
       {icon}
       <span>{label}</span>
       {badge && (
-        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">
-          {badge}
-        </span>
+        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">{badge}</span>
       )}
     </button>
   );
 }
 
-// ── Workshop exterior wall ─────────────────────────────────────────────────────
-import type { DayNightState } from "../hooks/useDayNight";
-
-function WorkshopWall({
-  onClick,
-  workerActive,
-  dn,
-}: {
-  onClick: () => void;
-  workerActive: boolean;
-  dn: DayNightState;
-}) {
+// ── Workshop wall ─────────────────────────────────────────────────────────────
+function WorkshopWall({ onClick, workerActive, dn }: { onClick: () => void; workerActive: boolean; dn: DayNightState }) {
   const wc = dn.windowColor;
   const stars = dn.starOpacity;
   const lamp = dn.lampGlow;
@@ -562,7 +584,6 @@ function WorkshopWall({
             <rect x="307" y="47" width="48" height="38" />
           </clipPath>
         </defs>
-        {/* Left window */}
         <rect x="42" y="20" width="54" height="68" rx="4" fill="#2a1808" />
         <g clipPath="url(#lwClip)">
           <rect x="45" y="23" width="48" height="62" fill={wc} />
@@ -576,7 +597,6 @@ function WorkshopWall({
         <line x1="69" y1="23" x2="69" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="45" y1="52" x2="93" y2="52" stroke="#2a1808" strokeWidth="2" />
         <rect x="42" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
-        {/* Right window */}
         <rect x="304" y="20" width="54" height="68" rx="4" fill="#2a1808" />
         <g clipPath="url(#rwClip)">
           <rect x="307" y="23" width="48" height="62" fill={wc} />
@@ -590,7 +610,6 @@ function WorkshopWall({
         <line x1="331" y1="23" x2="331" y2="85" stroke="#2a1808" strokeWidth="2" />
         <line x1="307" y1="52" x2="355" y2="52" stroke="#2a1808" strokeWidth="2" />
         <rect x="304" y="20" width="54" height="68" rx="4" fill="none" stroke="#4a3010" strokeWidth="2" />
-        {/* Door */}
         <rect x="166" y="18" width="68" height="78" rx="5" fill="#3a2008" />
         <rect x="170" y="22" width="60" height="74" rx="3" fill="#2e1a08" />
         <rect x="174" y="26" width="23" height="26" rx="2" fill="#221408" opacity="0.7" />
@@ -601,7 +620,6 @@ function WorkshopWall({
         {workerActive && (
           <rect x="170" y="22" width="60" height="74" rx="3" fill="#fbbf24" opacity="0.08" />
         )}
-        {/* Lanterns */}
         <g transform="translate(128,46)">
           <line x1="0" y1="-24" x2="0" y2="-17" stroke="#7a6040" strokeWidth="1.5" />
           <rect x="-7" y="-17" width="14" height="20" rx="2" fill="#3a2810" stroke="#7a6040" strokeWidth="1" />
@@ -614,7 +632,6 @@ function WorkshopWall({
           <rect x="-5" y="-15" width="10" height="16" rx="1" fill={lampFlame} />
           <ellipse cx="0" cy="6" rx="11" ry="4" fill={lampGlow} />
         </g>
-        {/* Sign */}
         <rect x="150" y="5" width="100" height="14" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
         <text x="200" y="15" textAnchor="middle" fill="#c8a050" fontSize="8.5" fontFamily="serif" letterSpacing="2">
           THE WORKSHOP
@@ -632,7 +649,11 @@ function WorkshopWall({
 }
 
 // ── Conveyors ─────────────────────────────────────────────────────────────────
-function ConveyorWithIngredients({ running, categories }: { running: boolean; categories: string[] }) {
+function ConveyorWithIngredients({
+  running, categories, accentColor,
+}: {
+  running: boolean; categories: string[]; accentColor: string;
+}) {
   const items = categories.length > 0 ? categories : [];
   const count = Math.max(1, items.length);
   return (
@@ -647,25 +668,25 @@ function ConveyorWithIngredients({ running, categories }: { running: boolean; ca
   );
 }
 
-function ConveyorWithPotion({ running }: { running: boolean }) {
+function ConveyorWithPotion({ running, accentColor }: { running: boolean; accentColor: string }) {
   return (
     <div className="relative mx-auto my-1 h-20 w-9 overflow-hidden rounded-full border-2 border-amber-900/40 bg-amber-950/30 shadow-inner">
       <div className="conveyor-on absolute inset-0" style={{ animationPlayState: running ? "running" : "paused" }} />
       {running && (
         <div className="conveyor-potion" style={{ animationDelay: "1s" }}>
-          <MiniPotion />
+          <MiniPotion color={accentColor} />
         </div>
       )}
     </div>
   );
 }
 
-function MiniPotion() {
+function MiniPotion({ color = "#a855f7" }: { color?: string }) {
   return (
     <svg width="14" height="18" viewBox="0 0 12 16" fill="none">
       <rect x="4" y="0" width="4" height="3" rx="1" fill="#94a3b8" />
-      <path d="M4 3 H8 L10 8 A4 4 0 0 1 2 8 Z" fill="#a855f7" />
-      <path d="M3 6 A4 4 0 0 0 9 6 Z" fill="#c084fc" opacity="0.4" />
+      <path d="M4 3 H8 L10 8 A4 4 0 0 1 2 8 Z" fill={color} />
+      <path d="M3 6 A4 4 0 0 0 9 6 Z" fill="#fff" opacity="0.3" />
     </svg>
   );
 }

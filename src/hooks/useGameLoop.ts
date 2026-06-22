@@ -2,17 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
-import type { Worker } from "../types";
+import type { BrewingMachine, Worker } from "../types";
 
 export interface WorkerLoopState {
   workerProgress: number;
   workerPhase: "idle" | "outbound" | "away" | "inbound";
 }
 
-export interface LoopProgress {
-  workers: WorkerLoopState[];
+export interface MachineLoopState {
   brewProgress: number;
   brewActive: boolean;
+}
+
+export interface LoopProgress {
+  workers: WorkerLoopState[];
+  machines: MachineLoopState[];
 }
 
 const WALK_SECS = 3;
@@ -24,15 +28,14 @@ function workerTripSecondsFor(w: Worker): number {
   return gatherRoundTrip(loc.distance, w.gather_speed);
 }
 
-export function machineBrewSeconds(): number {
-  const g = useGameStore.getState();
+export function machineBrewSecondsFor(machine: BrewingMachine): number {
   const cfg = useConfigStore.getState();
-  const ids = g.machine.recipe_slots
-    .slice(0, g.machine.unlocked_slots)
+  const ids = machine.recipe_slots
+    .slice(0, machine.unlocked_slots)
     .filter((x): x is string => !!x);
   const ingredients = ids.map((id) => cfg.ingredients[id]).filter(Boolean);
   const toxicity = ingredients.reduce((a, ing) => a + ing.attributes.toxicity, 0);
-  return brewTime(g.machine, toxicity, cfg.formulas, ingredients);
+  return brewTime(machine, toxicity, cfg.formulas, ingredients);
 }
 
 function workerPhaseFor(w: Worker, now: number): WorkerLoopState {
@@ -54,19 +57,25 @@ function workerPhaseFor(w: Worker, now: number): WorkerLoopState {
   }
 }
 
+function machineStateFor(machine: BrewingMachine, now: number): MachineLoopState {
+  const brewStalled = machine.brew_stalled ?? false;
+  const brewActive = machine.running && !brewStalled;
+  let brewProgress = 0;
+  if (brewActive && machine.brew_started_at) {
+    const total = machineBrewSecondsFor(machine);
+    const elapsed = (now - machine.brew_started_at) / 1000;
+    if (total > 0 && elapsed < total) brewProgress = elapsed / total;
+  }
+  return { brewProgress, brewActive };
+}
+
 function snapshotProgress(): LoopProgress {
   const g = useGameStore.getState();
   const now = Date.now();
-  const workers = g.workers.map((w) => workerPhaseFor(w, now));
-  const brewStalled = g.machine.brew_stalled ?? false;
-  const brewActive = g.machine.running && !brewStalled;
-  let brewProgress = 0;
-  if (brewActive && g.machine.brew_started_at) {
-    const total = machineBrewSeconds();
-    const elapsed = (now - g.machine.brew_started_at) / 1000;
-    if (total > 0 && elapsed < total) brewProgress = elapsed / total;
-  }
-  return { workers, brewProgress, brewActive };
+  return {
+    workers: g.workers.map((w) => workerPhaseFor(w, now)),
+    machines: g.machines.map((m) => machineStateFor(m, now)),
+  };
 }
 
 export function useGameLoop(): LoopProgress {
@@ -87,10 +96,6 @@ export function useGameLoop(): LoopProgress {
       const now = Date.now();
       const dt = (now - lastWall) / 1000;
 
-      // If a large wall-clock gap opened up (tab was backgrounded and rAF was
-      // throttled), catch up via the offline simulation. This advances trip and
-      // brew timers correctly so workers resume mid-journey rather than having
-      // completeTrip fire below and snap them home.
       if (now - lastWall > 2000) {
         lastWall = now;
         g.applyOffline();
@@ -99,10 +104,9 @@ export function useGameLoop(): LoopProgress {
       }
       lastWall = now;
 
-      // Workers assigned to a machine shave flat seconds off the active brew.
       if (dt > 0) g.autoClickTick(dt);
 
-      // ---- all workers ----
+      // ---- workers ----
       const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {
         if (!w.assigned_location || !w.trip_started_at) {
           return { workerProgress: 0, workerPhase: "idle" as const };
@@ -132,22 +136,25 @@ export function useGameLoop(): LoopProgress {
         return { workerProgress: 0, workerPhase: "idle" as const };
       });
 
-      // ---- machine ----
-      let brewProgress = 0;
-      const brewStalled = g.machine.brew_stalled ?? false;
-      const brewActive = g.machine.running && !brewStalled;
-      if (brewActive && g.machine.brew_started_at) {
-        const total = machineBrewSeconds();
-        const elapsed = (now - g.machine.brew_started_at) / 1000;
-        if (total > 0 && elapsed >= total) {
-          g.completeBrew();
-          brewProgress = 0;
-        } else if (total > 0) {
-          brewProgress = elapsed / total;
+      // ---- machines ----
+      const machineStates: MachineLoopState[] = g.machines.map((machine) => {
+        const brewStalled = machine.brew_stalled ?? false;
+        const brewActive = machine.running && !brewStalled;
+        let brewProgress = 0;
+        if (brewActive && machine.brew_started_at) {
+          const total = machineBrewSecondsFor(machine);
+          const elapsed = (now - machine.brew_started_at) / 1000;
+          if (total > 0 && elapsed >= total) {
+            g.completeBrew(machine.id);
+            brewProgress = 0;
+          } else if (total > 0) {
+            brewProgress = elapsed / total;
+          }
         }
-      }
+        return { brewProgress, brewActive };
+      });
 
-      progRef.current = { workers: workerStates, brewProgress, brewActive };
+      progRef.current = { workers: workerStates, machines: machineStates };
       setTick((x) => (x + 1) % 1000000);
     };
 

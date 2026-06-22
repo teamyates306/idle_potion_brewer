@@ -17,12 +17,11 @@ import { fmt, fmtDuration } from "../util/format";
 import WorkerArt from "./art/WorkerArt";
 import type { Worker } from "../types";
 
-const MACHINE_ID = 1;
-
 const HIRE_COST_BASE = 500;
 
 export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void; onOpenMap: (workerIndex?: number) => void }) {
   const workers = useGameStore((s) => s.workers);
+  const machines = useGameStore((s) => s.machines);
   const coins = useGameStore((s) => s.coins);
   const hireWorker = useGameStore((s) => s.hireWorker);
   const unlockedLocations = useGameStore((s) => s.unlockedLocations);
@@ -44,7 +43,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
 
   const groupLabel = (w: Worker) =>
     w.assigned_machine_id != null
-      ? "At the Cauldron"
+      ? machines.find((m) => m.id === w.assigned_machine_id)?.name ?? "At the Cauldron"
       : w.assigned_location
       ? cfg.locations[w.assigned_location]?.name ?? w.assigned_location
       : "Unassigned";
@@ -79,7 +78,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     if (selected.size === 0 || !bulkDest) return;
     const indices = [...selected];
     if (bulkDest === "recall") bulkAssign(indices, null, null);
-    else if (bulkDest === "machine") bulkAssign(indices, null, MACHINE_ID);
+    else if (bulkDest.startsWith("machine:")) bulkAssign(indices, null, parseInt(bulkDest.slice(8)));
     else bulkAssign(indices, bulkDest, null);
     setSelected(new Set());
     setSelectMode(false);
@@ -191,7 +190,9 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                 className="min-w-0 flex-1 rounded-lg bg-slate-800 px-2.5 py-2 text-sm text-slate-200 focus:outline-none"
               >
                 <option value="">Move selected to…</option>
-                <option value="machine">⚒ The Cauldron (brew)</option>
+                {machines.map((m) => (
+                  <option key={m.id} value={`machine:${m.id}`}>⚒ {m.name} (brew)</option>
+                ))}
                 <option value="recall">Recall (unassign)</option>
                 {unlockedLocations.map((id) => (
                   <option key={id} value={id}>{cfg.locations[id]?.name ?? id}</option>
@@ -258,6 +259,7 @@ function WorkerDetailModal({
   onOpenMap: (workerIndex: number) => void;
 }) {
   const coins = useGameStore((s) => s.coins);
+  const machines = useGameStore((s) => s.machines);
   const buySpeed = useGameStore((s) => s.buyWorkerSpeed);
   const buySize = useGameStore((s) => s.buyWorkerSize);
   const assignToMachine = useGameStore((s) => s.assignWorkerToMachine);
@@ -398,25 +400,30 @@ function WorkerDetailModal({
         )}
 
         {/* Assignment controls */}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           {onMachine ? (
             <button
               onClick={() => { assignToMachine(workerIndex, null); }}
-              className="flex-1 rounded-lg bg-rose-700 py-2.5 font-semibold text-white hover:bg-rose-600"
+              className="w-full rounded-lg bg-rose-700 py-2.5 font-semibold text-white hover:bg-rose-600"
             >
               Recall from Cauldron
             </button>
           ) : (
-            <button
-              onClick={() => { assignToMachine(workerIndex, MACHINE_ID); }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
-            >
-              <Hammer size={16} /> Work the Cauldron
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {machines.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => { assignToMachine(workerIndex, m.id); }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
+                >
+                  <Hammer size={16} /> {machines.length > 1 ? m.name : "Work the Cauldron"}
+                </button>
+              ))}
+            </div>
           )}
           <button
             onClick={() => onOpenMap(workerIndex)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
           >
             <MapPin size={16} /> {onMachine ? "Send to Map" : "Assign to Location"}
           </button>
