@@ -118,11 +118,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
           });
         }
       } else {
+        // Slight random offset so rapid drops (e.g. multiple ingredients from one
+        // trip) don't stack directly on top of each other.
         spawnFAT({
-          x:     cx,
-          y:     cy,
+          x:     cx + (Math.random() - 0.5) * rect.width * 0.5,
+          y:     cy + (Math.random() - 0.5) * 34,
           text:  evt.text,
           color: CHANNEL_COLOR[evt.channel],
+          arcX:  (Math.random() - 0.5) * 36,
           size:  "md",
         });
       }

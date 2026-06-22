@@ -76,6 +76,7 @@ export function useGameLoop(): LoopProgress {
   useEffect(() => {
     let raf = 0;
     let last = 0;
+    let lastWall = Date.now();
 
     const step = (t: number) => {
       raf = requestAnimationFrame(step);
@@ -84,6 +85,18 @@ export function useGameLoop(): LoopProgress {
 
       const g = useGameStore.getState();
       const now = Date.now();
+
+      // If a large wall-clock gap opened up (tab was backgrounded and rAF was
+      // throttled), catch up via the offline simulation. This advances trip and
+      // brew timers correctly so workers resume mid-journey rather than having
+      // completeTrip fire below and snap them home.
+      if (now - lastWall > 2000) {
+        lastWall = now;
+        g.applyOffline();
+        setTick((x) => (x + 1) % 1000000);
+        return;
+      }
+      lastWall = now;
 
       // ---- all workers ----
       const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {

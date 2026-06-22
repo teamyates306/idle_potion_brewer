@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Coins, Settings2, SlidersHorizontal, Bell, BellOff } from "lucide-react";
+import { Settings2, SlidersHorizontal, Bell, BellOff } from "lucide-react";
 import Workshop from "./components/Workshop";
+import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
 import MachineView from "./components/MachineView";
@@ -17,7 +18,6 @@ import { fmt, fmtDuration } from "./util/format";
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "dev" | null;
 
 export default function App() {
-  const coins = useGameStore((s) => s.coins);
   const welcomeBack = useGameStore((s) => s.welcomeBack);
   const applyOffline = useGameStore((s) => s.applyOffline);
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
@@ -28,6 +28,14 @@ export default function App() {
 
   useEffect(() => {
     applyOffline();
+    // Catch up whenever the tab becomes visible again. Background tabs throttle
+    // requestAnimationFrame, so the game loop stalls; applyOffline advances trip
+    // and brew timers so workers resume mid-journey instead of snapping home.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") applyOffline();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [applyOffline]);
 
   return (
@@ -43,9 +51,7 @@ export default function App() {
       >
         <h1 className="text-sm font-bold tracking-wide text-amber-200">🧪 Idle Potion Brewer</h1>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full bg-amber-950/70 px-3 py-1.5 text-sm font-semibold text-amber-300">
-            <Coins size={16} /> {Math.floor(coins).toLocaleString()}
-          </div>
+          <CoinCounter />
           <button
             onClick={() => setSettingsOpen(true)}
             className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
