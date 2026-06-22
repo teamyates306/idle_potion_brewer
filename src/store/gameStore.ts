@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   BrewingMachine,
+  Ingredient,
   IngredientInventory,
   PotionInventory,
   Worker,
@@ -565,6 +566,92 @@ export const useGameStore = create<GameState>()(
             }
           }
 
+          // --- Offline brew simulation ---
+          // Ingredient gathering above runs first so freshly gathered items are available.
+          let potionInv = { ...s.potionInv };
+          let coins = s.coins;
+          let machineSim = { ...s.machine };
+          let discoveredPotions = [...new Set(s.discoveredPotions ?? [])];
+
+          if (s.machine.running && s.machine.brew_started_at) {
+            const slotIds = s.machine.recipe_slots
+              .slice(0, s.machine.unlocked_slots)
+              .filter((x): x is string => !!x);
+
+            if (slotIds.length > 0) {
+              const ingredients = slotIds
+                .map((id) => cfg.ingredients[id])
+                .filter((x): x is Ingredient => !!x);
+
+              if (ingredients.length > 0) {
+                const totalToxicity = ingredients.reduce(
+                  (acc, ing) => acc + ing.attributes.toxicity,
+                  0
+                );
+                const brewSecs = brewTime(s.machine, totalToxicity, cfg.formulas, ingredients);
+
+                // Stalled brews don't carry elapsed time — restart timer from 0
+                let brewElapsedSecs = s.machine.brew_stalled
+                  ? 0
+                  : (now() - s.machine.brew_started_at) / 1000;
+                let stalled = false;
+
+                while (brewElapsedSecs >= brewSecs) {
+                  // Check ingredient availability (inv already includes offline gathers)
+                  const need: Record<string, number> = {};
+                  for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+                  let hasAll = true;
+                  for (const [id, n] of Object.entries(need)) {
+                    if ((inv[id] ?? 0) < n) { hasAll = false; break; }
+                  }
+                  if (!hasAll) { stalled = true; break; }
+
+                  // Consume ingredients
+                  for (const [id, n] of Object.entries(need)) inv[id] = (inv[id] ?? 0) - n;
+
+                  // Produce potion
+                  const potion = describePotion(ingredients, cfg.formulas);
+                  const outputs = rollMultiBrew(
+                    effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas)
+                  );
+
+                  if ((s.autoSellHashes ?? []).includes(potion.hash)) {
+                    coins += potion.value * outputs;
+                  } else {
+                    potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
+                  }
+
+                  // XP and levelling
+                  const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
+                  const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
+                  const levelsGained = leveled.level - machineSim.level;
+                  machineSim = {
+                    ...machineSim,
+                    xp: leveled.xp,
+                    level: leveled.level,
+                    brew_speed: machineSim.brew_speed + levelsGained * 0.03,
+                    upgrade_tokens: (machineSim.upgrade_tokens ?? 0) + levelsGained,
+                  };
+
+                  if (!discoveredPotions.includes(potion.hash)) {
+                    discoveredPotions = [...discoveredPotions, potion.hash];
+                  }
+
+                  brewElapsedSecs -= brewSecs;
+                }
+
+                // Preserve partial brew progress in brew_started_at
+                machineSim = {
+                  ...machineSim,
+                  brew_stalled: stalled,
+                  brew_started_at: stalled
+                    ? now()
+                    : now() - Math.round(brewElapsedSecs * 1000),
+                };
+              }
+            }
+          }
+
           const hoursAway = elapsed / 3600;
           const welcomeBack: WelcomeBack | null =
             hoursAway > cfg.formulas.offline_threshold_hours
@@ -580,11 +667,14 @@ export const useGameStore = create<GameState>()(
               }))
             : s.workers;
           const machine: BrewingMachine = isLongOffline
-            ? { ...s.machine, brew_started_at: s.machine.running ? now() : null }
-            : s.machine;
+            ? { ...machineSim, brew_started_at: machineSim.running ? now() : null }
+            : machineSim;
 
           return {
+            coins,
             ingredientInv: inv,
+            potionInv,
+            discoveredPotions,
             discovered: Array.from(discovered),
             workers,
             machine,
