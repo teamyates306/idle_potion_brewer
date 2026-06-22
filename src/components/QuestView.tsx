@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollText, Check, Hourglass } from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
@@ -7,11 +7,55 @@ import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
 import { fmt } from "../util/format";
 
-const DIFF_STYLE: Record<QuestDifficulty, { text: string; bg: string; bar: string }> = {
-  Easy:        { text: "text-green-300",  bg: "bg-green-950/40 border-green-700/40",   bar: "bg-green-500" },
-  Medium:      { text: "text-amber-300",  bg: "bg-amber-950/40 border-amber-700/40",   bar: "bg-amber-500" },
-  Challenging: { text: "text-rose-300",   bg: "bg-rose-950/40 border-rose-700/40",     bar: "bg-rose-500" },
+const DIFF_STYLE: Record<QuestDifficulty, { text: string; bg: string; bar: string; spark: string }> = {
+  Easy:        { text: "text-green-300",  bg: "bg-green-950/40 border-green-700/40",   bar: "bg-green-500", spark: "#22c55e" },
+  Medium:      { text: "text-amber-300",  bg: "bg-amber-950/40 border-amber-700/40",   bar: "bg-amber-500", spark: "#f59e0b" },
+  Challenging: { text: "text-rose-300",   bg: "bg-rose-950/40 border-rose-700/40",     bar: "bg-rose-500", spark: "#f43f5e" },
 };
+
+interface Burst { id: number; x: number; y: number; color: string }
+
+function CelebrationLayer({ bursts }: { bursts: Burst[] }) {
+  return (
+    <>
+      {bursts.map((b) => (
+        <div key={b.id} className="pointer-events-none fixed z-[80]" style={{ left: b.x, top: b.y }}>
+          {/* expanding ring */}
+          <span
+            className="absolute h-10 w-10 rounded-full"
+            style={{ border: `3px solid ${b.color}`, animation: "quest-ring 0.7s ease-out forwards" }}
+          />
+          {/* sparks */}
+          {Array.from({ length: 26 }).map((_, i) => {
+            const ang = (i / 26) * Math.PI * 2 + Math.random() * 0.3;
+            const dist = 46 + Math.random() * 64;
+            const size = 3 + Math.random() * 4;
+            return (
+              <span
+                key={i}
+                style={{
+                  position: "absolute",
+                  width: size, height: size, borderRadius: "50%",
+                  background: i % 3 === 0 ? "#fff" : b.color,
+                  boxShadow: `0 0 6px ${b.color}`,
+                  ["--qsx" as string]: `${Math.cos(ang) * dist}px`,
+                  ["--qsy" as string]: `${Math.sin(ang) * dist}px`,
+                  animation: `quest-spark-fly ${0.7 + Math.random() * 0.4}s ease-out forwards`,
+                } as React.CSSProperties}
+              />
+            );
+          })}
+          <span
+            className="absolute whitespace-nowrap text-sm font-extrabold"
+            style={{ left: 0, transform: "translate(-50%,0)", color: b.color, textShadow: "0 1px 8px rgba(0,0,0,0.9)", animation: "quest-celebrate-text 1.1s ease-out forwards" }}
+          >
+            QUEST COMPLETE!
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
 
 function fmtCountdown(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -42,6 +86,14 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   const questByTier = new Map<QuestDifficulty, Quest>();
   for (const q of activeQuests) questByTier.set(q.difficulty, q);
 
+  const [bursts, setBursts] = useState<Burst[]>([]);
+  const burstId = useRef(0);
+  const celebrate = (x: number, y: number, color: string) => {
+    const id = burstId.current++;
+    setBursts((b) => [...b, { id, x, y, color }]);
+    setTimeout(() => setBursts((b) => b.filter((bb) => bb.id !== id)), 1200);
+  };
+
   return (
     <>
       <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b">
@@ -52,12 +104,14 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
         <div className="space-y-3">
           {DIFFICULTIES.map((tier) => {
             const quest = questByTier.get(tier);
-            if (quest) return <QuestCard key={tier} quest={quest} onPickName={setDetailName} />;
+            if (quest) return <QuestCard key={tier} quest={quest} onPickName={setDetailName} onCelebrate={celebrate} />;
             const readyAt = questCooldowns?.[tier];
             return <CooldownCard key={tier} tier={tier} readyAt={readyAt} />;
           })}
         </div>
       </Modal>
+
+      <CelebrationLayer bursts={bursts} />
 
       {detailName && (
         <PotionDetailsModal potionName={detailName} onClose={() => setDetailName(null)} />
@@ -66,12 +120,24 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   );
 }
 
-function QuestCard({ quest, onPickName }: { quest: Quest; onPickName: (name: string) => void }) {
+function QuestCard({
+  quest, onPickName, onCelebrate,
+}: {
+  quest: Quest;
+  onPickName: (name: string) => void;
+  onCelebrate: (x: number, y: number, color: string) => void;
+}) {
   const potionInv = useGameStore((s) => s.potionInv);
   const completeQuest = useGameStore((s) => s.completeQuest);
   const cfg = useConfigStore();
   const { have, complete } = questProgress(quest, potionInv, cfg.ingredients, cfg.formulas);
   const style = DIFF_STYLE[quest.difficulty];
+
+  const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    onCelebrate(r.left + r.width / 2, r.top + r.height / 2, style.spark);
+    completeQuest(quest.id);
+  };
 
   return (
     <div className={`rounded-xl border p-3 ${style.bg}`}>
@@ -102,7 +168,7 @@ function QuestCard({ quest, onPickName }: { quest: Quest; onPickName: (name: str
       </div>
 
       <button
-        onClick={() => completeQuest(quest.id)}
+        onClick={handleComplete}
         disabled={!complete}
         className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition ${
           complete

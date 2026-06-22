@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Coins, Sparkles, FlaskConical } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Coins, Sparkles, FlaskConical, Search, ChevronDown, ChevronRight,
+  Trash2, CheckSquare, Square, X,
+} from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import { useGameStore } from "../store/gameStore";
@@ -10,6 +13,7 @@ import { fmt } from "../util/format";
 
 type Tab = "sell" | "discovered";
 type Detail = { hash: string } | { name: string } | null;
+type SortKey = "value" | "recipes" | "name";
 
 export default function PotionView({ onClose }: { onClose: () => void }) {
   const potionInv = useGameStore((s) => s.potionInv);
@@ -17,10 +21,22 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
   const sellPotion = useGameStore((s) => s.sellPotion);
   const sellAll = useGameStore((s) => s.sellAll);
   const autoSellHashes = useGameStore((s) => s.autoSellHashes);
+  const clearAutoSell = useGameStore((s) => s.clearAutoSell);
+  const removeAutoSell = useGameStore((s) => s.removeAutoSell);
   const cfg = useConfigStore();
 
   const [tab, setTab] = useState<Tab>("sell");
   const [detail, setDetail] = useState<Detail>(null);
+
+  // Discovered controls
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("value");
+  const [inStockOnly, setInStockOnly] = useState(false);
+
+  // Auto-sell management
+  const [autoOpen, setAutoOpen] = useState(autoSellHashes.length <= 1);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const entries = Object.entries(potionInv).filter(([, c]) => c > 0);
   const totalValue = entries.reduce((acc, [hash, count]) => {
@@ -28,8 +44,35 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
     return acc + (d ? d.value * count : 0);
   }, 0);
 
-  // Discovered tab is grouped strictly by unique NAME
-  const nameGroups = groupHashesByName(discoveredPotions, cfg.ingredients, cfg.formulas);
+  const nameGroups = useMemo(
+    () => groupHashesByName(discoveredPotions, cfg.ingredients, cfg.formulas),
+    [discoveredPotions, cfg.ingredients, cfg.formulas]
+  );
+
+  const filteredGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let gs = nameGroups.filter((g) => (q ? g.name.toLowerCase().includes(q) : true));
+    if (inStockOnly) gs = gs.filter((g) => g.hashes.some((h) => (potionInv[h] ?? 0) > 0));
+    const sorted = [...gs];
+    if (sortBy === "value") sorted.sort((a, b) => b.maxValue - a.maxValue);
+    else if (sortBy === "recipes") sorted.sort((a, b) => b.hashes.length - a.hashes.length || b.maxValue - a.maxValue);
+    else sorted.sort((a, b) => a.name.localeCompare(b.name));
+    return sorted;
+  }, [nameGroups, query, inStockOnly, sortBy, potionInv]);
+
+  const toggleSel = (hash: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(hash) ? next.delete(hash) : next.add(hash);
+      return next;
+    });
+
+  const removeSelected = () => {
+    if (selected.size === 0) return;
+    removeAutoSell([...selected]);
+    setSelected(new Set());
+    setSelectMode(false);
+  };
 
   return (
     <>
@@ -54,90 +97,166 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {tab === "sell" && entries.length === 0 && autoSellHashes.length === 0 ? (
-          <p className="py-6 text-center text-sm text-slate-500">No potions yet. Brew something!</p>
-        ) : tab === "sell" ? (
-          <>
-            {(() => {
-              // Sell tab stays grouped by recipe (hash) so auto-sell can be toggled per recipe.
-              const autoEntries: [string, number][] = autoSellHashes.map(
-                (hash) => [hash, potionInv[hash] ?? 0]
-              );
-              const manualEntries = entries.filter(([hash]) => !autoSellHashes.includes(hash));
-              const renderRow = (hash: string, count: number, auto: boolean) => {
-                const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
-                if (!d) return null;
-                return (
-                  <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
-                    <button onClick={() => setDetail({ hash })} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                      <Sparkles size={14} className={`shrink-0 ${auto ? "text-amber-400" : "text-purple-400"}`} />
-                      <div className="min-w-0">
-                        <div className={`truncate font-medium ${auto ? "text-amber-200" : "text-purple-200"}`}>{d.name}</div>
-                        <div className="text-xs text-slate-400">×{count} · 🪙 {fmt(d.value)} each</div>
-                      </div>
-                    </button>
-                    <div className="flex shrink-0 gap-1">
-                      <button onClick={() => sellPotion(hash, 1)} className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Sell 1</button>
-                      <button onClick={() => sellPotion(hash, count)} className={`rounded px-2 py-1 text-xs text-white ${auto ? "bg-amber-600 hover:bg-amber-500" : "bg-purple-600 hover:bg-purple-500"}`}>All</button>
-                    </div>
-                  </div>
-                );
-              };
-              return (
-                <div className="space-y-4">
-                  {autoEntries.length > 0 && (
-                    <div>
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="text-[10px] uppercase tracking-wider text-amber-600">Auto-sell</span>
-                        <div className="h-px flex-1 bg-amber-900/40" />
-                      </div>
-                      <div className="space-y-2">{autoEntries.map(([hash, count]) => renderRow(hash, count, true))}</div>
-                    </div>
-                  )}
-                  {manualEntries.length > 0 && (
-                    <div>
-                      {autoEntries.length > 0 && (
-                        <div className="mb-2 flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-wider text-slate-600">Manual</span>
-                          <div className="h-px flex-1 bg-slate-800" />
+        {tab === "sell" ? (
+          entries.length === 0 && autoSellHashes.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">No potions yet. Brew something!</p>
+          ) : (
+            <>
+              {(() => {
+                const manualEntries = entries.filter(([hash]) => !autoSellHashes.includes(hash));
+                const renderRow = (hash: string, count: number, auto: boolean) => {
+                  const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
+                  if (!d) return null;
+                  const checked = selected.has(hash);
+                  return (
+                    <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
+                      {auto && selectMode && (
+                        <button onClick={() => toggleSel(hash)} className="shrink-0 text-amber-300">
+                          {checked ? <CheckSquare size={18} /> : <Square size={18} />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => (auto && selectMode ? toggleSel(hash) : setDetail({ hash }))}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      >
+                        <Sparkles size={14} className={`shrink-0 ${auto ? "text-amber-400" : "text-purple-400"}`} />
+                        <div className="min-w-0">
+                          <div className={`truncate font-medium ${auto ? "text-amber-200" : "text-purple-200"}`}>{d.name}</div>
+                          <div className="text-xs text-slate-400">×{count} · 🪙 {fmt(d.value)} each</div>
+                        </div>
+                      </button>
+                      {!selectMode && (
+                        <div className="flex shrink-0 gap-1">
+                          <button onClick={() => sellPotion(hash, 1)} className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600">Sell 1</button>
+                          <button onClick={() => sellPotion(hash, count)} className={`rounded px-2 py-1 text-xs text-white ${auto ? "bg-amber-600 hover:bg-amber-500" : "bg-purple-600 hover:bg-purple-500"}`}>All</button>
                         </div>
                       )}
-                      <div className="space-y-2">{manualEntries.map(([hash, count]) => renderRow(hash, count, false))}</div>
                     </div>
-                  )}
-                </div>
-              );
-            })()}
-            <button
-              onClick={sellAll}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 font-semibold text-white hover:bg-purple-500"
-            >
-              <Coins size={18} /> Sell Everything · 🪙 {fmt(totalValue)}
-            </button>
-          </>
+                  );
+                };
+                return (
+                  <div className="space-y-4">
+                    {/* Auto-sell section — collapsible, with clear & multi-select */}
+                    {autoSellHashes.length > 0 && (
+                      <div>
+                        <div className="mb-2 flex items-center gap-2">
+                          <button onClick={() => setAutoOpen((o) => !o)} className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-amber-500 hover:text-amber-300">
+                            {autoOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                            Auto-sell ({autoSellHashes.length})
+                          </button>
+                          <div className="h-px flex-1 bg-amber-900/40" />
+                          <button onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); }} className="rounded px-1.5 py-0.5 text-[10px] text-amber-400 hover:bg-amber-950/60">
+                            {selectMode ? "Cancel" : "Select"}
+                          </button>
+                          <button onClick={clearAutoSell} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-rose-400 hover:bg-rose-950/40">
+                            <Trash2 size={11} /> Clear all
+                          </button>
+                        </div>
+                        {autoOpen && (
+                          <div className="space-y-2">
+                            {autoSellHashes.map((hash) => renderRow(hash, potionInv[hash] ?? 0, true))}
+                            {selectMode && (
+                              <button
+                                onClick={removeSelected}
+                                disabled={selected.size === 0}
+                                className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition ${
+                                  selected.size > 0 ? "bg-rose-600 text-white hover:bg-rose-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                                }`}
+                              >
+                                <X size={15} /> Close out selected ({selected.size})
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {manualEntries.length > 0 && (
+                      <div>
+                        {autoSellHashes.length > 0 && (
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-wider text-slate-600">Manual</span>
+                            <div className="h-px flex-1 bg-slate-800" />
+                          </div>
+                        )}
+                        <div className="space-y-2">{manualEntries.map(([hash, count]) => renderRow(hash, count, false))}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <button
+                onClick={sellAll}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 font-semibold text-white hover:bg-purple-500"
+              >
+                <Coins size={18} /> Sell Everything · 🪙 {fmt(totalValue)}
+              </button>
+            </>
+          )
         ) : (
-          /* Discovered tab — grouped by unique NAME; click opens the universal modal */
+          /* Discovered tab — grouped by unique NAME, with search / sort / filter */
           nameGroups.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-500">No potions brewed yet.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
-              {nameGroups.map((g) => {
-                const inStock = g.hashes.reduce((a, h) => a + (potionInv[h] ?? 0), 0);
-                return (
+            <>
+              <div className="mb-3 space-y-2">
+                <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5">
+                  <Search size={14} className="text-slate-500" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search potions…"
+                    className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                  />
+                  {query && <button onClick={() => setQuery("")} className="text-slate-500 hover:text-slate-300"><X size={14} /></button>}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {([["value", "Most valuable"], ["recipes", "Most recipes"], ["name", "A–Z"]] as [SortKey, string][]).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setSortBy(key)}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                        sortBy === key ? "bg-purple-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                   <button
-                    key={g.name}
-                    onClick={() => setDetail({ name: g.name })}
-                    className="flex flex-col rounded-lg border border-purple-900/40 bg-slate-800/60 p-3 text-left transition hover:border-purple-500/50 hover:bg-slate-700/60 active:scale-[0.98]"
+                    onClick={() => setInStockOnly((v) => !v)}
+                    className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                      inStockOnly ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
                   >
-                    <FlaskConical size={20} className="mb-1.5 text-purple-400" />
-                    <span className="text-xs font-semibold leading-tight text-purple-200">{g.name}</span>
-                    <span className="mt-1 text-[10px] text-slate-500">
-                      {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""} · {inStock > 0 ? `×${inStock} in stock` : "sold out"}
-                    </span>
+                    In stock
                   </button>
-                );
-              })}
-            </div>
+                </div>
+              </div>
+
+              {filteredGroups.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-500">No potions match.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {filteredGroups.map((g) => {
+                    const inStock = g.hashes.reduce((a, h) => a + (potionInv[h] ?? 0), 0);
+                    return (
+                      <button
+                        key={g.name}
+                        onClick={() => setDetail({ name: g.name })}
+                        className="flex flex-col rounded-lg border border-purple-900/40 bg-slate-800/60 p-3 text-left transition hover:border-purple-500/50 hover:bg-slate-700/60 active:scale-[0.98]"
+                      >
+                        <FlaskConical size={20} className="mb-1.5 text-purple-400" />
+                        <span className="text-xs font-semibold leading-tight text-purple-200">{g.name}</span>
+                        <span className="mt-1 text-[10px] text-slate-500">
+                          🪙 {fmt(g.maxValue)} · {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{inStock > 0 ? `×${inStock} in stock` : "sold out"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )
         )}
       </Modal>

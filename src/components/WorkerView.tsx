@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
+  CheckSquare, Square, Layers,
+} from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -22,67 +25,190 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const workers = useGameStore((s) => s.workers);
   const coins = useGameStore((s) => s.coins);
   const hireWorker = useGameStore((s) => s.hireWorker);
+  const unlockedLocations = useGameStore((s) => s.unlockedLocations);
+  const bulkAssign = useGameStore((s) => s.bulkAssign);
   const cfg = useConfigStore();
   const loopProgress = useGameLoop();
+  void loopProgress; // 12fps re-render tick; progress computed from timestamps
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
+
+  // Roster controls
+  const [sortBy, setSortBy] = useState<"none" | "level" | "tokens">("none");
+  const [grouped, setGrouped] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDest, setBulkDest] = useState("");
 
   const hireCost = HIRE_COST_BASE * Math.pow(workers.length, 2);
   const canAffordHire = coins >= hireCost;
 
+  const groupLabel = (w: Worker) =>
+    w.assigned_machine_id != null
+      ? "At the Cauldron"
+      : w.assigned_location
+      ? cfg.locations[w.assigned_location]?.name ?? w.assigned_location
+      : "Unassigned";
+
+  const ordered = useMemo(() => {
+    const arr = workers.map((w, i) => ({ w, i }));
+    if (sortBy === "level") arr.sort((a, b) => b.w.level - a.w.level);
+    else if (sortBy === "tokens") arr.sort((a, b) => (b.w.upgrade_tokens ?? 0) - (a.w.upgrade_tokens ?? 0));
+    return arr;
+  }, [workers, sortBy]);
+
+  const sections = useMemo(() => {
+    if (!grouped) return [{ label: null as string | null, items: ordered }];
+    const map = new Map<string, typeof ordered>();
+    for (const o of ordered) {
+      const k = groupLabel(o.w);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(o);
+    }
+    return [...map.entries()].map(([label, items]) => ({ label, items }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordered, grouped, cfg.locations]);
+
+  const toggleSel = (idx: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(idx) ? next.delete(idx) : next.add(idx);
+      return next;
+    });
+
+  const applyBulk = () => {
+    if (selected.size === 0 || !bulkDest) return;
+    const indices = [...selected];
+    if (bulkDest === "recall") bulkAssign(indices, null, null);
+    else if (bulkDest === "machine") bulkAssign(indices, null, MACHINE_ID);
+    else bulkAssign(indices, bulkDest, null);
+    setSelected(new Set());
+    setSelectMode(false);
+    setBulkDest("");
+  };
+
+  const renderRow = ({ w: worker, i: idx }: { w: Worker; i: number }) => {
+    const tokens = worker.upgrade_tokens ?? 0;
+    const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+    const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
+    const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
+    const tripPct = totalMs > 0 && elapsedMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
+    const workerPhase = worker.trip_phase ?? "idle";
+    const tripColor = workerPhase === "inbound" ? "#22d3ee" : "#6ee7b7";
+    const checked = selected.has(idx);
+
+    return (
+      <button
+        key={worker.id}
+        onClick={() => (selectMode ? toggleSel(idx) : setDetailIdx(idx))}
+        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+          selectMode && checked
+            ? "border-cyan-400/80 bg-cyan-950/30"
+            : tokens > 0
+            ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
+            : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
+        }`}
+      >
+        {selectMode && (
+          <span className="shrink-0 text-cyan-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
+        )}
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
+          <WorkerArt size={44} color={worker.color} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="font-semibold text-slate-100">{worker.name}</span>
+            <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
+            {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>}
+          </div>
+          <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+            <div className="h-full rounded-full transition-[width] duration-75" style={{ width: `${tripPct}%`, background: tripColor }} />
+          </div>
+        </div>
+        {!selectMode && <span className="text-slate-600">›</span>}
+      </button>
+    );
+  };
+
   return (
     <>
       <Modal title="Worker Management" onClose={onClose} accent="#22d3ee">
-        <p className="mb-3 text-xs text-slate-500">Tap a worker to view their full profile.</p>
+        {/* Controls */}
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {([["none", "Default"], ["level", "Level"], ["tokens", "Tokens"]] as ["none" | "level" | "tokens", string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setSortBy(key)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+                sortBy === key ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={() => setGrouped((g) => !g)}
+            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+              grouped ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Layers size={12} /> Group
+          </button>
+          <button
+            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); }}
+            className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+              selectMode ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {selectMode ? "Cancel" : "Select"}
+          </button>
+        </div>
 
-        {/* Worker roster */}
+        {/* Roster */}
         <div className="space-y-2">
-          {workers.map((worker, idx) => {
-            const tokens = worker.upgrade_tokens ?? 0;
-            // Use loopProgress as a 12fps tick; compute trip fraction from raw timestamps
-            void loopProgress;
-            const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
-            const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
-            const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
-            const tripPct = totalMs > 0 && elapsedMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
-            const workerPhase = worker.trip_phase ?? "idle";
-            const tripColor = workerPhase === "inbound" ? "#22d3ee" : "#6ee7b7";
+          {sections.map((sec, si) => (
+            <div key={sec.label ?? si} className="space-y-2">
+              {sec.label && (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-[10px] uppercase tracking-wider text-cyan-600">{sec.label}</span>
+                  <span className="text-[10px] text-slate-600">({sec.items.length})</span>
+                  <div className="h-px flex-1 bg-slate-800" />
+                </div>
+              )}
+              {sec.items.map(renderRow)}
+            </div>
+          ))}
+        </div>
 
-            return (
+        {/* Bulk-assign bar */}
+        {selectMode && (
+          <div className="sticky bottom-0 mt-3 rounded-xl border border-cyan-700/50 bg-slate-900/95 p-2.5 backdrop-blur">
+            <div className="mb-2 text-[11px] text-cyan-300">{selected.size} selected</div>
+            <div className="flex items-center gap-2">
+              <select
+                value={bulkDest}
+                onChange={(e) => setBulkDest(e.target.value)}
+                className="min-w-0 flex-1 rounded-lg bg-slate-800 px-2.5 py-2 text-sm text-slate-200 focus:outline-none"
+              >
+                <option value="">Move selected to…</option>
+                <option value="machine">⚒ The Cauldron (brew)</option>
+                <option value="recall">Recall (unassign)</option>
+                {unlockedLocations.map((id) => (
+                  <option key={id} value={id}>{cfg.locations[id]?.name ?? id}</option>
+                ))}
+              </select>
               <button
-                key={worker.id}
-                onClick={() => setDetailIdx(idx)}
-                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
-                  tokens > 0
-                    ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
-                    : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
+                onClick={applyBulk}
+                disabled={selected.size === 0 || !bulkDest}
+                className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  selected.size > 0 && bulkDest ? "bg-cyan-600 text-white hover:bg-cyan-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${
-                  tokens > 0 ? "ring-2 ring-yellow-500/50" : ""
-                }`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-                  <WorkerArt size={44} color={worker.color} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-semibold text-slate-100">{worker.name}</span>
-                    <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
-                    {tokens > 0 && (
-                      <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>
-                    )}
-                  </div>
-                  <div className="mt-0.5 text-xs text-slate-400 italic truncate">"{worker.flavor_status ?? "Awaiting orders"}"</div>
-                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-75"
-                      style={{ width: `${tripPct}%`, background: tripColor }}
-                    />
-                  </div>
-                </div>
-                <span className="text-slate-600">›</span>
+                Assign
               </button>
-            );
-          })}
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* Hire new worker */}
         <div className="mt-4 rounded-xl border border-slate-700 bg-slate-800/40 p-4">

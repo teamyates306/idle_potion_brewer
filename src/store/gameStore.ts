@@ -180,6 +180,7 @@ interface GameState {
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
   assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
+  bulkAssign: (workerIndices: number[], locationId: string | null, machineId: number | null) => void;
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
   hireWorker: () => void;
@@ -192,6 +193,8 @@ interface GameState {
   toggleRunning: () => void;
   completeBrew: () => void;
   toggleAutoSellPotion: (hash: string) => void;
+  clearAutoSell: () => void;
+  removeAutoSell: (hashes: string[]) => void;
 
   // economy
   sellPotion: (hash: string, count: number) => void;
@@ -293,6 +296,28 @@ export const useGameStore = create<GameState>()(
               : w
           );
           return { workers };
+        }),
+
+      bulkAssign: (workerIndices, locationId, machineId) =>
+        set((s) => {
+          const cfg = useConfigStore.getState();
+          const idxSet = new Set(workerIndices);
+          const exploredSet = new Set(s.exploredLocations);
+          const workers = s.workers.map((w, i) => {
+            if (!idxSet.has(i)) return w;
+            if (machineId != null) {
+              return { ...w, assigned_machine_id: machineId, assigned_location: null,
+                trip_started_at: null, trip_phase: "idle" as const,
+                flavor_status: "Hammering the cauldron with great enthusiasm." };
+            }
+            const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
+            const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
+            if (locationId) exploredSet.add(locationId);
+            return { ...w, assigned_location: locationId, assigned_machine_id: null,
+              trip_phase: phase, trip_started_at: locationId ? now() : null,
+              flavor_status: statusFor(phase, danger) };
+          });
+          return { workers, exploredLocations: Array.from(exploredSet) };
         }),
 
       buyClickSpeed: (workerIndex) =>
@@ -557,6 +582,13 @@ export const useGameStore = create<GameState>()(
             : [...s.autoSellHashes, hash],
         })),
 
+      clearAutoSell: () => set({ autoSellHashes: [] }),
+
+      removeAutoSell: (hashes) =>
+        set((s) => ({
+          autoSellHashes: s.autoSellHashes.filter((h) => !hashes.includes(h)),
+        })),
+
       sellPotion: (hash, count) => {
         const s = get();
         const have = s.potionInv[hash] ?? 0;
@@ -782,7 +814,7 @@ export const useGameStore = create<GameState>()(
           const workersSim = s.workers.map((w) => {
             // Machine workers earn click XP for the offline window (while the machine ran).
             if (w.assigned_machine_id != null) {
-              if (!s.machine.running || elapsed <= 0) return w;
+              if (!s.machine.running || s.machine.brew_stalled || elapsed <= 0) return w;
               const xpGained = autoClickXpPerSec(w.auto_click_speed) * elapsed;
               if (xpGained <= 0) return w;
               totalWorkerXp += xpGained;
@@ -997,9 +1029,12 @@ export const useGameStore = create<GameState>()(
           discoveredAttributes: [],
           autoSellHashes: [],
           unlockedLocations: ["hollow"],
-          exploredLocations: [],
+          exploredLocations: ["hollow"],
           lastSeen: now(),
           welcomeBack: null,
+          questsUnlocked: false,
+          activeQuests: [],
+          questCooldowns: {},
         }),
     }),
     {
