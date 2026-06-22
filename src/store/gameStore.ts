@@ -130,6 +130,10 @@ function newMachine(): BrewingMachine {
 export interface WelcomeBack {
   seconds: number;
   gathers: number;
+  potionsBrewedCount: number;
+  coinsEarned: number;
+  workerXpEarned: number;
+  machineXpEarned: number;
 }
 
 interface GameState {
@@ -554,6 +558,8 @@ export const useGameStore = create<GameState>()(
           // ---------------------------------------------------------------
           // 1. Worker trip simulation — gathers, XP, level-ups
           // ---------------------------------------------------------------
+          let totalWorkerXp = 0;
+
           const workersSim = s.workers.map((w) => {
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
             if (!loc || elapsed <= 1) return w;
@@ -577,7 +583,9 @@ export const useGameStore = create<GameState>()(
 
             // XP: same formula as completeTrip (5 + distance + danger×3 per trip)
             const xpPerTrip = Math.round(5 + loc.distance + loc.danger * 3);
-            const leveled = applyLevels(w.level, w.xp + xpPerTrip * trips, cfg.formulas);
+            const xpGained = xpPerTrip * trips;
+            totalWorkerXp += xpGained;
+            const leveled = applyLevels(w.level, w.xp + xpGained, cfg.formulas);
             const levelsGained = leveled.level - w.level;
 
             return {
@@ -597,6 +605,8 @@ export const useGameStore = create<GameState>()(
           let coins = s.coins;
           let machineSim = { ...s.machine };
           let discoveredPotions = [...new Set(s.discoveredPotions ?? [])];
+          let totalPotionsBrewedCount = 0;
+          let totalMachineXp = 0;
 
           if (s.machine.running && s.machine.brew_started_at) {
             const slotIds = s.machine.recipe_slots
@@ -642,6 +652,7 @@ export const useGameStore = create<GameState>()(
                   );
 
                   // Auto-sell or stockpile
+                  totalPotionsBrewedCount += outputs;
                   if ((s.autoSellHashes ?? []).includes(potion.hash)) {
                     coins += potion.value * outputs;
                   } else {
@@ -650,6 +661,7 @@ export const useGameStore = create<GameState>()(
 
                   // Machine XP and level-ups
                   const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
+                  totalMachineXp += gainedXp;
                   const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
                   const levelsGained = leveled.level - machineSim.level;
                   machineSim = {
@@ -690,7 +702,14 @@ export const useGameStore = create<GameState>()(
           const hoursAway = elapsed / 3600;
           const welcomeBack: WelcomeBack | null =
             hoursAway > cfg.formulas.offline_threshold_hours
-              ? { seconds: Math.floor(elapsed), gathers: totalGathers }
+              ? {
+                  seconds: Math.floor(elapsed),
+                  gathers: totalGathers,
+                  potionsBrewedCount: totalPotionsBrewedCount,
+                  coinsEarned: Math.floor(coins - s.coins),
+                  workerXpEarned: totalWorkerXp,
+                  machineXpEarned: totalMachineXp,
+                }
               : null;
 
           const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;

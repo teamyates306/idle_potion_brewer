@@ -103,21 +103,65 @@ export default function App() {
 
       {welcomeBack && (
         <Modal title="Welcome Back, Brewmaster" onClose={dismissWelcome} accent="#22d3ee">
-          <p className="text-sm text-slate-300">
-            You were away for <span className="font-semibold text-cyan-300">{fmtDuration(welcomeBack.seconds)}</span>.
+          <p className="mb-4 text-sm italic text-slate-400">
+            You were away for{" "}
+            <span className="font-semibold text-cyan-300 not-italic">{fmtDuration(welcomeBack.seconds)}</span>.
+            The guild kept busy.
           </p>
-          <p className="mt-2 text-sm text-slate-300">
-            Your worker hauled back about{" "}
-            <span className="font-semibold text-cyan-300">{welcomeBack.gathers}</span> ingredients while you were gone.
-          </p>
+
+          <div className="space-y-2">
+            <StatRow
+              label="Ingredients gathered"
+              value={welcomeBack.gathers.toLocaleString()}
+              color="text-green-300"
+            />
+            {welcomeBack.potionsBrewedCount > 0 && (
+              <StatRow
+                label="Potions brewed"
+                value={welcomeBack.potionsBrewedCount.toLocaleString()}
+                color="text-purple-300"
+              />
+            )}
+            {welcomeBack.coinsEarned > 0 && (
+              <StatRow
+                label="Coins earned"
+                value={`🪙 ${welcomeBack.coinsEarned.toLocaleString()}`}
+                color="text-yellow-300"
+              />
+            )}
+            {welcomeBack.workerXpEarned > 0 && (
+              <StatRow
+                label="Worker XP earned"
+                value={welcomeBack.workerXpEarned.toLocaleString()}
+                color="text-cyan-300"
+              />
+            )}
+            {welcomeBack.machineXpEarned > 0 && (
+              <StatRow
+                label="Machine XP earned"
+                value={welcomeBack.machineXpEarned.toLocaleString()}
+                color="text-amber-300"
+              />
+            )}
+          </div>
+
           <button
             onClick={dismissWelcome}
-            className="mt-4 w-full rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+            className="mt-5 w-full rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
           >
             Back to Brewing
           </button>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function StatRow({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2">
+      <span className="text-sm text-slate-400">{label}</span>
+      <span className={`text-sm font-semibold ${color}`}>{value}</span>
     </div>
   );
 }
