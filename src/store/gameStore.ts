@@ -401,8 +401,12 @@ export const useGameStore = create<GameState>()(
         });
 
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
-        const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
-        pushToast(autoSell ? `${label} sold` : `${label} brewed`, "purple");
+        if (autoSell) {
+          pushToast(`Potion sold for 🪙 ${(potion.value * outputs).toLocaleString()}`, "amber");
+        } else {
+          const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
+          pushToast(`${label} brewed`, "purple");
+        }
       },
 
       toggleAutoSellPotion: (hash) =>
@@ -426,7 +430,7 @@ export const useGameStore = create<GameState>()(
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
         set({ coins: s.coins + earned, potionInv });
-        pushToast(`🪙 +${earned.toLocaleString()} — ${potion.name}`, "amber");
+        pushToast(`Potion sold for 🪙 ${earned.toLocaleString()}`, "amber");
       },
 
       sellAll: () => {
@@ -442,7 +446,7 @@ export const useGameStore = create<GameState>()(
           totalEarned += earned;
         }
         set({ coins, potionInv: {} });
-        if (totalEarned > 0) pushToast(`🪙 +${totalEarned.toLocaleString()} — sold everything`, "amber");
+        if (totalEarned > 0) pushToast(`Potions sold for 🪙 ${totalEarned.toLocaleString()}`, "amber");
       },
 
       buyWorkerSpeed: (workerIndex = 0) =>
