@@ -7,7 +7,7 @@ import { useDayNight } from "../hooks/useDayNight";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
-import { brewTime } from "../engine/formulas";
+import { autoClickPower } from "../engine/autoclick";
 import WorkerArt from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
@@ -35,6 +35,21 @@ const CHANNEL_COLOR = {
   pile:         "#fbbf24",
   "pile-burst": "#fbbf24",
 } as const;
+
+// Stagger machine-workers left/right of the cauldron, 2 deep per side.
+function machineWorkerLayout(order: number) {
+  const side: "left" | "right" = order % 2 === 0 ? "left" : "right";
+  const depth = Math.floor(order / 2);
+  const horiz = 50 + depth * 16; // px outward from the cauldron edge
+  const top = 34 + depth * 6;
+  return { side, depth, horiz, top };
+}
+function machineWorkerScreenPos(order: number, rect: DOMRect) {
+  const { side, horiz } = machineWorkerLayout(order);
+  const x = side === "left" ? rect.left - horiz + 22 : rect.right + horiz - 22;
+  const y = rect.top + 34 + Math.floor(order / 2) * 6;
+  return { x, y };
+}
 
 export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
   const workers     = useGameStore((s) => s.workers);
@@ -160,6 +175,34 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
     return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
   });
 
+  // ── Machine-assigned workers (rendered beside the cauldron) ─────────────────
+  const machineWorkers = workers
+    .map((w, i) => ({ w, i }))
+    .filter((x) => x.w.assigned_machine_id != null);
+  const machineWorkersSig = machineWorkers
+    .map(({ w }) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`)
+    .join(",");
+
+  // Staggered FAT "hits" from each auto-worker, frequency tied to click speed.
+  useEffect(() => {
+    const ids: number[] = [];
+    machineWorkers.forEach(({ w }, order) => {
+      const period = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
+      const power = autoClickPower(w.click_power_level);
+      const id = window.setInterval(() => {
+        const g = useGameStore.getState();
+        if (!g.machine.running || g.machine.brew_stalled || !g.machine.brew_started_at) return;
+        if (!useSettingsStore.getState().toastsEnabled) return;
+        if (!cauldronRef.current) return;
+        const rect = cauldronRef.current.getBoundingClientRect();
+        const { x, y } = machineWorkerScreenPos(order, rect);
+        spawnFAT({ x, y, text: `-${power.toFixed(2)}s`, color: "#86efac", size: "sm", arcX: (Math.random() - 0.5) * 22 });
+      }, period);
+      ids.push(id);
+    });
+    return () => ids.forEach((id) => clearInterval(id));
+  }, [machineWorkersSig]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Cauldron click handler ─────────────────────────────────────────────────
   const handleCauldronClick = () => {
     if (!machine.running || machine.brew_stalled || !machine.brew_started_at) return;
@@ -167,12 +210,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
       .slice(0, machine.unlocked_slots)
       .filter((id): id is string => !!id);
     if (slotIds.length === 0) return;
-    const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
-    const totalTox = ingredients.reduce((acc, ing) => acc + (ing?.attributes.toxicity ?? 0), 0);
-    const brewSecs = brewTime(machine, totalTox, cfg.formulas, ingredients as never);
-    const boostSecs = brewSecs * 0.05;
 
-    clickBrew();
+    clickBrew(); // removes a flat 0.1s from the remaining brew
 
     // Heat: increment, cap at 1
     const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
@@ -212,7 +251,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
       spawnFAT({
         x:     rect.left + rect.width / 2,
         y:     rect.top  + rect.height * 0.25,
-        text:  `-${boostSecs.toFixed(1)}s`,
+        text:  `-0.1s`,
         color: "#ffffff",
         size:  "sm",
       });
@@ -225,23 +264,27 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
       {/* Workshop exterior wall — still opens the Map */}
       <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
 
-      {/* ── Worker track ── */}
+      {/* ── Worker track (gathering workers only) ── */}
       <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
-        {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => (
-          <div
-            key={idx}
-            className="absolute"
-            style={{
-              bottom: 10,
-              left: "50%",
-              transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
-              opacity,
-              transition: "transform 90ms linear, opacity 90ms linear",
-            }}
-          >
-            <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
-          </div>
-        ))}
+        {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
+          // Machine-assigned workers are drawn at the cauldron, not on the track.
+          if (workers[idx]?.assigned_machine_id != null) return null;
+          return (
+            <div
+              key={idx}
+              className="absolute"
+              style={{
+                bottom: 10,
+                left: "50%",
+                transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
+                opacity,
+                transition: "transform 90ms linear, opacity 90ms linear",
+              }}
+            >
+              <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
+            </div>
+          );
+        })}
 
         {/* Worker Management badge */}
         {(() => {
@@ -330,6 +373,39 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel) => void }) {
               }
             />
           ))}
+
+          {/* Auto-clicker workers stationed at the cauldron */}
+          {machineWorkers.map(({ w }, order) => {
+            const { side, horiz, top } = machineWorkerLayout(order);
+            const dur = Math.max(0.18, 1 / Math.max(0.5, w.auto_click_speed));
+            return (
+              <div
+                key={w.id}
+                style={{
+                  position: "absolute",
+                  top,
+                  [side]: -horiz,
+                  pointerEvents: "none",
+                  transform: side === "right" ? "scaleX(-1)" : undefined,
+                }}
+              >
+                <div
+                  style={
+                    {
+                      animationName: "worker-bump",
+                      animationDuration: `${dur}s`,
+                      animationIterationCount: "infinite",
+                      animationTimingFunction: "ease-in-out",
+                      animationPlayState: brewActive ? "running" : "paused",
+                      "--wb-rot": side === "left" ? "8deg" : "-8deg",
+                    } as React.CSSProperties
+                  }
+                >
+                  <WorkerArt size={40} color={w.color} />
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         {(machine.upgrade_tokens ?? 0) > 0 && (

@@ -84,6 +84,11 @@ export interface Worker {
   gather_speed: number;
   retrieval_size: number;
   assigned_location: string | null;
+  /** A worker is EITHER out gathering (assigned_location) OR clicking a machine. */
+  assigned_machine_id: number | null;
+  /** Auto-click upgrades */
+  auto_click_speed: number;   // clicks-per-second multiplier (default 1.0)
+  click_power_level: number;  // drives flat seconds removed per click (default 0)
   flavor_status: string;
   // upgrade counters (for cost scaling)
   speed_upgrades: number;

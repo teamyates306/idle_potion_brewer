@@ -1,13 +1,22 @@
 import { useState } from "react";
-import { MapPin, Gauge, Package, ArrowUpCircle, UserPlus } from "lucide-react";
+import { MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
+import {
+  autoClickPower,
+  autoClickPowerCost,
+  autoClickSpeedLevel,
+  autoClickSpeedCost,
+  autoClickReductionPerSec,
+} from "../engine/autoclick";
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt from "./art/WorkerArt";
 import type { Worker } from "../types";
+
+const MACHINE_ID = 1;
 
 const HIRE_COST_BASE = 500;
 
@@ -127,15 +136,27 @@ function WorkerDetailModal({
   const coins = useGameStore((s) => s.coins);
   const buySpeed = useGameStore((s) => s.buyWorkerSpeed);
   const buySize = useGameStore((s) => s.buyWorkerSize);
+  const assignToMachine = useGameStore((s) => s.assignWorkerToMachine);
+  const buyClickSpeed = useGameStore((s) => s.buyClickSpeed);
+  const buyClickPower = useGameStore((s) => s.buyClickPower);
   const cfg = useConfigStore();
 
   const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+  const onMachine = worker.assigned_machine_id != null;
   const trip = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) : 0;
   const speedCost = upgradeCost(worker.speed_upgrades, cfg.formulas);
   const sizeCost = upgradeCost(worker.size_upgrades, cfg.formulas);
   const xpNeed = xpRequired(worker.level, cfg.formulas);
   const xpPct = Math.min(100, (worker.xp / xpNeed) * 100);
   const tokens = worker.upgrade_tokens ?? 0;
+
+  // Auto-click stats
+  const power = autoClickPower(worker.click_power_level);
+  const nextPower = autoClickPower(worker.click_power_level + 1);
+  const powerCost = autoClickPowerCost(worker.click_power_level);
+  const speedLevel = autoClickSpeedLevel(worker.auto_click_speed);
+  const clickSpeedCost = autoClickSpeedCost(speedLevel);
+  const reductionPerSec = autoClickReductionPerSec(worker.auto_click_speed, worker.click_power_level);
 
   return (
     <div
@@ -178,14 +199,23 @@ function WorkerDetailModal({
         )}
 
         <div className="mb-4 flex items-center gap-2 rounded-lg bg-slate-800/60 px-3 py-2.5 text-sm">
-          <MapPin size={15} className="shrink-0 text-cyan-400" />
-          {loc ? (
+          {onMachine ? (
             <>
+              <Hammer size={15} className="shrink-0 text-amber-400" />
+              <span className="text-slate-100">Working the Cauldron</span>
+              <span className="ml-auto shrink-0 text-xs text-amber-300">−{reductionPerSec.toFixed(2)}s/s</span>
+            </>
+          ) : loc ? (
+            <>
+              <MapPin size={15} className="shrink-0 text-cyan-400" />
               <span className="text-slate-100">{loc.name}</span>
               <span className="ml-auto shrink-0 text-xs text-slate-400">{fmtDuration(trip)} round trip</span>
             </>
           ) : (
-            <span className="italic text-slate-500">Unassigned</span>
+            <>
+              <MapPin size={15} className="shrink-0 text-cyan-400" />
+              <span className="italic text-slate-500">Unassigned</span>
+            </>
           )}
         </div>
 
@@ -216,11 +246,82 @@ function WorkerDetailModal({
           </div>
         )}
 
-        <button onClick={() => onOpenMap(workerIndex)} className="w-full rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500">
-          Assign to a Location →
-        </button>
+        {/* Auto-click (cauldron) upgrades — coin-purchased, scale the worker's hits */}
+        <div className="mb-4 space-y-2 rounded-xl border border-amber-800/40 bg-amber-950/20 p-3">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-400">
+              <Hammer size={13} /> Cauldron Work
+            </span>
+            <span className="text-[11px] text-amber-300/80">−{reductionPerSec.toFixed(2)}s per sec</span>
+          </div>
+
+          <ClickUpgradeBtn
+            icon={<Timer size={14} />}
+            label="Click Speed"
+            detail={`${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + 0.2).toFixed(1)}×`}
+            cost={clickSpeedCost}
+            affordable={coins >= clickSpeedCost}
+            onClick={() => buyClickSpeed(workerIndex)}
+          />
+          <ClickUpgradeBtn
+            icon={<Zap size={14} />}
+            label="Click Power"
+            detail={`Current: −${power.toFixed(2)}s/hit → Next: −${nextPower.toFixed(2)}s/hit`}
+            cost={powerCost}
+            affordable={coins >= powerCost}
+            onClick={() => buyClickPower(workerIndex)}
+          />
+        </div>
+
+        {/* Assignment controls */}
+        <div className="flex gap-2">
+          {onMachine ? (
+            <button
+              onClick={() => { assignToMachine(workerIndex, null); }}
+              className="flex-1 rounded-lg bg-rose-700 py-2.5 font-semibold text-white hover:bg-rose-600"
+            >
+              Recall from Cauldron
+            </button>
+          ) : (
+            <button
+              onClick={() => { assignToMachine(workerIndex, MACHINE_ID); }}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
+            >
+              <Hammer size={16} /> Work the Cauldron
+            </button>
+          )}
+          <button
+            onClick={() => onOpenMap(workerIndex)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+          >
+            <MapPin size={16} /> {onMachine ? "Send to Map" : "Assign to Location"}
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function ClickUpgradeBtn({
+  icon, label, detail, cost, affordable, onClick,
+}: {
+  icon: React.ReactNode; label: string; detail: string; cost: number; affordable: boolean; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={!affordable}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition ${
+        affordable ? "bg-amber-800/40 hover:bg-amber-800/60" : "cursor-not-allowed bg-slate-800/60 opacity-60"
+      }`}
+    >
+      <span className={affordable ? "text-amber-300" : "text-slate-500"}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-slate-100">{label}</span>
+        <span className="block text-[11px] text-slate-400">{detail}</span>
+      </span>
+      <span className={`shrink-0 text-sm font-semibold ${affordable ? "text-amber-200" : "text-slate-500"}`}>🪙 {fmt(cost)}</span>
+    </button>
   );
 }
 

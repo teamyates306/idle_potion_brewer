@@ -20,6 +20,14 @@ import {
 } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
 import {
+  CLICK_SPEED_STEP,
+  autoClickSpeedLevel,
+  autoClickSpeedCost,
+  autoClickPowerCost,
+  autoClickReductionPerSec,
+  autoClickXpPerSec,
+} from "../engine/autoclick";
+import {
   type Quest,
   type QuestDifficulty,
   groupHashesByName,
@@ -106,6 +114,9 @@ function newWorker(index = 0): Worker {
     gather_speed: 1.0,
     retrieval_size: 2.0,
     assigned_location: null,
+    assigned_machine_id: null,
+    auto_click_speed: 1.0,
+    click_power_level: 0,
     flavor_status: pick(STATUS_IDLE),
     speed_upgrades: 0,
     size_upgrades: 0,
@@ -168,9 +179,13 @@ interface GameState {
 
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
+  assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
   hireWorker: () => void;
+  buyClickSpeed: (workerIndex: number) => void;
+  buyClickPower: (workerIndex: number) => void;
+  autoClickTick: (dtSeconds: number) => void;
 
   // machine
   programSlot: (index: number, ingredientId: string | null) => void;
@@ -252,7 +267,8 @@ export const useGameStore = create<GameState>()(
           const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
           const workers = s.workers.map((w, i) =>
             i === workerIndex
-              ? { ...w, assigned_location: locationId, trip_phase: phase,
+              ? { ...w, assigned_location: locationId, assigned_machine_id: null,
+                  trip_phase: phase,
                   trip_started_at: locationId ? now() : null,
                   flavor_status: statusFor(phase, danger) }
               : w
@@ -264,6 +280,87 @@ export const useGameStore = create<GameState>()(
               : s.exploredLocations;
           return { workers, exploredLocations };
         }),
+
+      assignWorkerToMachine: (workerIndex, machineId) =>
+        set((s) => {
+          const workers = s.workers.map((w, i) =>
+            i === workerIndex
+              ? { ...w, assigned_machine_id: machineId,
+                  // machine work and gathering are mutually exclusive
+                  assigned_location: null, trip_started_at: null, trip_phase: "idle" as const,
+                  flavor_status: machineId ? "Hammering the cauldron with great enthusiasm." : pick(STATUS_IDLE) }
+              : w
+          );
+          return { workers };
+        }),
+
+      buyClickSpeed: (workerIndex) =>
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          const level = autoClickSpeedLevel(w.auto_click_speed);
+          const cost = autoClickSpeedCost(level);
+          if (s.coins < cost) return {};
+          return {
+            coins: s.coins - cost,
+            workers: s.workers.map((wk, i) =>
+              i === workerIndex
+                ? { ...wk, auto_click_speed: wk.auto_click_speed + CLICK_SPEED_STEP }
+                : wk
+            ),
+          };
+        }),
+
+      buyClickPower: (workerIndex) =>
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          const cost = autoClickPowerCost(w.click_power_level);
+          if (s.coins < cost) return {};
+          return {
+            coins: s.coins - cost,
+            workers: s.workers.map((wk, i) =>
+              i === workerIndex
+                ? { ...wk, click_power_level: wk.click_power_level + 1 }
+                : wk
+            ),
+          };
+        }),
+
+      autoClickTick: (dt) => {
+        const s = get();
+        const machineWorkers = s.workers.filter((w) => w.assigned_machine_id != null);
+        if (machineWorkers.length === 0) return;
+        // Only "click" when there is an active brew to speed up.
+        const brewing = s.machine.running && !!s.machine.brew_started_at && !s.machine.brew_stalled;
+        if (!brewing) return;
+
+        const cfg = useConfigStore.getState();
+        let totalReductionSecs = 0;
+        const workers = s.workers.map((w) => {
+          if (w.assigned_machine_id == null) return w;
+          totalReductionSecs += autoClickReductionPerSec(w.auto_click_speed, w.click_power_level) * dt;
+          const xpGain = autoClickXpPerSec(w.auto_click_speed) * dt;
+          const leveled = applyLevels(w.level, w.xp + xpGain, cfg.formulas);
+          const levelsGained = leveled.level - w.level;
+          return {
+            ...w,
+            xp: leveled.xp,
+            level: leveled.level,
+            gather_speed: w.gather_speed + levelsGained * 0.05,
+            upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+          };
+        });
+
+        // Advance brew start backward (flat seconds removed), clamped so we never
+        // push it earlier than the full brew duration's worth in one step.
+        const reductionMs = totalReductionSecs * 1000;
+        const machine = {
+          ...s.machine,
+          brew_started_at: (s.machine.brew_started_at ?? now()) - reductionMs,
+        };
+        set({ workers, machine });
+      },
 
       setTripPhase: (workerIndex, phase) =>
         set((s) => {
@@ -499,7 +596,8 @@ export const useGameStore = create<GameState>()(
         if (ingredients.length === 0) return;
         const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
         const brewSecs = brewTime(s.machine, totalToxicity, cfg.formulas, ingredients);
-        const boostMs = brewSecs * 0.05 * 1000;
+        // A human tap removes a flat 0.1s from the remaining brew time.
+        const boostMs = 100;
         const elapsedMs = now() - s.machine.brew_started_at;
         // Clamp so we don't push past 99.9% — the game loop will complete it naturally
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
@@ -667,7 +765,29 @@ export const useGameStore = create<GameState>()(
           // ---------------------------------------------------------------
           let totalWorkerXp = 0;
 
+          // Flat brew-seconds removed per real second by machine-assigned workers.
+          const machineReductionPerSec = s.workers
+            .filter((w) => w.assigned_machine_id != null)
+            .reduce((a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level), 0);
+
           const workersSim = s.workers.map((w) => {
+            // Machine workers earn click XP for the offline window (while the machine ran).
+            if (w.assigned_machine_id != null) {
+              if (!s.machine.running || elapsed <= 0) return w;
+              const xpGained = autoClickXpPerSec(w.auto_click_speed) * elapsed;
+              if (xpGained <= 0) return w;
+              totalWorkerXp += xpGained;
+              const leveled = applyLevels(w.level, w.xp + xpGained, cfg.formulas);
+              const levelsGained = leveled.level - w.level;
+              return {
+                ...w,
+                xp: leveled.xp,
+                level: leveled.level,
+                gather_speed: w.gather_speed + levelsGained * 0.05,
+                upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+              };
+            }
+
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
             if (!loc || !w.trip_started_at) return w;
 
@@ -738,10 +858,13 @@ export const useGameStore = create<GameState>()(
                   (acc, ing) => acc + ing.attributes.toxicity, 0
                 );
 
-                // Stalled brews get a fresh timer (stall time doesn't count as brew time)
-                let brewElapsedSecs = s.machine.brew_stalled
+                // Stalled brews get a fresh timer (stall time doesn't count as brew time).
+                // Machine-assigned workers shave flat seconds off the brew each real
+                // second, so effective brew progress runs at (1 + reduction) speed.
+                const realElapsed = s.machine.brew_stalled
                   ? 0
                   : (now() - s.machine.brew_started_at) / 1000;
+                let brewElapsedSecs = realElapsed * (1 + machineReductionPerSec);
                 let stalled = false;
 
                 // Recompute each iteration so machine level-ups affect subsequent brew times
@@ -822,7 +945,7 @@ export const useGameStore = create<GameState>()(
                   gathers: totalGathers,
                   potionsBrewedCount: totalPotionsBrewedCount,
                   coinsEarned: Math.floor(coins - s.coins),
-                  workerXpEarned: totalWorkerXp,
+                  workerXpEarned: Math.round(totalWorkerXp),
                   machineXpEarned: totalMachineXp,
                 }
               : null;
@@ -888,6 +1011,20 @@ export const useGameStore = create<GameState>()(
         activeQuests: s.activeQuests,
         lastSeen: s.lastSeen,
       }),
+      // Backfill fields added in newer versions onto persisted workers.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<GameState>;
+        const workers = (p.workers ?? current.workers).map((w) => {
+          const wp = w as Partial<Worker>;
+          return {
+            ...w,
+            assigned_machine_id: wp.assigned_machine_id ?? null,
+            auto_click_speed: wp.auto_click_speed ?? 1.0,
+            click_power_level: wp.click_power_level ?? 0,
+          };
+        });
+        return { ...current, ...p, workers };
+      },
     }
   )
 );

@@ -85,6 +85,7 @@ export function useGameLoop(): LoopProgress {
 
       const g = useGameStore.getState();
       const now = Date.now();
+      const dt = (now - lastWall) / 1000;
 
       // If a large wall-clock gap opened up (tab was backgrounded and rAF was
       // throttled), catch up via the offline simulation. This advances trip and
@@ -97,6 +98,9 @@ export function useGameLoop(): LoopProgress {
         return;
       }
       lastWall = now;
+
+      // Workers assigned to a machine shave flat seconds off the active brew.
+      if (dt > 0) g.autoClickTick(dt);
 
       // ---- all workers ----
       const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {
