@@ -19,7 +19,7 @@ import {
   upgradeCost,
 } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
-import { pushToast } from "../util/toast";
+import { pushGameEvent } from "../util/gameEvents";
 
 // ---- Worker flavor statuses (see §8 — dry RuneScape humour, dread late game) ----
 const STATUS_IDLE = [
@@ -166,6 +166,10 @@ interface GameState {
   // economy
   sellPotion: (hash: string, count: number) => void;
   sellAll: () => void;
+  sellRandom: () => void;
+
+  // active-click
+  clickBrew: () => void;
 
   // upgrades
   buyWorkerSpeed: (workerIndex?: number) => void;
@@ -301,7 +305,7 @@ export const useGameStore = create<GameState>()(
 
         for (const [id, n] of Object.entries(gathered)) {
           const name = cfg.ingredients[id]?.name ?? id;
-          pushToast(`+${n} ${name}`, "green");
+          pushGameEvent("trough", `+${n} ${name}`);
         }
       },
 
@@ -402,9 +406,9 @@ export const useGameStore = create<GameState>()(
 
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
-        pushToast(`${label} brewed`, "purple");
+        pushGameEvent("cauldron", label);
         if (autoSell) {
-          pushToast(`Potion sold for 🪙 ${(potion.value * outputs).toLocaleString()}`, "amber");
+          pushGameEvent("pile", `+${(potion.value * outputs).toLocaleString()} 🪙`);
         }
       },
 
@@ -429,7 +433,7 @@ export const useGameStore = create<GameState>()(
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
         set({ coins: s.coins + earned, potionInv });
-        pushToast(`Potion sold for 🪙 ${earned.toLocaleString()}`, "amber");
+        pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
       },
 
       sellAll: () => {
@@ -445,7 +449,42 @@ export const useGameStore = create<GameState>()(
           totalEarned += earned;
         }
         set({ coins, potionInv: {} });
-        if (totalEarned > 0) pushToast(`Potions sold for 🪙 ${totalEarned.toLocaleString()}`, "amber");
+        if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
+      },
+
+      sellRandom: () => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        const entries = Object.entries(s.potionInv).filter(([, c]) => c > 0);
+        if (entries.length === 0) return;
+        const [hash] = entries[Math.floor(Math.random() * entries.length)];
+        const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
+        if (ingredients.length === 0) return;
+        const potion = describePotion(ingredients, cfg.formulas);
+        const potionInv = { ...s.potionInv };
+        potionInv[hash] = (potionInv[hash] ?? 1) - 1;
+        if (potionInv[hash] <= 0) delete potionInv[hash];
+        set({ coins: s.coins + potion.value, potionInv });
+        pushGameEvent("pile", `+${potion.value.toLocaleString()} 🪙`);
+      },
+
+      clickBrew: () => {
+        const s = get();
+        if (!s.machine.running || !s.machine.brew_started_at || s.machine.brew_stalled) return;
+        const cfg = useConfigStore.getState();
+        const slotIds = s.machine.recipe_slots
+          .slice(0, s.machine.unlocked_slots)
+          .filter((x): x is string => !!x);
+        if (slotIds.length === 0) return;
+        const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
+        if (ingredients.length === 0) return;
+        const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
+        const brewSecs = brewTime(s.machine, totalToxicity, cfg.formulas, ingredients);
+        const boostMs = brewSecs * 0.05 * 1000;
+        const elapsedMs = now() - s.machine.brew_started_at;
+        // Clamp so we don't push past 99.9% — the game loop will complete it naturally
+        const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
+        set({ machine: { ...s.machine, brew_started_at: now() - newElapsedMs } });
       },
 
       buyWorkerSpeed: (workerIndex = 0) =>

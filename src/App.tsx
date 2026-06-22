@@ -8,7 +8,7 @@ import PotionView from "./components/PotionView";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
 import Modal from "./components/ui/Modal";
-import ToastContainer from "./components/ui/ToastContainer";
+import FATLayer from "./components/ui/FATLayer";
 import Atmosphere from "./components/Atmosphere";
 import { useGameStore } from "./store/gameStore";
 import { useSettingsStore } from "./store/settingsStore";
@@ -90,7 +90,7 @@ export default function App() {
           >
             <div className="flex items-center gap-3">
               {toastsEnabled ? <Bell size={16} className="text-amber-400" /> : <BellOff size={16} />}
-              <span>Notifications</span>
+              <span>Floating text</span>
             </div>
             <div className={`h-5 w-9 rounded-full transition-colors ${toastsEnabled ? "bg-amber-500" : "bg-slate-700"}`}>
               <div className={`mt-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${toastsEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
@@ -99,7 +99,7 @@ export default function App() {
         </Modal>
       )}
 
-      <ToastContainer />
+      <FATLayer />
 
       {welcomeBack && (
         <Modal title="Welcome Back, Brewmaster" onClose={dismissWelcome} accent="#22d3ee">
