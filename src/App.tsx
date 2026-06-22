@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText } from "lucide-react";
+import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText, ArrowUpCircle } from "lucide-react";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
+import UpgradesView from "./components/UpgradesView";
 import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
@@ -16,7 +17,7 @@ import { useGameStore } from "./store/gameStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "dev" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "dev" | null;
 
 export default function App() {
   const welcomeBack = useGameStore((s) => s.welcomeBack);
@@ -75,17 +76,27 @@ export default function App() {
         <Workshop onOpen={(p, machineId?) => { if (p === "map") setMapLockedWorker(null); if (machineId) setMachineTabId(machineId); setPanel(p); }} />
       </main>
 
-      {/* Quests entry point — left edge, only once unlocked (>=5 unique potion names) */}
-      {questsUnlocked && (
+      {/* Left-edge button stack */}
+      <div className="absolute left-2 top-1/2 z-[3] flex -translate-y-1/2 flex-col items-center gap-2">
+        {questsUnlocked && (
+          <button
+            onClick={() => setPanel("quests")}
+            className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+            title="Quest Board"
+          >
+            <ScrollText size={18} className="text-amber-400" />
+            <span>Quests</span>
+          </button>
+        )}
         <button
-          onClick={() => setPanel("quests")}
-          className="absolute left-2 top-1/2 z-[3] flex -translate-y-1/2 flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
-          title="Quest Board"
+          onClick={() => setPanel("upgrades")}
+          className="flex flex-col items-center gap-1 rounded-xl border border-violet-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-violet-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+          title="Global Upgrades"
         >
-          <ScrollText size={18} className="text-amber-400" />
-          <span>Quests</span>
+          <ArrowUpCircle size={18} className="text-violet-400" />
+          <span>Upgrades</span>
         </button>
-      )}
+      </div>
 
       {/* Hidden dev toggle */}
       <button
@@ -102,7 +113,8 @@ export default function App() {
       {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setMapLockedWorker(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} initialMachineId={machineTabId} />}
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
-      {panel === "quests" && <QuestView   onClose={() => setPanel(null)} />}
+      {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
+      {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
 
       {settingsOpen && (

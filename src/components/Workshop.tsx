@@ -1,6 +1,6 @@
 import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
 import { useDayNight, type DayNightState } from "../hooks/useDayNight";
@@ -78,6 +78,7 @@ function MachineColumn({
   onManage: () => void;
 }) {
   const clickBrew = useGameStore((s) => s.clickBrew);
+  const player_click_power_level = useGameStore((s) => s.player_click_power_level);
   const cfg = useConfigStore();
 
   const heatRef    = useRef(0);
@@ -205,7 +206,8 @@ function MachineColumn({
 
     if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
       const rect = cauldronRef.current.getBoundingClientRect();
-      spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.25, text: "-0.1s", color: "#ffffff", size: "sm" });
+      const power = playerClickPower(player_click_power_level);
+      spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.25, text: `-${power.toFixed(2)}s`, color: "#ffffff", size: "sm" });
     }
   };
 

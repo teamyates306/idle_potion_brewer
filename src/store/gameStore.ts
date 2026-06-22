@@ -41,6 +41,24 @@ export const QUEST_COOLDOWN_MS = 60 * 60 * 1000;
 const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
 export const MACHINE_COSTS = [0, 5_000, 250_000, 10_000_000, 100_000_000];
 
+// ---- Global player upgrade helpers ----------------------------------------
+export function playerClickPower(level: number): number {
+  return 0.1 + 0.05 * level;
+}
+export function playerClickPowerCost(level: number): number {
+  return Math.floor(500 * Math.pow(1.8, level));
+}
+
+export const GLOBAL_UNLOCKS = [
+  {
+    id: "alchemist_spectacles",
+    name: "Alchemist Spectacles",
+    description: "Reveals hidden attribute synergies in the potion lab.",
+    cost: 10_000,
+    icon: "🔭",
+  },
+] as const;
+
 // ---- Worker flavor statuses -----------------------------------------------
 const STATUS_IDLE = [
   "Leaning on a rake, philosophically.",
@@ -215,6 +233,12 @@ interface GameState {
   // lifecycle
   applyOffline: () => void;
   dismissWelcome: () => void;
+  // global player upgrades
+  player_click_power_level: number;
+  unlocked_globals: string[];
+  buyPlayerClickPower: () => void;
+  buyGlobalUnlock: (id: string) => void;
+
   hardReset: () => void;
 }
 
@@ -265,6 +289,8 @@ export const useGameStore = create<GameState>()(
       questsUnlocked: false,
       activeQuests: [],
       questCooldowns: {},
+      player_click_power_level: 0,
+      unlocked_globals: [],
 
       // ---- Workers ----------------------------------------------------------
 
@@ -680,7 +706,7 @@ export const useGameStore = create<GameState>()(
         if (ingredients.length === 0) return;
         const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
         const brewSecs = brewTime(machine, totalToxicity, cfg.formulas, ingredients);
-        const boostMs = 100;
+        const boostMs = playerClickPower(s.player_click_power_level) * 1000;
         const elapsedMs = now() - machine.brew_started_at;
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
         set({
@@ -1064,6 +1090,23 @@ export const useGameStore = create<GameState>()(
           questsUnlocked: false,
           activeQuests: [],
           questCooldowns: {},
+          player_click_power_level: 0,
+          unlocked_globals: [],
+        }),
+
+      buyPlayerClickPower: () =>
+        set((s) => {
+          const cost = playerClickPowerCost(s.player_click_power_level);
+          if (s.coins < cost) return s;
+          return { coins: s.coins - cost, player_click_power_level: s.player_click_power_level + 1 };
+        }),
+
+      buyGlobalUnlock: (id: string) =>
+        set((s) => {
+          if (s.unlocked_globals.includes(id)) return s;
+          const unlock = GLOBAL_UNLOCKS.find((u) => u.id === id);
+          if (!unlock || s.coins < unlock.cost) return s;
+          return { coins: s.coins - unlock.cost, unlocked_globals: [...s.unlocked_globals, id] };
         }),
     }),
     {
@@ -1083,6 +1126,8 @@ export const useGameStore = create<GameState>()(
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
+        player_click_power_level: s.player_click_power_level,
+        unlocked_globals: s.unlocked_globals,
         lastSeen: s.lastSeen,
       }),
       merge: (persisted, current) => {
@@ -1105,7 +1150,14 @@ export const useGameStore = create<GameState>()(
         } else {
           machines = current.machines;
         }
-        return { ...current, ...p, workers, machines };
+        return {
+          ...current,
+          ...p,
+          workers,
+          machines,
+          player_click_power_level: p.player_click_power_level ?? 0,
+          unlocked_globals: p.unlocked_globals ?? [],
+        };
       },
     }
   )
