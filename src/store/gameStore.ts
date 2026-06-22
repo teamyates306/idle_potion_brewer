@@ -19,7 +19,18 @@ import {
   upgradeCost,
 } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
+import {
+  type Quest,
+  type QuestDifficulty,
+  groupHashesByName,
+  generateQuestSet,
+  generateQuest,
+  questProgress,
+  deductQuest,
+} from "../engine/quests";
 import { pushGameEvent } from "../util/gameEvents";
+
+const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
 
 // ---- Worker flavor statuses (see §8 — dry RuneScape humour, dread late game) ----
 const STATUS_IDLE = [
@@ -151,6 +162,10 @@ interface GameState {
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
 
+  // quests
+  questsUnlocked: boolean;
+  activeQuests: Quest[];
+
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
   completeTrip: (workerIndex: number) => void;
@@ -170,6 +185,10 @@ interface GameState {
   // active-click
   clickBrew: () => void;
 
+  // quests
+  refreshQuests: () => void;
+  completeQuest: (questId: string) => void;
+
   // upgrades
   buyWorkerSpeed: (workerIndex?: number) => void;
   buyWorkerSize: (workerIndex?: number) => void;
@@ -185,6 +204,13 @@ interface GameState {
 }
 
 const now = () => Date.now();
+
+function uniqueNameGroups(
+  discoveredPotions: string[],
+  cfg: ReturnType<typeof useConfigStore.getState>
+) {
+  return groupHashesByName(discoveredPotions ?? [], cfg.ingredients, cfg.formulas);
+}
 
 function unlockAttributes(
   ingredientId: string,
@@ -216,6 +242,8 @@ export const useGameStore = create<GameState>()(
       exploredLocations: ["hollow"],
       lastSeen: now(),
       welcomeBack: null,
+      questsUnlocked: false,
+      activeQuests: [],
 
       assignWorker: (workerIndex, locationId) =>
         set((s) => {
@@ -414,6 +442,9 @@ export const useGameStore = create<GameState>()(
         if (autoSell) {
           pushGameEvent("pile", `+${(potion.value * outputs).toLocaleString()} 🪙`);
         }
+
+        // A newly discovered name may unlock quests / fill an empty quest slot.
+        if (!prevDiscovered.includes(potion.hash)) get().refreshQuests();
       },
 
       toggleAutoSellPotion: (hash) =>
@@ -473,6 +504,46 @@ export const useGameStore = create<GameState>()(
         // Clamp so we don't push past 99.9% — the game loop will complete it naturally
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
         set({ machine: { ...s.machine, brew_started_at: now() - newElapsedMs } });
+      },
+
+      refreshQuests: () => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        const groups = uniqueNameGroups(s.discoveredPotions, cfg);
+        const unlocked = s.questsUnlocked || groups.length >= UNIQUE_NAMES_TO_UNLOCK_QUESTS;
+        if (!unlocked) return;
+        // First unlock, or repair a set that lost quests → regenerate to 3 (one per tier).
+        if (!s.questsUnlocked || s.activeQuests.length < 3) {
+          const have = new Set(s.activeQuests.map((q) => q.difficulty));
+          const filled = [...s.activeQuests];
+          for (const d of (["Easy", "Medium", "Challenging"] as QuestDifficulty[])) {
+            if (!have.has(d)) filled.push(generateQuest(d, groups, cfg.ingredients));
+          }
+          set({
+            questsUnlocked: true,
+            activeQuests: filled.length === 3 ? filled : generateQuestSet(groups, cfg.ingredients),
+          });
+        } else if (!s.questsUnlocked) {
+          set({ questsUnlocked: true });
+        }
+      },
+
+      completeQuest: (questId) => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        const quest = s.activeQuests.find((q) => q.id === questId);
+        if (!quest) return;
+        const { complete } = questProgress(quest, s.potionInv, cfg.ingredients, cfg.formulas);
+        if (!complete) return;
+
+        const potionInv = deductQuest(quest, s.potionInv, cfg.ingredients, cfg.formulas);
+        // Replace with a fresh quest of the SAME difficulty tier.
+        const groups = uniqueNameGroups(s.discoveredPotions, cfg);
+        const replacement = generateQuest(quest.difficulty, groups, cfg.ingredients);
+        const activeQuests = s.activeQuests.map((q) => (q.id === questId ? replacement : q));
+
+        set({ coins: s.coins + quest.reward, potionInv, activeQuests });
+        pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
       },
 
       buyWorkerSpeed: (workerIndex = 0) =>
@@ -813,6 +884,8 @@ export const useGameStore = create<GameState>()(
         autoSellHashes: s.autoSellHashes,
         unlockedLocations: s.unlockedLocations,
         exploredLocations: s.exploredLocations,
+        questsUnlocked: s.questsUnlocked,
+        activeQuests: s.activeQuests,
         lastSeen: s.lastSeen,
       }),
     }
