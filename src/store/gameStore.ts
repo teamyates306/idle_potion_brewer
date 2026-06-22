@@ -548,26 +548,51 @@ export const useGameStore = create<GameState>()(
           const elapsed = Math.max(0, (now() - s.lastSeen) / 1000);
           let inv = { ...s.ingredientInv };
           const discovered = new Set(s.discovered);
+          let discoveredAttributes = s.discoveredAttributes ?? [];
           let totalGathers = 0;
 
-          for (const w of s.workers) {
+          // ---------------------------------------------------------------
+          // 1. Worker trip simulation — gathers, XP, level-ups
+          // ---------------------------------------------------------------
+          const workersSim = s.workers.map((w) => {
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
-            if (loc && elapsed > 1) {
-              const gathers = offlineGathers(elapsed, loc.distance, w.gather_speed, w.retrieval_size);
-              totalGathers += Math.floor(gathers);
-              const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
-              for (const d of loc.drops) {
-                const ev = Math.round((Math.floor(gathers) * d.weight) / totalW);
-                if (ev > 0) {
-                  inv[d.ingredientId] = (inv[d.ingredientId] ?? 0) + ev;
-                  discovered.add(d.ingredientId);
-                }
+            if (!loc || elapsed <= 1) return w;
+
+            const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
+            const trips = Math.floor(elapsed / tripSecs);
+            if (trips === 0) return w;
+
+            // Distribute gathered items proportionally by drop weight
+            const totalItems = trips * w.retrieval_size;
+            totalGathers += Math.floor(totalItems);
+            const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
+            for (const d of loc.drops) {
+              const ev = Math.round((Math.floor(totalItems) * d.weight) / totalW);
+              if (ev > 0) {
+                inv[d.ingredientId] = (inv[d.ingredientId] ?? 0) + ev;
+                discovered.add(d.ingredientId);
+                discoveredAttributes = unlockAttributes(d.ingredientId, discoveredAttributes, cfg);
               }
             }
-          }
 
-          // --- Offline brew simulation ---
-          // Ingredient gathering above runs first so freshly gathered items are available.
+            // XP: same formula as completeTrip (5 + distance + danger×3 per trip)
+            const xpPerTrip = Math.round(5 + loc.distance + loc.danger * 3);
+            const leveled = applyLevels(w.level, w.xp + xpPerTrip * trips, cfg.formulas);
+            const levelsGained = leveled.level - w.level;
+
+            return {
+              ...w,
+              xp: leveled.xp,
+              level: leveled.level,
+              gather_speed: w.gather_speed + levelsGained * 0.05,
+              upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+            };
+          });
+
+          // ---------------------------------------------------------------
+          // 2. Brewing machine simulation — brews, auto-sell, XP, level-ups
+          //    Runs after gathering so newly collected ingredients are usable.
+          // ---------------------------------------------------------------
           let potionInv = { ...s.potionInv };
           let coins = s.coins;
           let machineSim = { ...s.machine };
@@ -585,19 +610,20 @@ export const useGameStore = create<GameState>()(
 
               if (ingredients.length > 0) {
                 const totalToxicity = ingredients.reduce(
-                  (acc, ing) => acc + ing.attributes.toxicity,
-                  0
+                  (acc, ing) => acc + ing.attributes.toxicity, 0
                 );
-                const brewSecs = brewTime(s.machine, totalToxicity, cfg.formulas, ingredients);
 
-                // Stalled brews don't carry elapsed time — restart timer from 0
+                // Stalled brews get a fresh timer (stall time doesn't count as brew time)
                 let brewElapsedSecs = s.machine.brew_stalled
                   ? 0
                   : (now() - s.machine.brew_started_at) / 1000;
                 let stalled = false;
 
-                while (brewElapsedSecs >= brewSecs) {
-                  // Check ingredient availability (inv already includes offline gathers)
+                // Recompute each iteration so machine level-ups affect subsequent brew times
+                let currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+
+                while (brewElapsedSecs >= currentBrewSecs) {
+                  // Check ingredients
                   const need: Record<string, number> = {};
                   for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
                   let hasAll = true;
@@ -606,22 +632,23 @@ export const useGameStore = create<GameState>()(
                   }
                   if (!hasAll) { stalled = true; break; }
 
-                  // Consume ingredients
+                  // Consume
                   for (const [id, n] of Object.entries(need)) inv[id] = (inv[id] ?? 0) - n;
 
-                  // Produce potion
+                  // Produce
                   const potion = describePotion(ingredients, cfg.formulas);
                   const outputs = rollMultiBrew(
                     effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas)
                   );
 
+                  // Auto-sell or stockpile
                   if ((s.autoSellHashes ?? []).includes(potion.hash)) {
                     coins += potion.value * outputs;
                   } else {
                     potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
                   }
 
-                  // XP and levelling
+                  // Machine XP and level-ups
                   const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
                   const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
                   const levelsGained = leveled.level - machineSim.level;
@@ -633,25 +660,33 @@ export const useGameStore = create<GameState>()(
                     upgrade_tokens: (machineSim.upgrade_tokens ?? 0) + levelsGained,
                   };
 
+                  // Recalculate brew time after any speed increase from levelling
+                  if (levelsGained > 0) {
+                    currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+                  }
+
                   if (!discoveredPotions.includes(potion.hash)) {
                     discoveredPotions = [...discoveredPotions, potion.hash];
                   }
 
-                  brewElapsedSecs -= brewSecs;
+                  brewElapsedSecs -= currentBrewSecs;
                 }
 
-                // Preserve partial brew progress in brew_started_at
+                // Preserve partial brew progress so the timer is accurate on resume
                 machineSim = {
                   ...machineSim,
                   brew_stalled: stalled,
                   brew_started_at: stalled
                     ? now()
-                    : now() - Math.round(brewElapsedSecs * 1000),
+                    : now() - Math.round(Math.max(0, brewElapsedSecs) * 1000),
                 };
               }
             }
           }
 
+          // ---------------------------------------------------------------
+          // 3. Assemble final state
+          // ---------------------------------------------------------------
           const hoursAway = elapsed / 3600;
           const welcomeBack: WelcomeBack | null =
             hoursAway > cfg.formulas.offline_threshold_hours
@@ -659,13 +694,16 @@ export const useGameStore = create<GameState>()(
               : null;
 
           const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;
+
+          // Long offline: reset trip timers (XP gains already applied above)
           const workers = isLongOffline
-            ? s.workers.map((w) => ({
+            ? workersSim.map((w) => ({
                 ...w,
                 trip_started_at: w.assigned_location ? now() : null,
                 trip_phase: (w.assigned_location ? "outbound" : "idle") as Worker["trip_phase"],
               }))
-            : s.workers;
+            : workersSim;
+
           const machine: BrewingMachine = isLongOffline
             ? { ...machineSim, brew_started_at: machineSim.running ? now() : null }
             : machineSim;
@@ -676,6 +714,7 @@ export const useGameStore = create<GameState>()(
             potionInv,
             discoveredPotions,
             discovered: Array.from(discovered),
+            discoveredAttributes,
             workers,
             machine,
             welcomeBack,
