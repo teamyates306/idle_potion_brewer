@@ -44,7 +44,7 @@ export default function ToastContainer() {
   const remove = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-3 z-[60] flex flex-col items-end gap-1.5">
+    <div className="pointer-events-none fixed bottom-4 right-3 z-[1] flex flex-col items-end gap-1.5">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onRemove={() => remove(t.id)} />
       ))}
