@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -21,7 +21,6 @@ const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
 
-// Per-machine visual identity
 const MACHINE_HUE    = [0, 120, 200, 270, 330];
 const MACHINE_ACCENT = ["#f59e0b", "#22c55e", "#38bdf8", "#a855f7", "#ef4444"];
 const MACHINE_SPARK_COLORS = [
@@ -93,7 +92,7 @@ function MachineColumn({
   const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
   const sparkColors = MACHINE_SPARK_COLORS[machineIdx] ?? MACHINE_SPARK_COLORS[0];
 
-  // Decay heat at 60fps
+  // Decay heat
   useEffect(() => {
     let raf: number;
     let lastT = 0;
@@ -111,7 +110,7 @@ function MachineColumn({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Remove sparks after animation
+  // Remove expired sparks
   useEffect(() => {
     if (sparks.length === 0) return;
     const t = setTimeout(() => {
@@ -121,7 +120,7 @@ function MachineColumn({
     return () => clearTimeout(t);
   }, [sparks]);
 
-  // Subscribe to cauldron events for THIS machine's FAT
+  // Subscribe to cauldron events for THIS machine
   useEffect(() => {
     return subscribeGameEvent((evt) => {
       if (evt.channel !== "cauldron" || evt.machineId !== machine.id) return;
@@ -141,13 +140,12 @@ function MachineColumn({
     });
   }, [machine.id]);
 
-  // Machine-assigned workers for this machine
+  // Auto-worker FAT
   const machineWorkers = workers
     .map((w, i) => ({ w, i }))
     .filter((x) => x.w.assigned_machine_id === machine.id);
   const machineWorkersSig = machineWorkers.map(({ w }) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`).join(",");
 
-  // Auto-worker FAT hits
   useEffect(() => {
     const ids: number[] = [];
     machineWorkers.forEach(({ w }, order) => {
@@ -223,7 +221,7 @@ function MachineColumn({
       {/* Conveyor in */}
       <ConveyorWithIngredients running={brewActive} categories={recipeCategories} accentColor={accent} />
 
-      {/* Cauldron */}
+      {/* Cauldron — cog button in top-right corner */}
       <div
         ref={cauldronRef}
         onClick={handleCauldronClick}
@@ -238,6 +236,15 @@ function MachineColumn({
         }}
         title={machine.running && !machine.brew_stalled ? "Click to speed up brewing!" : ""}
       >
+        {/* Cog — top-right corner, opens MachineView for this machine */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onManage(); }}
+          className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-600/70 bg-slate-900/80 text-slate-400 shadow backdrop-blur-sm transition hover:bg-slate-700 hover:text-slate-100 active:scale-90"
+          title={`Manage ${machine.name}`}
+        >
+          <Settings2 size={11} />
+        </button>
+
         <div
           style={{
             filter: [
@@ -317,7 +324,7 @@ function MachineColumn({
         />
       </div>
 
-      {/* Status text */}
+      {/* Status + machine name */}
       {(() => {
         const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
         if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-500">No recipe</span>;
@@ -325,17 +332,7 @@ function MachineColumn({
         if (machine.brew_stalled) return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Waiting…</span>;
         return <span className="mt-1 text-[10px] text-amber-300/70">Brewing…</span>;
       })()}
-
-      {/* Machine name + manage button */}
-      <div className="mt-1.5 text-center">
-        <div className="text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onManage(); }}
-          className="mt-1 flex items-center gap-1 rounded-lg border border-slate-700/60 bg-slate-900/60 px-2 py-1 text-[9px] uppercase tracking-wider text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition active:scale-95"
-        >
-          <Settings2 size={10} /> Manage
-        </button>
-      </div>
+      <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
 
       {/* Conveyor out */}
       <ConveyorWithPotion running={brewActive} accentColor={accent} />
@@ -343,26 +340,102 @@ function MachineColumn({
   );
 }
 
+// ── Right-rail badge ──────────────────────────────────────────────────────────
+function RailBadge({
+  icon, label, onClick, top, glow = false, badge,
+}: {
+  icon: React.ReactNode; label: string; onClick: () => void;
+  top: number; glow?: boolean; badge?: string;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
+        glow
+          ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
+          : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
+      }`}
+      style={{ top }}
+    >
+      {icon}
+      <span>{label}</span>
+      {badge && (
+        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">{badge}</span>
+      )}
+    </button>
+  );
+}
+
 // ── Main Workshop ─────────────────────────────────────────────────────────────
 export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: number) => void }) {
-  const workers     = useGameStore((s) => s.workers);
-  const machines    = useGameStore((s) => s.machines);
-  const potionInv   = useGameStore((s) => s.potionInv);
+  const workers      = useGameStore((s) => s.workers);
+  const machines     = useGameStore((s) => s.machines);
+  const potionInv    = useGameStore((s) => s.potionInv);
   const loopProgress = useGameLoop();
-  const dn          = useDayNight();
+  const dn           = useDayNight();
 
-  const troughRef = useRef<HTMLDivElement>(null);
-  const pileRef   = useRef<HTMLDivElement>(null);
+  // Refs for the scrollable container and each content section
+  const scrollRef        = useRef<HTMLDivElement>(null);
+  const outerRef         = useRef<HTMLDivElement>(null);
+  const workerSectionRef = useRef<HTMLDivElement>(null);
+  const troughRef        = useRef<HTMLDivElement>(null);
+  const machineSectionRef= useRef<HTMLDivElement>(null);
+  const pileSectionRef   = useRef<HTMLDivElement>(null);
 
-  // Global FAT subscription (trough, pile, pile-burst only; cauldron is per-column)
+  // Badge Y positions derived from section layout
+  const [badgeY, setBadgeY] = useState({ workers: 150, stash: 240, brewing: 400, market: 560 });
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const outer = outerRef.current;
+      if (!outer) return;
+      const outerTop = outer.getBoundingClientRect().top;
+      const center = (el: HTMLElement | null) => {
+        if (!el) return 0;
+        const r = el.getBoundingClientRect();
+        return r.top - outerTop + r.height / 2;
+      };
+      setBadgeY({
+        workers: center(workerSectionRef.current),
+        stash:   center(troughRef.current),
+        brewing: center(machineSectionRef.current),
+        market:  center(pileSectionRef.current),
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    const el = outerRef.current;
+    if (el) ro.observe(el);
+    return () => ro.disconnect();
+  }, [machines.length]);
+
+  // Pointer drag-to-scroll
+  const drag = useRef({ active: false, startX: 0, startLeft: 0 });
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    drag.current = { active: true, startX: e.clientX, startLeft: el.scrollLeft };
+    el.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft = drag.current.startLeft - (e.clientX - drag.current.startX);
+  };
+  const onPointerEnd = () => { drag.current.active = false; setDragging(false); };
+
+  // Global FAT for trough / pile channels
   useEffect(() => {
     return subscribeGameEvent((evt) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
-      if (evt.channel === "cauldron") return; // handled per MachineColumn
+      if (evt.channel === "cauldron") return;
 
-      const refEl = evt.channel === "trough" ? troughRef.current : pileRef.current;
+      const refEl = evt.channel === "trough" ? troughRef.current : pileSectionRef.current;
       if (!refEl) return;
-
       const rect = refEl.getBoundingClientRect();
       const cx   = rect.left + rect.width  / 2;
       const cy   = rect.top  + rect.height / 3;
@@ -372,7 +445,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         for (let i = 0; i < count; i++) {
           spawnFAT({
             x: cx + (Math.random() - 0.5) * rect.width  * 0.9,
-            y: cy + Math.random()         * rect.height * 0.4,
+            y: cy + Math.random()         * rect.height  * 0.4,
             text: evt.text,
             color: CHANNEL_COLOR["pile-burst"],
             arcX: (Math.random() - 0.5) * 130,
@@ -398,7 +471,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   useEffect(() => { setDisplayPotionCount(potionCount); }, [potionCount]);
 
   const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
-  const anyMachineActive = loopProgress.machines.some((m) => m.brewActive);
+  const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
+  const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
+  const anyMachineTokens  = machines.some((m) => (m.upgrade_tokens ?? 0) > 0);
 
   const TRACK = 68;
   const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {
@@ -417,117 +492,117 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   });
 
   const totalWidth = Math.max(448, machines.length * COL_W);
-  const anyTokens  = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
-  const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
 
   return (
-    <div className="overflow-x-auto">
-      <div className="mx-auto flex flex-col" style={{ minWidth: totalWidth, maxWidth: Math.max(totalWidth, 600) }}>
+    <div ref={outerRef} className="relative overflow-hidden">
 
-        {/* Workshop wall */}
-        <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
+      {/* ── Right-rail badges — outside scroll, always fixed to the right ── */}
+      <div className="pointer-events-none absolute inset-0 z-20">
+        <RailBadge
+          icon={<User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
+          label="Workers"
+          onClick={() => onOpen("worker")}
+          top={badgeY.workers}
+          glow={anyTokens}
+          badge={anyTokens ? `✦${totalWorkerTokens}` : undefined}
+        />
+        <RailBadge
+          icon={<Package size={14} className="text-amber-400" />}
+          label="Stash"
+          onClick={() => onOpen("inventory")}
+          top={badgeY.stash}
+        />
+        <RailBadge
+          icon={<Settings2 size={14} className={anyMachineTokens ? "text-yellow-400" : "text-amber-400"} />}
+          label="Brewing"
+          onClick={() => onOpen("machine")}
+          top={badgeY.brewing}
+          glow={anyMachineTokens}
+          badge={anyMachineTokens ? `✦${machines.reduce((a, m) => a + (m.upgrade_tokens ?? 0), 0)}` : undefined}
+        />
+        <RailBadge
+          icon={<ShoppingBag size={14} className="text-purple-400" />}
+          label="Market"
+          onClick={() => onOpen("potion")}
+          top={badgeY.market}
+        />
+      </div>
 
-        {/* Worker track */}
-        <div className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
-          {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
-            if (workers[idx]?.assigned_machine_id != null) return null;
-            return (
-              <div
-                key={idx}
-                className="absolute"
-                style={{
-                  bottom: 10, left: "50%",
-                  transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
-                  opacity,
-                  transition: "transform 90ms linear, opacity 90ms linear",
-                }}
-              >
-                <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
-              </div>
-            );
-          })}
+      {/* ── Horizontally draggable scroll area ── */}
+      <div
+        ref={scrollRef}
+        className={dragging ? "cursor-grabbing overflow-x-scroll" : "cursor-grab overflow-x-scroll"}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x" } as React.CSSProperties}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+      >
+        <div className="mx-auto flex flex-col" style={{ minWidth: totalWidth, maxWidth: Math.max(totalWidth, 600) }}>
 
-          <ManagementBadge
-            icon={<User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
-            label="Workers"
-            onClick={() => onOpen("worker")}
-            glow={anyTokens}
-            badge={anyTokens ? `✦${totalWorkerTokens}` : undefined}
-          />
-        </div>
+          {/* Workshop wall */}
+          <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} />
 
-        {/* Trough strip */}
-        <div className="relative flex flex-col items-center">
-          <div
-            ref={troughRef}
-            className="relative h-8 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
-            style={{ width: Math.min(totalWidth - 32, Math.max(160, machines.length * 80)) }}
-          >
-            <div className="absolute inset-x-2 top-1 h-1.5 rounded-full bg-amber-800/50" />
+          {/* Worker track */}
+          <div ref={workerSectionRef} className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
+            {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
+              if (workers[idx]?.assigned_machine_id != null) return null;
+              return (
+                <div
+                  key={idx}
+                  className="absolute"
+                  style={{
+                    bottom: 10, left: "50%",
+                    transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
+                    opacity,
+                    transition: "transform 90ms linear, opacity 90ms linear",
+                  }}
+                >
+                  <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
+                </div>
+              );
+            })}
           </div>
-          <ManagementBadge
-            icon={<Package size={14} className="text-amber-400" />}
-            label="Stash"
-            onClick={() => onOpen("inventory")}
-          />
-        </div>
 
-        {/* Machine columns */}
-        <div className="flex justify-center py-1">
-          {machines.map((machine, idx) => (
-            <MachineColumn
-              key={machine.id}
-              machine={machine}
-              machineIdx={idx}
-              loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
-              workers={workers}
-              onManage={() => onOpen("machine", machine.id)}
-            />
-          ))}
-        </div>
-
-        {/* Potion pile strip */}
-        <div className="relative flex flex-col items-center pb-3">
-          <div ref={pileRef} className="relative">
-            <PotionPileArt count={displayPotionCount} size={130} />
-            {displayPotionCount > 0 && (
-              <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
-                {displayPotionCount}
-              </span>
-            )}
+          {/* Trough strip */}
+          <div ref={troughRef} className="flex flex-col items-center py-2">
+            <div
+              className="relative h-8 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
+              style={{ width: Math.min(totalWidth - 32, Math.max(160, machines.length * 80)) }}
+            >
+              <div className="absolute inset-x-2 top-1 h-1.5 rounded-full bg-amber-800/50" />
+            </div>
           </div>
-          <ManagementBadge
-            icon={<ShoppingBag size={14} className="text-purple-400" />}
-            label="Market"
-            onClick={() => onOpen("potion")}
-          />
+
+          {/* Machine columns */}
+          <div ref={machineSectionRef} className="flex justify-center py-1">
+            {machines.map((machine, idx) => (
+              <MachineColumn
+                key={machine.id}
+                machine={machine}
+                machineIdx={idx}
+                loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
+                workers={workers}
+                onManage={() => onOpen("machine", machine.id)}
+              />
+            ))}
+          </div>
+
+          {/* Potion pile */}
+          <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
+            <div className="relative">
+              <PotionPileArt count={displayPotionCount} size={130} />
+              {displayPotionCount > 0 && (
+                <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
+                  {displayPotionCount}
+                </span>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
-  );
-}
-
-// ── Shared management badge ───────────────────────────────────────────────────
-function ManagementBadge({
-  icon, label, onClick, glow = false, badge,
-}: {
-  icon: React.ReactNode; label: string; onClick: () => void; glow?: boolean; badge?: string;
-}) {
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
-        glow
-          ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
-          : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-      {badge && (
-        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">{badge}</span>
-      )}
-    </button>
   );
 }
 
@@ -654,6 +729,7 @@ function ConveyorWithIngredients({
 }: {
   running: boolean; categories: string[]; accentColor: string;
 }) {
+  void accentColor;
   const items = categories.length > 0 ? categories : [];
   const count = Math.max(1, items.length);
   return (
