@@ -593,10 +593,14 @@ export const useGameStore = create<GameState>()(
 
           const workersSim = s.workers.map((w) => {
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
-            if (!loc || elapsed <= 1) return w;
+            if (!loc || !w.trip_started_at) return w;
 
             const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
-            const trips = Math.floor(elapsed / tripSecs);
+            // Use time since the trip actually started (not just since lastSeen) so
+            // progress survives page refreshes. completeTrip resets trip_started_at on
+            // each completion, so this naturally covers only trips not yet counted.
+            const timeSinceTripStart = (now() - w.trip_started_at) / 1000;
+            const trips = Math.floor(timeSinceTripStart / tripSecs);
             if (trips === 0) return w;
 
             // Distribute gathered items proportionally by drop weight
@@ -625,6 +629,10 @@ export const useGameStore = create<GameState>()(
               level: leveled.level,
               gather_speed: w.gather_speed + levelsGained * 0.05,
               upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+              // Advance trip_started_at to the start of the current in-progress trip so
+              // the game loop sees the correct partial progress after a refresh.
+              trip_started_at: w.trip_started_at + trips * tripSecs * 1000,
+              trip_phase: "outbound" as const,
             };
           });
 
@@ -745,14 +753,9 @@ export const useGameStore = create<GameState>()(
 
           const isLongOffline = hoursAway > cfg.formulas.offline_threshold_hours;
 
-          // Long offline: reset trip timers (XP gains already applied above)
-          const workers = isLongOffline
-            ? workersSim.map((w) => ({
-                ...w,
-                trip_started_at: w.assigned_location ? now() : null,
-                trip_phase: (w.assigned_location ? "outbound" : "idle") as Worker["trip_phase"],
-              }))
-            : workersSim;
+          // workersSim already has trip_started_at advanced to the current in-progress
+          // trip start, so progress is preserved correctly across any length of refresh.
+          const workers = workersSim;
 
           const machine: BrewingMachine = isLongOffline
             ? { ...machineSim, brew_started_at: machineSim.running ? now() : null }
