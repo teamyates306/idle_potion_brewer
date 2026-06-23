@@ -193,7 +193,7 @@ export default function BalanceReportView() {
   const afterSpread = after.global_diagnosis.spread_multiple;
 
   return (
-    <div className="min-h-screen w-full overflow-y-auto bg-[#0b1120] text-slate-200">
+    <div className="h-full w-full overflow-y-auto bg-[#0b1120] text-slate-200">
       <div className="mx-auto max-w-5xl px-5 py-8">
         {/* Header */}
         <header className="mb-6 border-b border-slate-800 pb-5">
