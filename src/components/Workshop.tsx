@@ -17,6 +17,13 @@ import type { MachineLoopState } from "../hooks/useGameLoop";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const COL_W = 180; // px per machine column
+const MAX_MACHINES = 5;
+// The wall + floor are a FIXED background sized for the max (5) machines plus a
+// generous buffer each side, so window positions never shift as machines are
+// added and the player can never scroll to the texture's edge.
+const EDGE_BUFFER = 600;
+const WORLD_W = MAX_MACHINES * COL_W + EDGE_BUFFER * 2;
+const SCROLL_EXTRA = 140; // a little extra pan past the brewers, once scrolling is unlocked
 // Scrolling stone floor — distinct (darker, horizontal courses) from the lit wall
 // bricks so its motion reads. Lives inside the scroll content, so it travels.
 const FLOOR_BG =
@@ -391,16 +398,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   // Badge Y positions derived from section layout
   const [badgeY, setBadgeY] = useState({ workers: 150, stash: 240, brewing: 400, market: 560 });
-  // Visible width of the scene — content never gets narrower than this, so a small
-  // number of brewers fills the viewport with no horizontal scroll.
-  const [viewportW, setViewportW] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 400));
+  // Allowed horizontal scroll window (centred on the brewers). Locked for 1 brewer.
+  const scrollRange = useRef({ min: 0, max: 0, center: 0 });
 
   useLayoutEffect(() => {
-    const measure = () => {
+    const measure = (recenter = false) => {
       const outer = outerRef.current;
       const content = contentRef.current;
       if (!outer) return;
-      setViewportW(outer.clientWidth);
 
       // Scale content down via CSS zoom so it always fits vertically without scroll
       if (content) {
@@ -424,9 +429,27 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         brewing: center(machineSectionRef.current),
         market:  center(pileSectionRef.current),
       });
+
+      // Horizontal scroll window: centre on the brewers; only open it up once the
+      // brewers are wider than the viewport (so 1 brewer never scrolls). The fixed
+      // world is much wider, so the texture edges are never reachable.
+      const sc = scrollRef.current;
+      if (sc) {
+        const vw = sc.clientWidth;
+        const sw = sc.scrollWidth;
+        const ratio = sw / WORLD_W;                       // scroll px per world layout px (handles vertical zoom)
+        const centerScroll = Math.max(0, (sw - vw) / 2);
+        const brewersVis = machines.length * COL_W * ratio;
+        const base = (brewersVis - vw) / 2;               // >0 only when brewers exceed the viewport
+        const half = base > 0 ? base + SCROLL_EXTRA * ratio : 0;
+        scrollRange.current = { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
+        sc.scrollLeft = recenter
+          ? centerScroll
+          : Math.min(scrollRange.current.max, Math.max(scrollRange.current.min, sc.scrollLeft));
+      }
     };
-    measure();
-    const ro = new ResizeObserver(measure);
+    measure(true);
+    const ro = new ResizeObserver(() => measure(false));
     const el = outerRef.current;
     if (el) ro.observe(el);
     return () => ro.disconnect();
@@ -445,13 +468,20 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     el.setPointerCapture(e.pointerId);
     setDragging(true);
   };
+  const clampScroll = (v: number) => Math.min(scrollRange.current.max, Math.max(scrollRange.current.min, v));
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current.active) return;
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollLeft = drag.current.startLeft - (e.clientX - drag.current.startX);
+    el.scrollLeft = clampScroll(drag.current.startLeft - (e.clientX - drag.current.startX));
   };
   const onPointerEnd = () => { drag.current.active = false; setDragging(false); };
+  // Keep any native (wheel / momentum) scroll within the allowed window too.
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const c = clampScroll(el.scrollLeft);
+    if (c !== el.scrollLeft) el.scrollLeft = c;
+  };
 
   // Global FAT for trough / pile channels
   useEffect(() => {
@@ -516,12 +546,10 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
   });
 
-  // Brewers' natural width. The scroll content is at least the viewport, so 1 (or
-  // a couple of) brewers fit with NO horizontal scroll; more brewers widen it just
-  // enough to pan across them all.
-  const brewersWidth = machines.length * COL_W;
-  const contentWidth = Math.max(viewportW, brewersWidth);
-  const totalWidth = contentWidth;
+  // The scene/wall/floor are always the fixed 5-machine world; the brewers sit
+  // centred in it and the scroll range (computed above) limits how far you can pan.
+  const contentWidth = WORLD_W;
+  const totalWidth = WORLD_W;
 
   return (
     <div ref={outerRef} className="relative h-full overflow-hidden">
@@ -567,6 +595,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
+        onScroll={onScroll}
       >
         <div ref={contentRef} className="relative mx-auto flex flex-col" style={{ width: contentWidth }}>
 
@@ -576,10 +605,10 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
             style={{ top: 92, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 14px 22px -10px rgba(0,0,0,0.6)" }}
           />
 
-          {/* Workshop wall — continuous repeating windows, no door, spans the padding */}
+          {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} width={contentWidth} />
 
-          {/* Inner scene, centred within the horizontal buffer */}
+          {/* Inner scene — brewers centred in the fixed world */}
           <div className="relative z-[1] mx-auto flex w-full flex-col" style={{ maxWidth: totalWidth }}>
 
           {/* Worker track */}
