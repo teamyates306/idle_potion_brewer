@@ -67,6 +67,7 @@ export default function MapView({
 }) {
   const unlocked = useGameStore((s) => s.unlockedLocations);
   const explored = useGameStore((s) => s.exploredLocations);
+  const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
   const workers = useGameStore((s) => s.workers);
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
@@ -138,6 +139,7 @@ export default function MapView({
                 workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
                 workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
                 ingredients={n.loc.drops}
+                discoveredDrops={discoveredDrops[n.loc.id] ?? []}
                 onClick={() => setSelected(n.loc)}
               />
             ))}
@@ -165,6 +167,7 @@ function MapNode({
   workerCount,
   workerColors,
   ingredients,
+  discoveredDrops,
   onClick,
 }: {
   node: PlacedNode;
@@ -173,6 +176,7 @@ function MapNode({
   workerCount: number;
   workerColors: string[];
   ingredients: { ingredientId: string; weight: number }[];
+  discoveredDrops: string[];
   onClick: () => void;
 }) {
   const cfg = useConfigStore();
@@ -239,13 +243,14 @@ function MapNode({
             ingredients.map((d) => {
               const ing = cfg.ingredients[d.ingredientId];
               if (!ing) return null;
+              const found = discoveredDrops.includes(d.ingredientId);
               return (
                 <span
                   key={d.ingredientId}
                   className="flex items-center gap-0.5 rounded bg-slate-900/90 px-1 py-0.5 text-[9px] text-slate-300"
                 >
-                  <span style={{ color: RARITY_COLOR[ing.rarity] }}>●</span>
-                  {ing.name}
+                  <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
+                  {found ? ing.name : "???"}
                 </span>
               );
             })
@@ -276,6 +281,7 @@ function LocationDetailModal({
   const unlockLocation = useGameStore((s) => s.unlockLocation);
   const cfg = useConfigStore();
   const isExplored = useGameStore((s) => s.exploredLocations.includes(loc.id));
+  const discoveredDrops = useGameStore((s) => s.discovered_location_drops[loc.id] ?? []);
 
   const baseTrip = gatherRoundTrip(loc.distance, 1);
   const lockedWorker = lockedWorkerIndex != null ? workers[lockedWorkerIndex] : null;
@@ -323,21 +329,25 @@ function LocationDetailModal({
           </div>
         </div>
 
-        {/* Drops */}
+        {/* Drops — revealed per-ingredient as workers actually bring them back */}
         <div className="mb-4">
           <p className="mb-1.5 text-[10px] uppercase tracking-wider text-slate-500">Ingredients found here</p>
           <div className="flex flex-wrap gap-1.5">
             {loc.drops.map((d) => {
               const ing = cfg.ingredients[d.ingredientId];
               if (!ing) return null;
+              const found = discoveredDrops.includes(d.ingredientId);
               return (
                 <span key={d.ingredientId} className="flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-200">
-                  <span style={{ color: RARITY_COLOR[ing.rarity] }}>●</span>
-                  {isExplored ? ing.name : "??? Uncharted"}
+                  <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
+                  {found ? ing.name : "???"}
                 </span>
               );
             })}
           </div>
+          {isExplored && discoveredDrops.length < loc.drops.length && (
+            <p className="mt-1.5 text-[10px] text-slate-500">Send workers to uncover what else grows here.</p>
+          )}
         </div>
 
         {/* Locked → unlock; unlocked → worker assignment */}

@@ -184,6 +184,8 @@ interface GameState {
   discoveredAttributes: string[];
   unlockedLocations: string[];
   exploredLocations: string[];
+  /** Per-location: which of its drops a worker has actually brought back (rest render as ???). */
+  discovered_location_drops: Record<string, string[]>;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
 
@@ -206,8 +208,12 @@ interface GameState {
   // machines
   buyMachine: () => void;
   programSlot: (machineId: number, index: number, ingredientId: string | null) => void;
+  /** Overwrite all of a machine's slots with an exact recipe (used by the Lv10 auto-recipe picker). */
+  setRecipe: (machineId: number, ingredientIds: string[]) => void;
   toggleRunning: (machineId: number) => void;
   completeBrew: (machineId: number) => void;
+  /** Reconcile each running machine's stalled state against current inventory (proactive waiting-for-ingredients guard). */
+  updateBrewReadiness: () => void;
   toggleAutoSellPotion: (hash: string) => void;
   clearAutoSell: () => void;
   removeAutoSell: (hashes: string[]) => void;
@@ -285,6 +291,7 @@ export const useGameStore = create<GameState>()(
       discoveredAttributes: [],
       unlockedLocations: ["hollow"],
       exploredLocations: ["hollow"],
+      discovered_location_drops: {},
       lastSeen: now(),
       welcomeBack: null,
       questsUnlocked: false,
@@ -494,11 +501,18 @@ export const useGameStore = create<GameState>()(
           m.brew_stalled ? { ...m, brew_stalled: false, brew_started_at: now() } : m
         );
 
+        // Progressive discovery: reveal the specific drops brought back from here.
+        const locDrops = { ...s.discovered_location_drops };
+        const seenHere = new Set(locDrops[loc.id] ?? []);
+        for (const id of Object.keys(gathered)) seenHere.add(id);
+        locDrops[loc.id] = Array.from(seenHere);
+
         set({
           ingredientInv: inv,
           discovered: Array.from(discovered),
           exploredLocations: Array.from(explored),
           discoveredAttributes,
+          discovered_location_drops: locDrops,
           machines,
           workers,
         });
@@ -540,6 +554,20 @@ export const useGameStore = create<GameState>()(
           if (index >= machine.unlocked_slots) return {};
           const slots = [...machine.recipe_slots];
           slots[index] = ingredientId;
+          return {
+            machines: s.machines.map((m, i) => i === mi ? { ...m, recipe_slots: slots } : m),
+          };
+        }),
+
+      setRecipe: (machineId, ingredientIds) =>
+        set((s) => {
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          const machine = s.machines[mi];
+          const slots: (string | null)[] = [null, null, null, null, null];
+          for (let i = 0; i < Math.min(ingredientIds.length, machine.unlocked_slots); i++) {
+            slots[i] = ingredientIds[i];
+          }
           return {
             machines: s.machines.map((m, i) => i === mi ? { ...m, recipe_slots: slots } : m),
           };
@@ -645,12 +673,45 @@ export const useGameStore = create<GameState>()(
         if (!prevDiscovered.includes(potion.hash)) get().refreshQuests();
       },
 
-      toggleAutoSellPotion: (hash) =>
-        set((s) => ({
-          autoSellHashes: s.autoSellHashes.includes(hash)
-            ? s.autoSellHashes.filter((h) => h !== hash)
-            : [...s.autoSellHashes, hash],
-        })),
+      // Proactive guard: a running machine with insufficient ingredients is
+      // marked stalled (waiting_for_ingredients) so it stops animating, can't be
+      // clicked, and auto-clickers don't touch it — until ingredients arrive.
+      updateBrewReadiness: () =>
+        set((s) => {
+          let changed = false;
+          const machines = s.machines.map((m) => {
+            if (!m.running) return m;
+            const slotIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
+            if (slotIds.length === 0) return m;
+            const need: Record<string, number> = {};
+            for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+            const hasAll = Object.entries(need).every(([id, n]) => (s.ingredientInv[id] ?? 0) >= n);
+            if (!hasAll && !m.brew_stalled) { changed = true; return { ...m, brew_stalled: true, brew_started_at: now() }; }
+            if (hasAll && m.brew_stalled) { changed = true; return { ...m, brew_stalled: false, brew_started_at: now() }; }
+            return m;
+          });
+          return changed ? { machines } : {};
+        }),
+
+      toggleAutoSellPotion: (hash) => {
+        const s = get();
+        const isOn = s.autoSellHashes.includes(hash);
+        if (isOn) {
+          set({ autoSellHashes: s.autoSellHashes.filter((h) => h !== hash) });
+          return;
+        }
+        const autoSellHashes = [...s.autoSellHashes, hash];
+        // Retroactive: immediately liquidate existing stock of this exact recipe.
+        const have = s.potionInv[hash] ?? 0;
+        if (have <= 0) { set({ autoSellHashes }); return; }
+        const cfg = useConfigStore.getState();
+        const ings = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
+        const earned = ings.length ? describePotion(ings, cfg.formulas).value * have : 0;
+        const potionInv = { ...s.potionInv };
+        delete potionInv[hash];
+        set({ autoSellHashes, potionInv, coins: s.coins + earned });
+        if (earned > 0) pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
+      },
 
       clearAutoSell: () => set({ autoSellHashes: [] }),
 
@@ -884,6 +945,7 @@ export const useGameStore = create<GameState>()(
           let inv = { ...s.ingredientInv };
           const discovered = new Set(s.discovered);
           let discoveredAttributes = s.discoveredAttributes ?? [];
+          const discoveredLocDrops: Record<string, string[]> = { ...(s.discovered_location_drops ?? {}) };
           let totalGathers = 0;
           let totalWorkerXp = 0;
 
@@ -927,14 +989,17 @@ export const useGameStore = create<GameState>()(
             const totalItems = trips * w.retrieval_size;
             totalGathers += Math.floor(totalItems);
             const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
+            const seenHere = new Set(discoveredLocDrops[loc.id] ?? []);
             for (const d of loc.drops) {
               const ev = Math.round((Math.floor(totalItems) * d.weight) / totalW);
               if (ev > 0) {
                 inv[d.ingredientId] = (inv[d.ingredientId] ?? 0) + ev;
                 discovered.add(d.ingredientId);
+                seenHere.add(d.ingredientId);
                 discoveredAttributes = unlockAttributes(d.ingredientId, discoveredAttributes, cfg);
               }
             }
+            discoveredLocDrops[loc.id] = Array.from(seenHere);
 
             const xpPerTrip = Math.round(5 + loc.distance + loc.danger * 3);
             const xpGained = xpPerTrip * trips;
@@ -1064,6 +1129,7 @@ export const useGameStore = create<GameState>()(
             discoveredPotions,
             discovered: Array.from(discovered),
             discoveredAttributes,
+            discovered_location_drops: discoveredLocDrops,
             workers: workersSim,
             machines,
             welcomeBack,
@@ -1086,6 +1152,7 @@ export const useGameStore = create<GameState>()(
           autoSellHashes: [],
           unlockedLocations: ["hollow"],
           exploredLocations: ["hollow"],
+          discovered_location_drops: {},
           lastSeen: now(),
           welcomeBack: null,
           questsUnlocked: false,
@@ -1124,6 +1191,7 @@ export const useGameStore = create<GameState>()(
         autoSellHashes: s.autoSellHashes,
         unlockedLocations: s.unlockedLocations,
         exploredLocations: s.exploredLocations,
+        discovered_location_drops: s.discovered_location_drops,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
@@ -1156,6 +1224,7 @@ export const useGameStore = create<GameState>()(
           ...p,
           workers,
           machines,
+          discovered_location_drops: p.discovered_location_drops ?? {},
           player_click_power_level: p.player_click_power_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
         };

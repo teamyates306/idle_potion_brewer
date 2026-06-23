@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
-  CheckSquare, Square, Layers,
+  CheckSquare, Square, X,
 } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
@@ -33,20 +33,12 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
 
   // Roster controls
   const [sortBy, setSortBy] = useState<"none" | "level" | "tokens">("none");
-  const [grouped, setGrouped] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkDest, setBulkDest] = useState("");
 
   const hireCost = HIRE_COST_BASE * Math.pow(workers.length, 2);
   const canAffordHire = coins >= hireCost;
-
-  const groupLabel = (w: Worker) =>
-    w.assigned_machine_id != null
-      ? machines.find((m) => m.id === w.assigned_machine_id)?.name ?? "At the Cauldron"
-      : w.assigned_location
-      ? cfg.locations[w.assigned_location]?.name ?? w.assigned_location
-      : "Unassigned";
 
   const ordered = useMemo(() => {
     const arr = workers.map((w, i) => ({ w, i }));
@@ -55,17 +47,44 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     return arr;
   }, [workers, sortBy]);
 
-  const sections = useMemo(() => {
-    if (!grouped) return [{ label: null as string | null, items: ordered }];
-    const map = new Map<string, typeof ordered>();
-    for (const o of ordered) {
-      const k = groupLabel(o.w);
-      if (!map.has(k)) map.set(k, []);
-      map.get(k)!.push(o);
+  // Auto-grouped by status: Idle · Gathering (sub-grouped by location) · Assigned to Brewers (sub-grouped by brewer).
+  type Row = { w: Worker; i: number };
+  type Section = { key: string; title: string; kind: "main" | "header" | "sub"; count: number; items: Row[] };
+  const sections = useMemo<Section[]>(() => {
+    const idle = ordered.filter((o) => !o.w.assigned_location && o.w.assigned_machine_id == null);
+    const gathering = ordered.filter((o) => !!o.w.assigned_location);
+    const brewing = ordered.filter((o) => o.w.assigned_machine_id != null);
+    const out: Section[] = [];
+
+    if (idle.length) out.push({ key: "idle", title: "Idle", kind: "main", count: idle.length, items: idle });
+
+    if (gathering.length) {
+      out.push({ key: "gath", title: "Gathering at Locations", kind: "header", count: gathering.length, items: [] });
+      const byLoc = new Map<string, Row[]>();
+      for (const o of gathering) {
+        const name = cfg.locations[o.w.assigned_location!]?.name ?? o.w.assigned_location!;
+        const list = byLoc.get(name) ?? [];
+        list.push(o);
+        byLoc.set(name, list);
+      }
+      for (const [name, items] of [...byLoc.entries()].sort((a, b) => a[0].localeCompare(b[0])))
+        out.push({ key: "loc:" + name, title: name, kind: "sub", count: items.length, items });
     }
-    return [...map.entries()].map(([label, items]) => ({ label, items }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ordered, grouped, cfg.locations]);
+
+    if (brewing.length) {
+      out.push({ key: "brew", title: "Assigned to Brewers", kind: "header", count: brewing.length, items: [] });
+      const byM = new Map<string, Row[]>();
+      for (const o of brewing) {
+        const name = machines.find((m) => m.id === o.w.assigned_machine_id)?.name ?? "Cauldron";
+        const list = byM.get(name) ?? [];
+        list.push(o);
+        byM.set(name, list);
+      }
+      for (const [name, items] of byM.entries())
+        out.push({ key: "m:" + name, title: name, kind: "sub", count: items.length, items });
+    }
+    return out;
+  }, [ordered, cfg.locations, machines]);
 
   const toggleSel = (idx: number) =>
     setSelected((prev) => {
@@ -146,14 +165,6 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             </button>
           ))}
           <button
-            onClick={() => setGrouped((g) => !g)}
-            className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-              grouped ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Layers size={12} /> Group
-          </button>
-          <button
             onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); }}
             className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
               selectMode ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
@@ -163,14 +174,21 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
           </button>
         </div>
 
-        {/* Roster */}
-        <div className="space-y-2">
-          {sections.map((sec, si) => (
-            <div key={sec.label ?? si} className="space-y-2">
-              {sec.label && (
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-[10px] uppercase tracking-wider text-cyan-600">{sec.label}</span>
-                  <span className="text-[10px] text-slate-600">({sec.items.length})</span>
+        {/* Roster — auto-grouped by status */}
+        <div className="space-y-1.5">
+          {sections.map((sec) => (
+            <div key={sec.key} className="space-y-2">
+              {sec.kind === "sub" ? (
+                <div className="flex items-center gap-2 pl-1 pt-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-500/60" />
+                  <span className="text-[11px] font-medium text-slate-300">{sec.title}</span>
+                  <span className="text-[10px] text-slate-600">{sec.count}</span>
+                  <div className="h-px flex-1 bg-slate-800/70" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pt-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">{sec.title}</span>
+                  <span className="text-[10px] text-slate-600">({sec.count})</span>
                   <div className="h-px flex-1 bg-slate-800" />
                 </div>
               )}
@@ -259,13 +277,14 @@ function WorkerDetailModal({
   onOpenMap: (workerIndex: number) => void;
 }) {
   const coins = useGameStore((s) => s.coins);
-  const machines = useGameStore((s) => s.machines);
   const buySpeed = useGameStore((s) => s.buyWorkerSpeed);
   const buySize = useGameStore((s) => s.buyWorkerSize);
   const assignToMachine = useGameStore((s) => s.assignWorkerToMachine);
+  const assignToLocation = useGameStore((s) => s.assignWorker);
   const buyClickSpeed = useGameStore((s) => s.buyClickSpeed);
   const buyClickPower = useGameStore((s) => s.buyClickPower);
   const cfg = useConfigStore();
+  const [pickBrewer, setPickBrewer] = useState(false);
 
   const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
   const onMachine = worker.assigned_machine_id != null;
@@ -399,34 +418,74 @@ function WorkerDetailModal({
           </div>
         )}
 
-        {/* Assignment controls */}
+        {/* Assignment controls — two clean actions; Brewer opens a picker sub-modal */}
         <div className="flex flex-col gap-2">
-          {onMachine ? (
+          {(onMachine || loc) && (
             <button
-              onClick={() => { assignToMachine(workerIndex, null); }}
-              className="w-full rounded-lg bg-rose-700 py-2.5 font-semibold text-white hover:bg-rose-600"
+              onClick={() => { onMachine ? assignToMachine(workerIndex, null) : assignToLocation(workerIndex, null); }}
+              className="w-full rounded-lg bg-rose-700/80 py-2 text-sm font-semibold text-white hover:bg-rose-600"
             >
-              Recall from Cauldron
+              Recall to Workshop
             </button>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {machines.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => { assignToMachine(workerIndex, m.id); }}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
-                >
-                  <Hammer size={16} /> {machines.length > 1 ? m.name : "Work the Cauldron"}
-                </button>
-              ))}
-            </div>
           )}
-          <button
-            onClick={() => onOpenMap(workerIndex)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
-          >
-            <MapPin size={16} /> {onMachine ? "Send to Map" : "Assign to Location"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onOpenMap(workerIndex)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+            >
+              <MapPin size={16} /> Assign to Location
+            </button>
+            <button
+              onClick={() => setPickBrewer(true)}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
+            >
+              <Hammer size={16} /> Assign to Brewer
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {pickBrewer && (
+        <BrewerPicker
+          workerName={worker.name}
+          onPick={(mid) => { assignToMachine(workerIndex, mid); setPickBrewer(false); onClose(); }}
+          onClose={() => setPickBrewer(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Separate sub-modal listing the active brewers, so the worker detail view stays uncluttered.
+function BrewerPicker({ workerName, onPick, onClose }: { workerName: string; onPick: (machineId: number) => void; onClose: () => void }) {
+  const machines = useGameStore((s) => s.machines);
+  const workers = useGameStore((s) => s.workers);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-[#0f172a] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-amber-300">Assign {workerName} to…</h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
+        </div>
+        <div className="space-y-2">
+          {machines.map((m) => {
+            const count = workers.filter((w) => w.assigned_machine_id === m.id).length;
+            const running = m.running && !m.brew_stalled;
+            return (
+              <button
+                key={m.id}
+                onClick={() => onPick(m.id)}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition hover:border-amber-500/60 active:scale-[0.99]"
+              >
+                <Hammer size={16} className="shrink-0 text-amber-400" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-slate-100">{m.name}</span>
+                  <span className="block text-[11px] text-slate-400">Lvl {m.level} · {running ? "brewing" : m.running ? "needs ingredients" : "idle"}</span>
+                </span>
+                <span className="shrink-0 text-xs text-slate-400">{count} working</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

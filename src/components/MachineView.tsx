@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag, Sparkles, ChevronLeft, Search, X } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
-import { describePotion } from "../engine/potions";
+import { describePotion, describeFromHash } from "../engine/potions";
+import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 import type { BrewingMachine } from "../types";
@@ -98,6 +99,7 @@ function MachinePanelBody({
   const discovered = useGameStore((s) => s.discovered);
   const inv = useGameStore((s) => s.ingredientInv);
   const programSlot = useGameStore((s) => s.programSlot);
+  const setRecipe = useGameStore((s) => s.setRecipe);
   const toggleRunning = useGameStore((s) => s.toggleRunning);
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
   const buyMultiBrew = useGameStore((s) => s.buyMultiBrew);
@@ -106,6 +108,7 @@ function MachinePanelBody({
 
   const [picking, setPicking] = useState<number | null>(null);
   const [potionExpanded, setPotionExpanded] = useState(false);
+  const [showRecipePicker, setShowRecipePicker] = useState(false);
 
   const activeIds = machine.recipe_slots
     .slice(0, machine.unlocked_slots)
@@ -171,6 +174,16 @@ function MachinePanelBody({
           <div className="text-sm font-semibold text-slate-100">{machine.unlocked_slots} / 5</div>
         </div>
       </div>
+
+      {/* Lv10 perk — auto-fill slots from a discovered potion's recipe */}
+      {machine.level >= 10 && (
+        <button
+          onClick={() => setShowRecipePicker(true)}
+          className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg border border-violet-500/50 bg-violet-950/40 py-2 text-sm font-semibold text-violet-200 transition hover:bg-violet-900/50 active:scale-[0.99]"
+        >
+          <Sparkles size={15} /> Auto-fill from a Discovered Potion
+        </button>
+      )}
 
       {/* Recipe slots */}
       <div className="mb-3 grid grid-cols-5 gap-2">
@@ -338,7 +351,129 @@ function MachinePanelBody({
       ) : (
         <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
       )}
+
+      {showRecipePicker && (
+        <RecipePickerModal
+          machine={machine}
+          onPick={(ids) => { setRecipe(machine.id, ids); setShowRecipePicker(false); }}
+          onClose={() => setShowRecipePicker(false)}
+        />
+      )}
     </>
+  );
+}
+
+// Lv10 perk: pick a discovered potion, then a specific recipe (hash) for it, and
+// auto-fill the brewer's slots with that exact ingredient list.
+function RecipePickerModal({ machine, onPick, onClose }: {
+  machine: BrewingMachine;
+  onPick: (ingredientIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
+  const cfg = useConfigStore();
+  const groups = useMemo(
+    () => groupHashesByName(discoveredPotions ?? [], cfg.ingredients, cfg.formulas),
+    [discoveredPotions, cfg.ingredients, cfg.formulas]
+  );
+  const [query, setQuery] = useState("");
+  const [name, setName] = useState<string | null>(null);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q ? groups.filter((g) => g.name.toLowerCase().includes(q)) : groups;
+  const selected = name ? groups.find((g) => g.name === name) ?? null : null;
+  const recipes = selected
+    ? selected.hashes
+        .map((h) => ({ hash: h, ids: h.split("+"), d: describeFromHash(h, cfg.ingredients, cfg.formulas) }))
+        .filter((x) => x.d)
+        .sort((a, b) => (b.d!.value) - (a.d!.value))
+    : [];
+
+  return (
+    <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/70 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
+      <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-violet-700/50 bg-[#0f172a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-slate-800 p-4">
+          {selected && (
+            <button onClick={() => setName(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><ChevronLeft size={18} /></button>
+          )}
+          <h3 className="flex-1 text-base font-bold text-violet-300">
+            {selected ? selected.name : "Select a Discovered Potion"}
+          </h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto p-4">
+          {groups.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-500">Brew some potions first to discover recipes.</p>
+          ) : !selected ? (
+            <>
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5">
+                <Search size={14} className="text-slate-500" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search potions…"
+                  className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                {filtered.map((g) => (
+                  <button
+                    key={g.name}
+                    onClick={() => setName(g.name)}
+                    className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 p-2.5 text-left transition hover:border-violet-500/60 active:scale-[0.99]"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-violet-200">{g.name}</span>
+                      <span className="block text-[11px] text-slate-400">{g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""} · best 🪙 {fmt(g.maxValue)}</span>
+                    </span>
+                    <ChevronLeft size={16} className="shrink-0 rotate-180 text-slate-500" />
+                  </button>
+                ))}
+                {filtered.length === 0 && <p className="py-4 text-center text-sm text-slate-500">No potions match.</p>}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-2 text-[11px] text-slate-400">Pick a recipe to load into {machine.name} ({machine.unlocked_slots} slots):</p>
+              <div className="space-y-2">
+                {recipes.map(({ hash, ids, d }) => {
+                  const fits = ids.length <= machine.unlocked_slots;
+                  return (
+                    <button
+                      key={hash}
+                      disabled={!fits}
+                      onClick={() => fits && onPick(ids)}
+                      className={`w-full rounded-lg border p-2.5 text-left transition ${
+                        fits
+                          ? "border-slate-700 bg-slate-800/60 hover:border-violet-500/60 active:scale-[0.99]"
+                          : "cursor-not-allowed border-slate-800 bg-slate-900/60 opacity-60"
+                      }`}
+                    >
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-slate-200">🪙 {fmt(d!.value)}</span>
+                        {!fits && <span className="text-[10px] text-rose-300">needs {ids.length} slots</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {ids.map((id, i) => {
+                          const ing = cfg.ingredients[id];
+                          if (!ing) return null;
+                          return (
+                            <span key={`${i}-${id}`} className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-300">
+                              <IngredientSvg category={ing.category} size={12} /> {ing.name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

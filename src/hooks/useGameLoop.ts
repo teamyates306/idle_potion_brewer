@@ -104,6 +104,9 @@ export function useGameLoop(): LoopProgress {
       }
       lastWall = now;
 
+      // Reconcile waiting-for-ingredients state before anything reads brew_stalled.
+      g.updateBrewReadiness();
+
       if (dt > 0) g.autoClickTick(dt);
 
       // ---- workers ----
