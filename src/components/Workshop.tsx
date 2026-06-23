@@ -17,7 +17,6 @@ import type { MachineLoopState } from "../hooks/useGameLoop";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const COL_W = 180; // px per machine column
-const SCENE_PAD = 140; // horizontal buffer each side so overscroll bounce never shows blank
 // Scrolling stone floor — distinct (darker, horizontal courses) from the lit wall
 // bricks so its motion reads. Lives inside the scroll content, so it travels.
 const FLOOR_BG =
@@ -392,12 +391,16 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   // Badge Y positions derived from section layout
   const [badgeY, setBadgeY] = useState({ workers: 150, stash: 240, brewing: 400, market: 560 });
+  // Visible width of the scene — content never gets narrower than this, so a small
+  // number of brewers fills the viewport with no horizontal scroll.
+  const [viewportW, setViewportW] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 400));
 
   useLayoutEffect(() => {
     const measure = () => {
       const outer = outerRef.current;
       const content = contentRef.current;
       if (!outer) return;
+      setViewportW(outer.clientWidth);
 
       // Scale content down via CSS zoom so it always fits vertically without scroll
       if (content) {
@@ -513,8 +516,12 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
   });
 
-  const totalWidth = Math.max(448, machines.length * COL_W);
-  const contentWidth = totalWidth + SCENE_PAD * 2;
+  // Brewers' natural width. The scroll content is at least the viewport, so 1 (or
+  // a couple of) brewers fit with NO horizontal scroll; more brewers widen it just
+  // enough to pan across them all.
+  const brewersWidth = machines.length * COL_W;
+  const contentWidth = Math.max(viewportW, brewersWidth);
+  const totalWidth = contentWidth;
 
   return (
     <div ref={outerRef} className="relative h-full overflow-hidden">
@@ -639,7 +646,23 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   );
 }
 
-// ── Workshop wall — continuous, repeating windows (no door) ────────────────────
+// ── Workshop wall — repeating windows around a single central door ─────────────
+function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
+  const fx = cx - 38; // frame left (76 wide), workers emerge from here
+  return (
+    <g>
+      <rect x={fx} y={16} width={76} height={80} rx={5} fill="#3a2008" />
+      <rect x={fx + 5} y={20} width={66} height={76} rx={3} fill="#2e1a08" />
+      <rect x={fx + 9} y={25} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
+      <rect x={fx + 41} y={25} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
+      <rect x={fx + 9} y={58} width={58} height={34} rx={2} fill="#221408" opacity={0.6} />
+      <circle cx={fx + 63} cy={64} r={3.5} fill="#c8a040" />
+      <circle cx={fx + 63} cy={64} r={1.8} fill="#f0c870" />
+      {workerActive && <rect x={fx + 5} y={20} width={66} height={76} rx={3} fill="#fbbf24" opacity={0.1} />}
+      <rect x={fx} y={16} width={76} height={80} rx={5} fill="none" stroke="#4a3010" strokeWidth={2} />
+    </g>
+  );
+}
 function WallWindow({ cx, wc, stars, hillNear, hillFar }: {
   cx: number; wc: string; stars: number; hillNear: string; hillFar: string;
 }) {
@@ -676,7 +699,6 @@ function WallLamp({ cx, flame, glow }: { cx: number; flame: string; glow: string
 }
 
 function WorkshopWall({ onClick, workerActive, dn, width }: { onClick: () => void; workerActive: boolean; dn: DayNightState; width: number }) {
-  void workerActive;
   const wc = dn.windowColor;
   const stars = dn.starOpacity;
   const lamp = dn.lampGlow;
@@ -687,13 +709,15 @@ function WorkshopWall({ onClick, workerActive, dn, width }: { onClick: () => voi
   const hNear = `rgb(${Math.round(12 + dy * 46 + sr * 28 + ss * 38)},${Math.round(28 + dy * 94 + sr * 18 - ss * 18)},${Math.round(8 + dy * 16 - sr * 4 - ss * 6)})`;
   const hFar  = `rgb(${Math.round(28 + dy * 52 + sr * 35 + ss * 45)},${Math.round(48 + dy * 72 + sr * 22 - ss * 12)},${Math.round(18 + dy * 42 - sr * 8 - ss * 4)})`;
 
-  // Tile windows + lamps across the full (padded) width; sign sits at centre.
+  // Tile windows + lamps across the width, leaving a clear gap in the middle for
+  // the single central door (where workers emerge). No repeating doors.
   const SPACING = 150;
+  const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
   const step = width / n;
-  const windows = Array.from({ length: n }, (_, i) => Math.round(step * (i + 0.5)));
-  const lamps = Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1)));
-  const signX = Math.round(width / 2);
+  const windows = Array.from({ length: n }, (_, i) => Math.round(step * (i + 0.5))).filter((x) => Math.abs(x - center) > 62);
+  const lamps = Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1))).filter((x) => Math.abs(x - center) > 70);
+  const signX = Math.round(center);
 
   return (
     <button
@@ -724,9 +748,11 @@ function WorkshopWall({ onClick, workerActive, dn, width }: { onClick: () => voi
         {lamps.map((x) => (
           <WallLamp key={x} cx={x} flame={lampFlame} glow={lampGlow} />
         ))}
-        {/* Hanging sign, centred */}
-        <rect x={signX - 52} y="4" width="104" height="15" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
-        <text x={signX} y="15" textAnchor="middle" fill="#c8a050" fontSize="9" fontFamily="serif" letterSpacing="2">
+        {/* Single central door — workers emerge here */}
+        <WallDoor cx={center} workerActive={workerActive} />
+        {/* Hanging sign, centred above the door */}
+        <rect x={signX - 52} y="0.5" width="104" height="14" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
+        <text x={signX} y="11" textAnchor="middle" fill="#c8a050" fontSize="9" fontFamily="serif" letterSpacing="2">
           THE WORKSHOP
         </text>
         <rect width={width} height="96" fill="url(#wallFade)" />
