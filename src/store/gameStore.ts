@@ -793,7 +793,7 @@ export const useGameStore = create<GameState>()(
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, retrieval_size: wk.retrieval_size + 1,
+                ? { ...wk, retrieval_size: wk.retrieval_size + 0.5,
                     size_upgrades: wk.size_upgrades + 1, upgrade_tokens: tokens - 1 }
                 : wk
             ),

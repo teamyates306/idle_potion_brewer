@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import type { Attributes, Ingredient, Location } from "../types";
+import { makeGeneratedIngredients, buildLocations } from "../data/worldgen";
 
 // ---- Static registry (see Master Spec §2 configStore + §6 base formulas) ----
 // Live-tweakable at runtime via the Dev Dashboard.
@@ -61,7 +62,9 @@ export interface BaseFormulas {
   value_mult_mutation: number;
 }
 
-export const INGREDIENTS: Record<string, Ingredient> = {
+// Hand-authored base ingredients (Tiers 1-5). The procedural generator in
+// worldgen.ts tops this up to 100 with stat-budgeted Tier 1-6 ingredients.
+const BASE_INGREDIENTS: Record<string, Ingredient> = {
   rootmoss: {
     id: "rootmoss",
     name: "Rootmoss",
@@ -384,158 +387,18 @@ export const INGREDIENTS: Record<string, Ingredient> = {
   },
 };
 
-export const LOCATIONS: Record<string, Location> = {
-  hollow: {
-    id: "hollow",
-    name: "The Damp Hollow",
-    flavor: "A mossy crevice behind the old mill. The locals don't go there, but they can't quite say why. The ingredients are fine though. Probably.",
-    distance: 4,
-    danger: 0,
-    unlockCost: 0, // unlocked at start
-    drops: [
-      { ingredientId: "rootmoss", weight: 70 },
-      { ingredientId: "firepetal", weight: 18 },
-      { ingredientId: "dewcap", weight: 12 },
-    ],
-  },
-  crags: {
-    id: "crags",
-    name: "The Glittering Crags",
-    flavor: "Mineral deposits older than the Guild, older than the kingdom, older than anyone sensible enough to leave them alone. The shards practically leap into your satchel. Whether that is enthusiasm or hunger remains unclear.",
-    distance: 9,
-    danger: 1,
-    unlockCost: 250,
-    drops: [
-      { ingredientId: "dewcap", weight: 30 },
-      { ingredientId: "glimmershard", weight: 45 },
-      { ingredientId: "firepetal", weight: 25 },
-    ],
-  },
-  thicket: {
-    id: "thicket",
-    name: "The Whispering Thicket",
-    flavor: "The trees here have opinions. They haven't started arguments yet, but they're building up to it. Workers return unusually thoughtful and reluctant to discuss what they overheard.",
-    distance: 16,
-    danger: 2,
-    unlockCost: 900,
-    drops: [
-      { ingredientId: "nightbloom", weight: 50 },
-      { ingredientId: "glimmershard", weight: 20 },
-      { ingredientId: "marrowroot", weight: 30 },
-    ],
-  },
-  abyss: {
-    id: "abyss",
-    name: "The Hungry Dark",
-    flavor: "Guild cartographers marked it on the map, then immediately requested a transfer. Something down there collects things — light, sound, the occasional pension plan. The ingredients are extraordinary, which is the only reason we're telling you about it.",
-    distance: 28,
-    danger: 3,
-    unlockCost: 3200,
-    drops: [
-      { ingredientId: "marrowroot", weight: 45 },
-      { ingredientId: "voidessence", weight: 25 },
-      { ingredientId: "nightbloom", weight: 30 },
-    ],
-  },
-  sunken: {
-    id: "sunken",
-    name: "The Sunken Ruins",
-    flavor: "A drowned colonnade that surfaces only at low tide, give or take a century. Workers report the water is warm, the statues have moved since last time, and nobody remembers building any of it.",
-    distance: 13,
-    danger: 2,
-    unlockCost: 1200,
-    drops: [
-      { ingredientId: "tidecoral", weight: 45 },
-      { ingredientId: "dewcap", weight: 30 },
-      { ingredientId: "nightbloom", weight: 25 },
-    ],
-  },
-  barrens: {
-    id: "barrens",
-    name: "The Ashen Barrens",
-    flavor: "Nothing grows here but heat-haze and regret. The ground is warm underfoot, then hot, then a strongly-worded suggestion to leave. The Guild insists the brimstone is worth it.",
-    distance: 20,
-    danger: 2,
-    unlockCost: 1800,
-    drops: [
-      { ingredientId: "brimstone", weight: 45 },
-      { ingredientId: "firepetal", weight: 30 },
-      { ingredientId: "marrowroot", weight: 25 },
-    ],
-  },
-  peak: {
-    id: "peak",
-    name: "The Crystal Peak",
-    flavor: "So high the air forgets to be air. The summit is a single immense crystal that rings like a bell when the wind hits it just so. Beautiful. Cold enough to relieve you of several toes.",
-    distance: 24,
-    danger: 3,
-    unlockCost: 2600,
-    drops: [
-      { ingredientId: "luminite", weight: 35 },
-      { ingredientId: "frostspore", weight: 40 },
-      { ingredientId: "glimmershard", weight: 25 },
-    ],
-  },
-  fen: {
-    id: "fen",
-    name: "The Tangled Fen",
-    flavor: "A waterlogged sprawl of reed and rot where the ground is more suggestion than fact. Everything grows here, twice, and most of it is edible if you're brave or out of options. Workers come back muddy to the eyebrows and strangely calm.",
-    distance: 15,
-    danger: 2,
-    unlockCost: 1500,
-    drops: [
-      { ingredientId: "pondreed", weight: 30 },
-      { ingredientId: "sunbark", weight: 28 },
-      { ingredientId: "chalkroot", weight: 26 },
-      { ingredientId: "grubcap", weight: 26 },
-      { ingredientId: "mossbone", weight: 24 },
-      { ingredientId: "thistledown", weight: 24 },
-      { ingredientId: "emberseed", weight: 20 },
-      { ingredientId: "saltcrystal", weight: 18 },
-      { ingredientId: "copperbloom", weight: 16 },
-      { ingredientId: "mistcap", weight: 16 },
-      { ingredientId: "ironwort", weight: 14 },
-      { ingredientId: "gustfeather", weight: 12 },
-      { ingredientId: "bogpearl", weight: 10 },
-    ],
-  },
-  spire: {
-    id: "spire",
-    name: "The Stormspire",
-    flavor: "A needle of black rock that the weather has a personal grudge against. Lightning lives here now; it has stopped bothering to return to the sky. The Guild pays a hazard bonus that no one has lived tidily enough to collect.",
-    distance: 26,
-    danger: 3,
-    unlockCost: 5000,
-    drops: [
-      { ingredientId: "deeproot", weight: 28 },
-      { ingredientId: "quartzfern", weight: 28 },
-      { ingredientId: "stormglass", weight: 26 },
-      { ingredientId: "cinderbone", weight: 26 },
-      { ingredientId: "ashshroom", weight: 24 },
-      { ingredientId: "hexpetal", weight: 22 },
-      { ingredientId: "dawncrystal", weight: 12 },
-      { ingredientId: "gravewax", weight: 12 },
-    ],
-  },
-  riftscar: {
-    id: "riftscar",
-    name: "The Riftscar",
-    flavor: "Where the world was once torn and stitched back wrong. The horizon does not meet itself. Ingredients here are extraordinary and furious about being picked. Bring a younger worker you are not especially attached to.",
-    distance: 40,
-    danger: 4,
-    unlockCost: 40000,
-    drops: [
-      { ingredientId: "phasethorn", weight: 22 },
-      { ingredientId: "riftspore", weight: 22 },
-      { ingredientId: "soulamber", weight: 20 },
-      { ingredientId: "chronopearl", weight: 12 },
-      { ingredientId: "starmarrow", weight: 12 },
-      { ingredientId: "voidlily", weight: 12 },
-      { ingredientId: "entropyshard", weight: 9 },
-      { ingredientId: "godseye", weight: 6 },
-    ],
-  },
+// Full registry: hand-authored base (Tiers 1-5) + procedural generation up to
+// 100 stat-budgeted ingredients (worldgen.ts).
+export const INGREDIENTS: Record<string, Ingredient> = {
+  ...BASE_INGREDIENTS,
+  ...makeGeneratedIngredients(Object.keys(BASE_INGREDIENTS)),
 };
+
+// 30 locations on the travel curve: round-trip gather time runs geometrically
+// from 5s at the Hollow to 1800s (30 min) at the Riftscar, with danger, unlock
+// cost and drop-table breadth scaling by depth. Drops are drawn from the full
+// ingredient pool by tier. See data/worldgen.ts.
+export const LOCATIONS: Record<string, Location> = buildLocations(INGREDIENTS);
 
 interface ConfigState {
   ingredients: Record<string, Ingredient>;
@@ -554,11 +417,11 @@ interface ConfigState {
 }
 
 export const DEFAULT_FORMULAS: BaseFormulas = {
-  base_brew_time: 1,
+  base_brew_time: 5,
   xp_base: 100,
-  xp_growth: 1.5,
+  xp_growth: 1.6,
   cost_base: 25,
-  cost_growth: 1.5,
+  cost_growth: 1.65,
   toxicity_time_mult: 0.03,
   volatility_xp_mult: 0.5,
   volatility_multibrew_penalty: 0.01,
@@ -660,7 +523,11 @@ export const useConfigStore = create<ConfigState>()(
     }),
     }),
     {
-      name: "ipb-config",
+      // Bumped to -v2 with the 100-ingredient / 30-location world + brew-time
+      // redesign so stale persisted config (old locations/formulas) is dropped.
+      // This store holds no player progress (that lives in gameStore), so a
+      // fresh rehydrate from code defaults is safe.
+      name: "ipb-config-v2",
       storage: safeStorage,
       // Merge saved formulas over defaults so new formula keys added in code still appear
       merge: (persisted: unknown, current: ConfigState): ConfigState => {

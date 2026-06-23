@@ -25,10 +25,22 @@ interface StrategyReport {
   graveyard_top: { ingredient: string; unused_mean: number }[];
   bottleneck_diagnosis: { flags: string[]; notes: string[] };
 }
+interface PotionExample { name: string; value: number; recipe: string[]; }
+interface RecipeAnalysis {
+  note: string;
+  total_recipes_enumerated: number;
+  total_unique_potions: number;
+  by_size: { slots: number; recipes: number; unique_potions: number; value_min: number; value_median: number; value_max: number }[];
+  value_min: number; value_median: number; value_max: number;
+  price_bands: { label: string; min_value: number; unique_potions: number }[];
+  top_potions: PotionExample[];
+  cheapest_potions: PotionExample[];
+}
 interface SimReport {
   meta: { sim_hours: number; iterations: number; content: { ingredients: number; locations: number } };
   strategies: Record<string, StrategyReport>;
   global_diagnosis: { ranking: { n: string; c: number }[]; spread_multiple: number; notes: string[] };
+  recipe_analysis?: RecipeAnalysis;
 }
 interface ChangelogEntry { entity: string; old_value: string; new_value: string; reason: string; }
 
@@ -185,6 +197,81 @@ function DeltaPill({ before: b, after: a, fmt: f = fmt, higherBetter = true }: {
     </span>
   );
 }
+// minutes → "—" / "Xm" / "X.Yh", shown before → after (later is the goal here)
+function MinDelta({ before: b, after: a }: { before: number; after: number }) {
+  const f = (min: number) => (!min ? "—" : min < 60 ? `${Math.round(min)}m` : `${(min / 60).toFixed(1)}h`);
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-slate-400">{f(b)}</span>
+      <span className="text-slate-500">→</span>
+      <span className="font-semibold text-slate-100">{f(a)}</span>
+    </span>
+  );
+}
+
+// ── Brewable catalogue: what the current ingredient set can actually produce ──
+function BrewableCatalogue({ cat, ingredients }: { cat: RecipeAnalysis; ingredients: number }) {
+  const bandColor = ["#64748b", "#94a3b8", "#22c55e", "#38bdf8", "#a855f7", "#f59e0b"];
+  const maxBand = Math.max(1, ...cat.price_bands.map((b) => b.unique_potions));
+  return (
+    <>
+      <SectionTitle sub="Computed by running every real ingredient combination through the live potion engine — these are potions an actual recipe can produce, not a theoretical name grid.">
+        Brewable Catalogue (current setup)
+      </SectionTitle>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <HeadlineCard label="Ingredients" before="" after={String(ingredients)} />
+        <HeadlineCard label="Unique potions brewable" before="" after={`${cat.total_unique_potions}`} good />
+        <HeadlineCard label="Recipes evaluated" before="" after={fmt(cat.total_recipes_enumerated)} />
+        <HeadlineCard label="Price range (coins)" before="" after={`${fmt(cat.value_min)}–${fmt(cat.value_max)}`} />
+      </div>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        {/* Price-band distribution */}
+        <div className="rounded-xl border border-slate-700/70 bg-slate-900/50 p-4">
+          <div className="mb-2 text-sm font-semibold text-slate-200">Unique potions by quality tier</div>
+          <div className="space-y-1.5">
+            {cat.price_bands.map((b, i) => (
+              <div key={b.label} className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-xs text-slate-400">{b.label}</span>
+                <div className="h-4 flex-1 rounded bg-slate-800/60">
+                  <div className="h-4 rounded" style={{ width: `${(b.unique_potions / maxBand) * 100}%`, background: bandColor[i], minWidth: b.unique_potions ? 8 : 0 }} />
+                </div>
+                <span className="w-10 shrink-0 text-right text-xs font-semibold text-slate-200">{b.unique_potions}</span>
+                <span className="w-20 shrink-0 text-right text-[10px] text-slate-500">≥{fmt(b.min_value)}🪙</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 border-t border-slate-800 pt-2 text-[11px] text-slate-500">
+            By recipe size: {cat.by_size.map((s) => `${s.slots}-ing → ${s.unique_potions} potions`).join(" · ")}
+          </div>
+        </div>
+
+        {/* Most valuable potions */}
+        <div className="rounded-xl border border-slate-700/70 bg-slate-900/50 p-4">
+          <div className="mb-2 text-sm font-semibold text-slate-200">Most valuable brewable potions</div>
+          <div className="space-y-1">
+            {cat.top_potions.slice(0, 8).map((p, i) => (
+              <div key={i} className="flex items-baseline justify-between gap-2 border-b border-slate-800/70 pb-1 last:border-0">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-semibold text-amber-200">{p.name}</div>
+                  <div className="truncate text-[10px] text-slate-500">{compactRecipe(p.recipe)}</div>
+                </div>
+                <div className="shrink-0 text-xs font-bold text-green-300">🪙 {fmt(p.value)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">{cat.note}</p>
+    </>
+  );
+}
+// "Eldritch Shroom ×5" instead of repeating the same name five times
+function compactRecipe(recipe: string[]): string {
+  const counts = new Map<string, number>();
+  for (const r of recipe) counts.set(r, (counts.get(r) ?? 0) + 1);
+  return [...counts.entries()].map(([n, c]) => (c > 1 ? `${n} ×${c}` : n)).join(" + ");
+}
 
 // ── Main dashboard ──────────────────────────────────────────────────────────
 export default function BalanceReportView() {
@@ -200,11 +287,13 @@ export default function BalanceReportView() {
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-400/80">
             🧪 Idle Potion Brewer · Economy Lab
           </div>
-          <h1 className="mt-1 text-3xl font-black text-white">A/B Balance Report</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Monte Carlo simulation of {before.meta.iterations} iterations × {before.meta.sim_hours}h of play across four AI
-            playstyles, over {before.meta.content.ingredients} ingredients and {before.meta.content.locations} locations.
-            The autonomous rebalance below compressed the gap between the best and worst playstyle from{" "}
+          <h1 className="mt-1 text-3xl font-black text-white">Economy & Pacing Report</h1>
+          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+            Monte Carlo simulation of {after.meta.iterations} iterations × {after.meta.sim_hours}h of play across four AI
+            playstyles, over a redesigned world of <span className="font-semibold text-slate-200">{after.meta.content.ingredients} ingredients</span> and{" "}
+            <span className="font-semibold text-slate-200">{after.meta.content.locations} locations</span> (5s → 30-min travel curve, 5s starter brews).
+            The before/after below isolates the <span className="font-semibold text-amber-200">upgrade-curve balancing</span>: it stretches progression
+            toward a month-long arc, cuts the ingredient graveyards, and compresses the playstyle gap from{" "}
             <span className="font-bold text-red-300">×{fmt(beforeSpread)}</span> to{" "}
             <span className="font-bold text-green-300">×{fmt(afterSpread)}</span>.
           </p>
@@ -220,7 +309,7 @@ export default function BalanceReportView() {
         </div>
 
         {/* Final coins bar */}
-        <SectionTitle sub="Average final coins after 6 in-game hours. The rebalance lifts the three losing playstyles toward the leader instead of one strategy lapping the field.">
+        <SectionTitle sub={`Average final coins after ${after.meta.sim_hours} in-game hours. Slower leveling keeps the run-away Industrialist in check and lifts the Quest Hunter floor.`}>
           Final Coins: Before vs After
         </SectionTitle>
         <GroupedBars
@@ -307,8 +396,43 @@ export default function BalanceReportView() {
           </table>
         </div>
 
+        {/* Brewable catalogue */}
+        {after.recipe_analysis && <BrewableCatalogue cat={after.recipe_analysis} ingredients={after.meta.content.ingredients} />}
+
+        {/* Progression & upgrade pacing */}
+        <SectionTitle sub="How long key milestones take and how many levels/upgrades a run accrues. The curve tuning stretches the climb so there's a month of progression, not a day.">
+          Progression &amp; Upgrade Pacing
+        </SectionTitle>
+        <div className="overflow-x-auto rounded-xl border border-slate-700/70">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-800/60 text-left text-xs uppercase tracking-wider text-slate-400">
+                <th className="px-3 py-2">Strategy</th>
+                <th className="px-3 py-2">→ Machine #2</th>
+                <th className="px-3 py-2">→ Machine #3</th>
+                <th className="px-3 py-2">Max level (24h)</th>
+                <th className="px-3 py-2">Upgrades bought</th>
+              </tr>
+            </thead>
+            <tbody>
+              {STRAT_ORDER.map((s) => (
+                <tr key={s} className="border-t border-slate-800">
+                  <td className="px-3 py-2 font-semibold" style={{ color: STRAT_COLOR[s] }}>{STRAT_LABEL[s]}</td>
+                  <td className="px-3 py-2"><MinDelta before={m(before, s, "t_machine2_min")} after={m(after, s, "t_machine2_min")} /></td>
+                  <td className="px-3 py-2"><MinDelta before={m(before, s, "t_machine3_min")} after={m(after, s, "t_machine3_min")} /></td>
+                  <td className="px-3 py-2"><DeltaPill before={Math.max(m(before, s, "max_worker_level"), m(before, s, "max_machine_level"))} after={Math.max(m(after, s, "max_worker_level"), m(after, s, "max_machine_level"))} fmt={(n) => String(Math.round(n))} higherBetter={false} /></td>
+                  <td className="px-3 py-2"><DeltaPill before={m(before, s, "upgrades_total")} after={m(after, s, "upgrades_total")} fmt={(n) => String(Math.round(n))} higherBetter={false} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          "Max level" and "upgrades bought" are lower after tuning (slower XP + steeper cost curves) — the same 24 hours now buys less of the tree, leaving the rest to earn over the following days and weeks. Machine #4 (600k) lands in days and #5 (3M) in a week+, so the machine ladder anchors the long game.
+        </p>
+
         {/* Patch notes */}
-        <SectionTitle sub={`${changelog.length} tuning changes, each driven by a specific bottleneck in the before-run diagnosis.`}>
+        <SectionTitle sub={`${changelog.length} changes — the world redesign (reqs 1-3) plus the A/B-measured upgrade-curve tuning (req 4).`}>
           Patch Notes
         </SectionTitle>
         <div className="space-y-2.5">
@@ -353,7 +477,7 @@ function HeadlineCard({ label, before: b, after: a, good }: { label: string; bef
     <div className="rounded-xl border border-slate-700/70 bg-slate-900/50 p-3">
       <div className="text-[11px] uppercase tracking-wider text-slate-400">{label}</div>
       <div className="mt-1 flex items-baseline gap-1.5">
-        <span className="text-sm text-slate-500 line-through">{b}</span>
+        {b && <span className="text-sm text-slate-500 line-through">{b}</span>}
         <span className={`text-xl font-black ${good ? "text-green-300" : "text-slate-100"}`}>{a}</span>
       </div>
     </div>

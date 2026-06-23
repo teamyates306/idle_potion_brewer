@@ -1,74 +1,56 @@
 [
   {
-    "entity": "Cross-strategy balance (headline)",
-    "old_value": "Spread ×17,051 (A_Sprinter 231,891 vs D_QuestHunter 13.6)",
-    "new_value": "Spread ×20 (B_Completionist 469,751 vs C_Industrialist 22,965)",
-    "reason": "One brain-dead playstyle (spam a single common recipe) out-earned every intended playstyle by four orders of magnitude. The changes below lift discovery, quests, and industry into viability while trimming the spam runaway and its ingredient graveyard."
+    "entity": "REDESIGN — Early-game brew time (configStore.base_brew_time)",
+    "old_value": "1s per single-common brew",
+    "new_value": "5s per single-common brew",
+    "reason": "Req 1: the opening loop was instant. A single-ingredient common potion now brews in 5s on the starter cauldron, so the early game is deliberate and clicking the cauldron to speed a brew is meaningful. Applied to BOTH runs as the new baseline."
   },
   {
-    "entity": "Rootmoss base_value (configStore)",
-    "old_value": "5",
-    "new_value": "4",
-    "reason": "A_Sprinter printed 231k coins brewing nothing but Rootmoss potions at 97% utilization. The most-spammed common was over-valued; trimming it taxes single-recipe spam at the source."
+    "entity": "REDESIGN — Travel curve (worldgen, all 30 locations)",
+    "old_value": "Hollow 8s round-trip · Riftscar 80s (1m20s)",
+    "new_value": "Hollow 5s round-trip · Riftscar 1800s (30 min), geometric in between",
+    "reason": "Req 3: the deepest node was 80s away — trivial. Round-trip gather time now follows a geometric curve from 5s at the Hollow to 30 min at the Riftscar, so reaching the rarest ingredients is a real commitment and worker gather-speed upgrades matter enormously. Applied to both runs."
   },
   {
-    "entity": "Firepetal base_value (configStore)",
-    "old_value": "7",
-    "new_value": "5",
-    "reason": "Starter-node common that fed the spam economy and then rotted in inventory (44,048 unbrewed in the Sprinter run). Lowered to reduce the value sloshing through the opening loop."
+    "entity": "REDESIGN — Ingredient breadth (worldgen)",
+    "old_value": "40 ingredients",
+    "new_value": "100 ingredients (6 stat-budget tiers)",
+    "reason": "Req 2: hand-authored base topped up to 100 by a deterministic generator. Tiers escalate early=simple basic attrs, mid=elemental, late=esoteric cosmic + high volatility, with base_value / attribute magnitude / volatility scaling by tier. Applied to both runs."
   },
   {
-    "entity": "Dewcap base_value (configStore)",
-    "old_value": "6",
-    "new_value": "4",
-    "reason": "Second-worst graveyard offender (26,411 unbrewed). Same rationale as Firepetal."
+    "entity": "REDESIGN — Location breadth (worldgen)",
+    "old_value": "10 locations",
+    "new_value": "30 locations",
+    "reason": "Req 2: 10 hand-authored landmarks kept as named nodes; 20 procedural nodes fill the depth curve. The starting Hollow stays a clean 3-ingredient node; deeper nodes drop progressively more ingredients (up to ~10), mostly the cheaper ones of their tier. Applied to both runs."
   },
   {
-    "entity": "The Damp Hollow drop weights (configStore)",
-    "old_value": "rootmoss 60 / firepetal 25 / dewcap 15",
-    "new_value": "rootmoss 70 / firepetal 18 / dewcap 12",
-    "reason": "The Sprinter brews only Rootmoss, so 40% of every gather at the starter node (firepetal+dewcap) became a 70,459-unit ingredient graveyard. Concentrating the node on its primary output cut the Sprinter graveyard to 54,440."
+    "entity": "Worker XP growth (configStore.xp_growth)",
+    "old_value": "1.5",
+    "new_value": "1.6",
+    "reason": "Req 4: in 24h every strategy hit worker/machine level ~22 and bought ~190 upgrades — the upgrade treadmill was over in a day. A steeper XP curve stretches leveling so the late levels (and the tokens that fund upgrades) take weeks, not hours. After: 24h max level dropped ~22 -> ~19."
   },
   {
-    "entity": "value_mult — mental attrs: mana / resonance / insight / radiance (configStore.formulas)",
-    "old_value": "0.01 each",
-    "new_value": "0.015 each",
-    "reason": "B_Completionist discovered 80 unique potions but earned only 11,648 coins — discovery was economically pointless. These attributes appear almost exclusively on uncommon+ ingredients, so the buff rewards complexity without touching the Sprinter's attribute-poor commons."
+    "entity": "Upgrade cost growth (configStore.cost_growth)",
+    "old_value": "1.5",
+    "new_value": "1.65",
+    "reason": "Req 4: upgrades were buyable almost as fast as tokens arrived (~17 of a single upgrade per worker in one day). A steeper cost curve makes each successive upgrade a real coin sink, so spending keeps pace with — not ahead of — the stretched leveling. cost_base stays 25 so the FIRST upgrade is still a cheap early-game reward."
   },
   {
-    "entity": "value_mult — void (configStore.formulas)",
-    "old_value": "0.01",
-    "new_value": "0.016",
-    "reason": "Void is an end-tier attribute (Void Essence, Voidlily, Riftspore). It carried no payoff, so the 'esoteric but volatile' end-game ingredients had no reason to be brewed."
+    "entity": "Worker retrieval upgrade step (gameStore.buyWorkerSize)",
+    "old_value": "+1.0 items per upgrade",
+    "new_value": "+0.5 items per upgrade",
+    "reason": "Req 4: the retrieval upgrade was the single biggest cause of the 'ingredient graveyard' — at +1 flat it compounded to ~17 items per trip per worker, so gathering buried the cauldrons in ingredients they could never brew (Completionist graveyard hit 1.9M). Halving the step makes retrieval a steady long-term investment. After: Completionist graveyard 1.9M -> 0.91M, Quest Hunter 1.0M -> 0.56M."
   },
   {
-    "entity": "value_mult — cosmic attrs: chrono / gravitas / entropy / soul / mutation (configStore.formulas)",
-    "old_value": "0.01 each",
-    "new_value": "0.018 each",
-    "reason": "The legendary 'esoteric' tier (Chronopearl, Starmarrow, Entropyshard, God's Eye) existed but was worthless to brew. A measured buff (first tried at 0.03 — it sent the Completionist to 530k — then dialed back to 0.018) makes end-game potions a genuine payoff without a new runaway."
+    "entity": "Second machine cost (gameStore / economyConstants MACHINE_COSTS[1])",
+    "old_value": "3,000",
+    "new_value": "5,000",
+    "reason": "Req 4 pacing: the first factory expansion arrived in under 2 hours. Nudged up so machine #2 lands ~1.5-3h in, keeping the machine ladder (#3 ~8-12h, #4 days, #5 a week+) as the spine of long-term progression. The deeper machine costs (75k / 600k / 3M) already gate end-game to weeks."
   },
   {
-    "entity": "MACHINE_COSTS (gameStore / economyConstants)",
-    "old_value": "[0, 5,000, 250,000, 10,000,000, 100,000,000]",
-    "new_value": "[0, 3,000, 75,000, 600,000, 3,000,000]",
-    "reason": "C_Industrialist hit a brick wall at machine #3 (250k was unreachable in 6h), stalling at 2 machines and 50% utilization. The old curve jumped ×50 then ×40; the new curve is a smooth ~×20 per tier so building out the factory is actually attainable."
-  },
-  {
-    "entity": "Quest DIFFICULTY_BONUS reward multiplier (engine/quests)",
-    "old_value": "Easy 1.15 / Medium 1.3 / Challenging 1.55",
-    "new_value": "Easy 1.6 / Medium 2.2 / Challenging 3.2",
-    "reason": "D_QuestHunter completed 0.6 quests in 6h and ended with 13.6 coins. Quests are meant to be 'massive payouts' but barely beat selling the same potions. Steeper bonuses make fulfilling a quest clearly worth the workforce reshuffle."
-  },
-  {
-    "entity": "Quest TIER_SCORE quota bands (engine/quests)",
-    "old_value": "Easy [40,130] / Medium [180,450] / Challenging [550,1000]",
-    "new_value": "Easy [20,60] / Medium [80,200] / Challenging [300,600]",
-    "reason": "Quota = score / avg-recipe-complexity, so the old bands demanded brewing 30-100+ of one specific potion name — impossible at gather-limited throughput. Roughly halving the bands made quests completable (D went 0.6 → 5.5 completions)."
-  },
-  {
-    "entity": "Quest TIER_NAME_COUNT distinct-names-per-quest (engine/quests)",
-    "old_value": "Easy [1,2] / Medium [2,3] / Challenging [3,5]",
-    "new_value": "Easy [1,1] / Medium [1,2] / Challenging [2,3]",
-    "reason": "Requiring up to 5 different potion names per quest forced the player to maintain many recipes at once — unfulfillable for a gather-limited brewer. Fewer names per quest makes each one a focused, achievable objective."
+    "entity": "Net effect — strategy spread & viability",
+    "old_value": "spread ×118 (Industrialist 431k vs Quest Hunter 3.6k)",
+    "new_value": "spread ×11 (Industrialist 360k vs Quest Hunter 32k)",
+    "reason": "The req-4 curve tuning didn't just stretch pacing — slower leveling means fewer auto-clicker upgrades for the run-away Industrialist and a far healthier floor for the Quest Hunter (3.6k -> 32k coins, 25.75 -> 28.75 quests), so all four playstyles stay viable across the longer arc."
   }
 ]

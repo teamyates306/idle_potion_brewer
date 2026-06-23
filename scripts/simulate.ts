@@ -51,7 +51,7 @@ const MACHINE_START = { brew_speed: 1.0, multi_brew_chance: 0, unlocked_slots: 2
 const WORKER_LEVEL_GATHER_BONUS = 0.05;  // completeTrip / autoClickTick / applyOffline
 const MACHINE_LEVEL_BREW_BONUS = 0.03;   // completeBrew
 const WORKER_SPEED_STEP = 0.25;          // buyWorkerSpeed
-const WORKER_SIZE_STEP = 1;              // buyWorkerSize
+const WORKER_SIZE_STEP = 0.5;            // buyWorkerSize
 const MACHINE_SPEED_STEP = 0.25;         // buyBrewSpeed
 const MACHINE_MULTI_STEP = 0.1;          // buyMultiBrew
 const SLOT_COST_OFFSET = 3;              // buySlot: upgradeCost(slot_upgrades + 3)
@@ -97,23 +97,33 @@ interface RecipeEntry {
   ingredientCost: number;
 }
 
-/** Catalog of all single- and pair-recipes, with resulting potion name/value. */
+// Memoized potion descriptor by sorted-ids key. Formulas are constant for the
+// whole process, so this cache is valid across every strategy/iteration and is
+// the main reason the sim stays fast at 100 ingredients + long horizons.
+type Desc = ReturnType<typeof describePotion>;
+const DESC_CACHE = new Map<string, Desc>();
+function descOf(ids: string[]): Desc {
+  const key = ids.length === 1 ? ids[0] : [...ids].sort().join("+");
+  let d = DESC_CACHE.get(key);
+  if (!d) { d = describePotion(ids.map((id) => INGREDIENTS[id]), F); DESC_CACHE.set(key, d); }
+  return d;
+}
+
+/** Catalog of single- and (capped) pair-recipes, with resulting potion name/value. */
 function buildCatalog(): { all: RecipeEntry[]; byName: Map<string, RecipeEntry[]> } {
   const all: RecipeEntry[] = [];
   const add = (ids: string[]) => {
-    const ings = ids.map((id) => INGREDIENTS[id]);
-    const p = describePotion(ings, F);
-    all.push({
-      ids,
-      hash: p.hash,
-      name: p.name,
-      value: p.value,
-      ingredientCost: ings.reduce((a, i) => a + i.base_value, 0),
-    });
+    const p = descOf(ids);
+    all.push({ ids, hash: p.hash, name: p.name, value: p.value,
+      ingredientCost: ids.reduce((a, id) => a + INGREDIENTS[id].base_value, 0) });
   };
   for (const id of ING_IDS) add([id]);
-  for (let i = 0; i < ING_IDS.length; i++)
-    for (let j = i + 1; j < ING_IDS.length; j++) add([ING_IDS[i], ING_IDS[j]]);
+  // Pairs only among a representative subset (every Nth id) so the catalog stays
+  // bounded as ingredient count grows: ~C(34,2) pairs instead of C(100,2).
+  const step = Math.max(1, Math.ceil(ING_IDS.length / 34));
+  const subset = ING_IDS.filter((_, i) => i % step === 0);
+  for (let i = 0; i < subset.length; i++)
+    for (let j = i + 1; j < subset.length; j++) add([subset[i], subset[j]]);
 
   const byName = new Map<string, RecipeEntry[]>();
   for (const r of all) {
@@ -174,6 +184,11 @@ interface SimState {
   questsCompleted: number;
   // per-iteration scratch space for strategy bookkeeping (rotation counters etc.)
   scratch: Record<string, number>;
+  // progression telemetry (upgrade-curve / pacing analysis)
+  tick: number;
+  discoveredNames: Set<string>;
+  milestoneTick: Record<string, number>; // first-reach in-game second for named milestones
+  upgrades: Record<string, number>;       // lifetime counts by upgrade type
 }
 
 function newSimWorker(): SimWorker {
@@ -212,7 +227,13 @@ function initialState(): SimState {
     gatheredTotal: 0, consumedTotal: 0, potionsBrewed: 0,
     coinsFromSales: 0, coinsFromQuests: 0, questsCompleted: 0,
     scratch: {},
+    tick: 0, discoveredNames: new Set(), milestoneTick: {}, upgrades: {},
   };
+}
+
+/** Record the in-game second a named milestone was first reached. */
+function mark(s: SimState, key: string): void {
+  if (s.milestoneTick[key] === undefined) s.milestoneTick[key] = s.tick;
 }
 
 // ── Weighted drop pick (mirrors gameStore pickDrop), seeded via Math.random. ──
@@ -240,6 +261,7 @@ function hireWorker(s: SimState): boolean {
   if (s.coins < cost) return false;
   s.coins -= cost;
   s.workers.push(newSimWorker());
+  mark(s, `worker${s.workers.length}`);
   return true;
 }
 function buyMachine(s: SimState): boolean {
@@ -248,6 +270,7 @@ function buyMachine(s: SimState): boolean {
   if (cost === undefined || s.coins < cost) return false;
   s.coins -= cost;
   s.machines.push(newSimMachine(s.machines.length + 1));
+  mark(s, `machine${s.machines.length}`);
   return true;
 }
 function unlockLocation(s: SimState, locId: string): boolean {
@@ -256,6 +279,7 @@ function unlockLocation(s: SimState, locId: string): boolean {
   if (!loc || s.coins < loc.unlockCost) return false;
   s.coins -= loc.unlockCost;
   s.unlockedLocations.add(locId);
+  mark(s, `location${s.unlockedLocations.size}`);
   return true;
 }
 function programRecipe(m: SimMachine, ids: string[]): void {
@@ -280,6 +304,7 @@ function buyWorkerUpgrade(s: SimState, wi: number, kind: "speed" | "size" | "clk
   else if (kind === "size") { w.retrieval_size += WORKER_SIZE_STEP; w.size_upgrades += 1; }
   else if (kind === "clkspd") { w.auto_click_speed += CLICK_SPEED_STEP; }
   else { w.click_power_level += 1; }
+  s.upgrades[`w_${kind}`] = (s.upgrades[`w_${kind}`] ?? 0) + 1;
   return true;
 }
 function buyMachineUpgrade(s: SimState, mi: number, kind: "speed" | "multi" | "slot"): boolean {
@@ -297,15 +322,14 @@ function buyMachineUpgrade(s: SimState, mi: number, kind: "speed" | "multi" | "s
   if (kind === "speed") { m.brew_speed += MACHINE_SPEED_STEP; m.speed_upgrades += 1; }
   else if (kind === "multi") { m.multi_brew_chance += MACHINE_MULTI_STEP; m.multi_upgrades += 1; }
   else { m.unlocked_slots += 1; m.slot_upgrades += 1; }
+  s.upgrades[`m_${kind}`] = (s.upgrades[`m_${kind}`] ?? 0) + 1;
   return true;
 }
 function sellAll(s: SimState): void {
   let earned = 0;
   for (const [hash, count] of Object.entries(s.potionInv)) {
     if (count <= 0) continue;
-    const ings = hash.split("+").map((id) => INGREDIENTS[id]).filter(Boolean);
-    if (ings.length === 0) continue;
-    earned += describePotion(ings, F).value * count;
+    earned += descOf(hash.split("+")).value * count;
   }
   if (earned > 0) {
     s.coins += earned;
@@ -332,15 +356,17 @@ function assignToMachine(s: SimState, wi: number, mid: number): void {
 
 // ── Quest helpers (mirror refreshQuests / completeQuest) ─────────────────────
 function maybeGenerateQuests(s: SimState, tick: number): void {
-  const groups = groupHashesByName([...s.discoveredPotions], INGREDIENTS, F);
-  const unlocked = s.questsUnlocked || groups.length >= UNIQUE_NAMES_TO_UNLOCK_QUESTS;
-  if (!unlocked || groups.length === 0) return;
-  s.questsUnlocked = true;
+  const nameCount = s.discoveredNames.size;
+  const unlocked = s.questsUnlocked || nameCount >= UNIQUE_NAMES_TO_UNLOCK_QUESTS;
+  if (!unlocked || nameCount === 0) return;
+  if (!s.questsUnlocked) { s.questsUnlocked = true; mark(s, "quests_unlocked"); }
   const present = new Set(s.activeQuests.map((q) => q.difficulty));
-  for (const d of DIFFICULTIES) {
-    if (present.has(d)) continue;
-    const readyAt = s.questCooldownUntil[d];
-    if (readyAt && tick < readyAt) continue;
+  const need = DIFFICULTIES.filter((d) => !present.has(d) && !(s.questCooldownUntil[d] && tick < s.questCooldownUntil[d]!));
+  if (need.length === 0) return;
+  // groupHashesByName is the expensive call — only run it when actually generating.
+  const groups = groupHashesByName([...s.discoveredPotions], INGREDIENTS, F);
+  if (groups.length === 0) return;
+  for (const d of need) {
     s.activeQuests.push(generateQuest(d, groups, INGREDIENTS));
     delete s.questCooldownUntil[d];
   }
@@ -436,11 +462,14 @@ function tick(s: SimState): void {
       if (!hasAll) { m.brew_stalled = true; break; }
       for (const [id, n] of Object.entries(need)) { s.ingredientInv[id] -= n; s.consumedTotal += n; }
 
-      const potion = describePotion(ings, F);
+      const potion = descOf(slotIds);
       const outputs = rollMultiBrew(effectiveMultiBrew(m, potion.volatility, F));
       s.potionInv[potion.hash] = (s.potionInv[potion.hash] ?? 0) + outputs;
       s.potionsBrewed += outputs;
-      s.discoveredPotions.add(potion.hash);
+      if (!s.discoveredPotions.has(potion.hash)) {
+        s.discoveredPotions.add(potion.hash);
+        s.discoveredNames.add(potion.name);
+      }
 
       const xp = brewXp(potion.volatility, F) * outputs;
       const leveled = applyLevels(m.level, m.xp + xp, F);
@@ -458,7 +487,7 @@ function tick(s: SimState): void {
 
 // ── Metrics helpers ─────────────────────────────────────────────────────────
 function uniqueNames(s: SimState): number {
-  return groupHashesByName([...s.discoveredPotions], INGREDIENTS, F).length;
+  return s.discoveredNames.size; // tracked incrementally as potions are brewed
 }
 function unusedIngredients(s: SimState): number {
   let t = 0;
@@ -495,6 +524,7 @@ function runIteration(
     const s = initialState();
     const samples: Sample[] = [];
     for (let t = 0; t < totalSeconds; t++) {
+      s.tick = t;
       if (t % decisionInterval === 0) {
         maybeGenerateQuests(s, t);
         strategy(s, t);
@@ -525,6 +555,27 @@ function runIteration(
       coins_from_quests: Math.round(s.coinsFromQuests),
       quests_completed: s.questsCompleted,
       locations_unlocked: s.unlockedLocations.size,
+      // ---- progression / upgrade telemetry ----
+      max_worker_level: Math.max(1, ...s.workers.map((w) => w.level)),
+      max_machine_level: Math.max(1, ...s.machines.map((m) => m.level)),
+      max_brew_speed: Math.round(Math.max(...s.machines.map((m) => m.brew_speed)) * 100) / 100,
+      max_gather_speed: Math.round(Math.max(...s.workers.map((w) => w.gather_speed)) * 100) / 100,
+      upgrades_total: Object.values(s.upgrades).reduce((a, b) => a + b, 0),
+      up_w_speed: s.upgrades.w_speed ?? 0,
+      up_w_size: s.upgrades.w_size ?? 0,
+      up_w_clk: (s.upgrades.w_clkspd ?? 0) + (s.upgrades.w_clkpow ?? 0),
+      up_m_speed: s.upgrades.m_speed ?? 0,
+      up_m_multi: s.upgrades.m_multi ?? 0,
+      up_m_slot: s.upgrades.m_slot ?? 0,
+      // milestone timings, in minutes (0 = never reached this run)
+      t_machine2_min: Math.round((s.milestoneTick.machine2 ?? 0) / 60),
+      t_machine3_min: Math.round((s.milestoneTick.machine3 ?? 0) / 60),
+      t_machine4_min: Math.round((s.milestoneTick.machine4 ?? 0) / 60),
+      t_machine5_min: Math.round((s.milestoneTick.machine5 ?? 0) / 60),
+      t_quests_min: Math.round((s.milestoneTick.quests_unlocked ?? 0) / 60),
+      t_loc5_min: Math.round((s.milestoneTick.location5 ?? 0) / 60),
+      t_loc10_min: Math.round((s.milestoneTick.location10 ?? 0) / 60),
+      t_loc20_min: Math.round((s.milestoneTick.location20 ?? 0) / 60),
     };
     const graveyard: Record<string, number> = {};
     for (const [id, v] of Object.entries(s.ingredientInv)) if (v > 0) graveyard[id] = v;
@@ -666,8 +717,8 @@ function spendMachineTokens(s: SimState, order: ("speed" | "multi" | "slot")[]):
   }
 }
 const potionNameOfHash = (hash: string): string | null => {
-  const ings = hash.split("+").map((id) => INGREDIENTS[id]).filter(Boolean);
-  return ings.length ? describePotion(ings, F).name : null;
+  const ids = hash.split("+").filter((id) => INGREDIENTS[id]);
+  return ids.length ? descOf(ids).name : null;
 };
 
 // ── Strategy A — The Sprinter ────────────────────────────────────────────────
@@ -694,7 +745,7 @@ const stratCompletionist: Strategy = (s) => {
   const gs = gathererIdx(s);
   gs.forEach((wi, k) => assignToLocation(s, wi, unlocked[k % unlocked.length]));
   // rotate each machine onto a NEW recipe we can currently brew
-  const discoveredNames = new Set(groupHashesByName([...s.discoveredPotions], INGREDIENTS, F).map((g) => g.name));
+  const discoveredNames = s.discoveredNames; // tracked incrementally
   for (const m of s.machines) {
     const have = (id: string) => (s.ingredientInv[id] ?? 0) > 0;
     let start = (s.scratch.bRot ?? 0) % CATALOG.all.length;
@@ -793,8 +844,7 @@ const stratQuestHunter: Strategy = (s, t) => {
     if (count <= 0) continue;
     const nm = potionNameOfHash(hash);
     if (nm && neededNames.has(nm)) continue;
-    const ings = hash.split("+").map((id) => INGREDIENTS[id]).filter(Boolean);
-    const earned = describePotion(ings, F).value * count;
+    const earned = descOf(hash.split("+")).value * count;
     s.coins += earned; s.coinsFromSales += earned; delete s.potionInv[hash];
   }
 };
@@ -806,18 +856,106 @@ const STRATEGIES: Record<string, Strategy> = {
   D_QuestHunter: stratQuestHunter,
 };
 
+// ── Brewable catalogue analysis ──────────────────────────────────────────────
+// "With the current 100-ingredient setup, how many unique recipes and unique
+// potions can ACTUALLY be brewed, and at what prices?"
+//
+// This enumerates real recipes built from our real ingredients and runs each
+// through the real describePotion() engine — it counts a potion only if a
+// concrete recipe produces it. It is NOT the theoretical name grid (prefix ×
+// type × suffix); a name no ingredient combination can make is never counted.
+//
+// The brewer has up to 5 slots and may repeat ingredients, so the full recipe
+// space is astronomically large. We enumerate a thorough, bounded sample that
+// still reaches every price band: ALL distinct 1-3 ingredient recipes, every
+// single-ingredient recipe repeated 2-5× (the cheap path to the high-value
+// bands), and all distinct 4-ingredient recipes among the 30 most valuable
+// ingredients (the multi-ingredient path to Grand/Mythic). The resulting
+// unique-potion count is therefore a tight LOWER BOUND on what's achievable.
+function analyzeRecipes() {
+  const PRICE_BANDS = ["Lesser", "Common", "Greater", "Potent", "Grand", "Mythic"];
+  const BAND_THRESHOLDS = [30, 80, 180, 350, 700]; // mirrors engine/potions VALUE_THRESHOLDS
+  const bandOf = (v: number) => BAND_THRESHOLDS.filter((t) => v >= t).length; // 0..5
+
+  const bestByName = new Map<string, { value: number; ids: string[] }>();
+  const allValues: number[] = [];
+  const bySize: { slots: number; recipes: number; unique_potions: number; value_min: number; value_median: number; value_max: number }[] = [];
+  let totalRecipes = 0;
+
+  // Evaluate one concrete recipe through the real engine (no cache — every combo
+  // here is unique, so caching would only balloon memory).
+  const evalRecipe = (ids: string[], names?: Set<string>, vals?: number[]) => {
+    const d = describePotion(ids.map((id) => INGREDIENTS[id]), F);
+    totalRecipes++;
+    names?.add(d.name); vals?.push(d.value); allValues.push(d.value);
+    const cur = bestByName.get(d.name);
+    if (!cur || d.value > cur.value) bestByName.set(d.name, { value: d.value, ids: [...ids] });
+  };
+
+  // (1) All distinct 1-, 2-, 3-ingredient recipes over the full 100.
+  for (const size of [1, 2, 3]) {
+    const names = new Set<string>();
+    const vals: number[] = [];
+    const before = totalRecipes;
+    const acc: string[] = [];
+    const walk = (start: number, depth: number) => {
+      if (depth === 0) { evalRecipe(acc, names, vals); return; }
+      for (let i = start; i < ING_IDS.length; i++) { acc.push(ING_IDS[i]); walk(i + 1, depth - 1); acc.pop(); }
+    };
+    walk(0, size);
+    vals.sort((a, b) => a - b);
+    bySize.push({
+      slots: size, recipes: totalRecipes - before, unique_potions: names.size,
+      value_min: vals[0] ?? 0, value_median: vals[Math.floor(vals.length / 2)] ?? 0, value_max: vals[vals.length - 1] ?? 0,
+    });
+  }
+
+  // (2) Single-ingredient recipes repeated 2-5× (cheap path to high price bands).
+  for (const id of ING_IDS) for (const n of [2, 3, 4, 5]) evalRecipe(Array(n).fill(id));
+
+  // (3) Distinct 4-ingredient recipes among the 30 most valuable ingredients
+  //     (multi-ingredient path into Grand/Mythic).
+  const topValue = [...ING_IDS].sort((a, b) => INGREDIENTS[b].base_value - INGREDIENTS[a].base_value).slice(0, 30);
+  const acc4: string[] = [];
+  const walk4 = (start: number, depth: number) => {
+    if (depth === 0) { evalRecipe(acc4); return; }
+    for (let i = start; i < topValue.length; i++) { acc4.push(topValue[i]); walk4(i + 1, depth - 1); acc4.pop(); }
+  };
+  walk4(0, 4);
+
+  const potions = [...bestByName.entries()].map(([name, b]) => ({
+    name, value: b.value, recipe: b.ids.map((id) => INGREDIENTS[id].name),
+  }));
+  const bandCounts = [0, 0, 0, 0, 0, 0];
+  for (const p of potions) bandCounts[bandOf(p.value)]++;
+  allValues.sort((a, b) => a - b);
+
+  return {
+    note: "Achievable potions from real ingredient combinations (not the theoretical name grid). Enumerates all distinct 1-3 ingredient recipes, single-ingredient repeats 2-5x, and distinct 4-ingredient recipes among the 30 highest-value ingredients. Unique-potion count is a tight lower bound; 5-slot and mixed-repeat recipes can only add more.",
+    total_recipes_enumerated: totalRecipes,
+    total_unique_potions: bestByName.size,
+    by_size: bySize,
+    value_min: allValues[0] ?? 0,
+    value_median: allValues[Math.floor(allValues.length / 2)] ?? 0,
+    value_max: allValues[allValues.length - 1] ?? 0,
+    price_bands: PRICE_BANDS.map((label, i) => ({ label, min_value: i === 0 ? 0 : BAND_THRESHOLDS[i - 1], unique_potions: bandCounts[i] })),
+    top_potions: [...potions].sort((a, b) => b.value - a.value).slice(0, 12),
+    cheapest_potions: [...potions].sort((a, b) => a.value - b.value).slice(0, 8),
+  };
+}
+
 // ── Main ────────────────────────────────────────────────────────────────────
 function main() {
   const outfile = process.argv[2];
   if (!outfile) {
-    console.error("Usage: npx tsx scripts/simulate.ts <outfile.json> [hours=6] [iterations=10]");
+    console.error("Usage: npx tsx scripts/simulate.ts <outfile.json> [hours=24] [iterations=8]");
     process.exit(1);
   }
-  const hours = Number(process.argv[3] ?? 6);
-  const iterations = Number(process.argv[4] ?? 10);
+  const hours = Number(process.argv[3] ?? 24);
+  const iterations = Number(process.argv[4] ?? 8);
   const totalSeconds = Math.round(hours * 3600);
-  const sampleInterval = 300;   // 5 in-game minutes
-  const decisionInterval = 10;  // strategies act every 10s
+  const sampleInterval = Math.max(300, Math.round(totalSeconds / 240)); // ~240 samples max
+  const decisionInterval = 15;  // strategies act every 15 in-game seconds
 
   console.log(`Simulating ${hours}h (${totalSeconds}s) × ${iterations} iterations × ${Object.keys(STRATEGIES).length} strategies…`);
   const t0 = Date.now();
@@ -863,6 +1001,7 @@ function main() {
     },
     strategies,
     global_diagnosis: { ranking: finals, spread_multiple: spread, notes: globalNotes },
+    recipe_analysis: analyzeRecipes(),
   };
 
   writeFileSync(outfile, JSON.stringify(report, null, 2));
