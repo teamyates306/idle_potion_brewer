@@ -33,13 +33,16 @@ import {
   deductQuest,
 } from "../engine/quests";
 import { pushGameEvent } from "../util/gameEvents";
+import { MACHINE_COSTS, HIRE_COST_BASE } from "../engine/economyConstants";
+
+// Re-exported for existing UI importers (MachineView, WorkerView).
+export { MACHINE_COSTS };
 
 const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
 export const QUEST_COOLDOWN_MS = 60 * 60 * 1000;
 
 // ---- Machine configuration ------------------------------------------------
 const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
-export const MACHINE_COSTS = [0, 5_000, 250_000, 10_000_000, 100_000_000];
 
 // ---- Global player upgrade helpers ----------------------------------------
 export function playerClickPower(level: number): number {
@@ -138,8 +141,6 @@ function newWorker(index = 0): Worker {
     trip_phase: "idle",
   };
 }
-
-const HIRE_COST_BASE = 500;
 
 function newMachine(index = 0): BrewingMachine {
   return {

@@ -24,20 +24,20 @@ const RARITY_WEIGHT: Record<Rarity, number> = {
 };
 
 const DIFFICULTY_BONUS: Record<QuestDifficulty, number> = {
-  Easy: 1.15, Medium: 1.3, Challenging: 1.55,
+  Easy: 1.6, Medium: 2.2, Challenging: 3.2,
 };
 
 // Target difficulty-score bands (avgComplexity * totalQuantity)
 const TIER_SCORE: Record<QuestDifficulty, [number, number]> = {
-  Easy: [40, 130],
-  Medium: [180, 450],
-  Challenging: [550, 1000],
+  Easy: [20, 60],
+  Medium: [80, 200],
+  Challenging: [300, 600],
 };
 
 const TIER_NAME_COUNT: Record<QuestDifficulty, [number, number]> = {
-  Easy: [1, 2],
-  Medium: [2, 3],
-  Challenging: [3, 5],
+  Easy: [1, 1],
+  Medium: [1, 2],
+  Challenging: [2, 3],
 };
 
 function ingredientComplexity(ing: Ingredient): number {

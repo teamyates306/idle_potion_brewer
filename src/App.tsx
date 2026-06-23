@@ -3,6 +3,7 @@ import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText, ArrowUpCircle 
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
+import BalanceReportView from "./BalanceReportView";
 import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
@@ -20,6 +21,13 @@ import { fmt, fmtDuration } from "./util/format";
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "dev" | null;
 
 export default function App() {
+  // Standalone analytics route: the economy A/B balance report. Checked before
+  // any hooks so it renders as a self-contained page (pathname is constant for
+  // the lifetime of the load, so the early return is hook-order safe).
+  if (typeof window !== "undefined" && window.location.pathname === "/balance-report") {
+    return <BalanceReportView />;
+  }
+
   const welcomeBack = useGameStore((s) => s.welcomeBack);
   const applyOffline = useGameStore((s) => s.applyOffline);
   const refreshQuests = useGameStore((s) => s.refreshQuests);

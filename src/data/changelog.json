@@ -1,0 +1,74 @@
+[
+  {
+    "entity": "Cross-strategy balance (headline)",
+    "old_value": "Spread ×17,051 (A_Sprinter 231,891 vs D_QuestHunter 13.6)",
+    "new_value": "Spread ×20 (B_Completionist 469,751 vs C_Industrialist 22,965)",
+    "reason": "One brain-dead playstyle (spam a single common recipe) out-earned every intended playstyle by four orders of magnitude. The changes below lift discovery, quests, and industry into viability while trimming the spam runaway and its ingredient graveyard."
+  },
+  {
+    "entity": "Rootmoss base_value (configStore)",
+    "old_value": "5",
+    "new_value": "4",
+    "reason": "A_Sprinter printed 231k coins brewing nothing but Rootmoss potions at 97% utilization. The most-spammed common was over-valued; trimming it taxes single-recipe spam at the source."
+  },
+  {
+    "entity": "Firepetal base_value (configStore)",
+    "old_value": "7",
+    "new_value": "5",
+    "reason": "Starter-node common that fed the spam economy and then rotted in inventory (44,048 unbrewed in the Sprinter run). Lowered to reduce the value sloshing through the opening loop."
+  },
+  {
+    "entity": "Dewcap base_value (configStore)",
+    "old_value": "6",
+    "new_value": "4",
+    "reason": "Second-worst graveyard offender (26,411 unbrewed). Same rationale as Firepetal."
+  },
+  {
+    "entity": "The Damp Hollow drop weights (configStore)",
+    "old_value": "rootmoss 60 / firepetal 25 / dewcap 15",
+    "new_value": "rootmoss 70 / firepetal 18 / dewcap 12",
+    "reason": "The Sprinter brews only Rootmoss, so 40% of every gather at the starter node (firepetal+dewcap) became a 70,459-unit ingredient graveyard. Concentrating the node on its primary output cut the Sprinter graveyard to 54,440."
+  },
+  {
+    "entity": "value_mult — mental attrs: mana / resonance / insight / radiance (configStore.formulas)",
+    "old_value": "0.01 each",
+    "new_value": "0.015 each",
+    "reason": "B_Completionist discovered 80 unique potions but earned only 11,648 coins — discovery was economically pointless. These attributes appear almost exclusively on uncommon+ ingredients, so the buff rewards complexity without touching the Sprinter's attribute-poor commons."
+  },
+  {
+    "entity": "value_mult — void (configStore.formulas)",
+    "old_value": "0.01",
+    "new_value": "0.016",
+    "reason": "Void is an end-tier attribute (Void Essence, Voidlily, Riftspore). It carried no payoff, so the 'esoteric but volatile' end-game ingredients had no reason to be brewed."
+  },
+  {
+    "entity": "value_mult — cosmic attrs: chrono / gravitas / entropy / soul / mutation (configStore.formulas)",
+    "old_value": "0.01 each",
+    "new_value": "0.018 each",
+    "reason": "The legendary 'esoteric' tier (Chronopearl, Starmarrow, Entropyshard, God's Eye) existed but was worthless to brew. A measured buff (first tried at 0.03 — it sent the Completionist to 530k — then dialed back to 0.018) makes end-game potions a genuine payoff without a new runaway."
+  },
+  {
+    "entity": "MACHINE_COSTS (gameStore / economyConstants)",
+    "old_value": "[0, 5,000, 250,000, 10,000,000, 100,000,000]",
+    "new_value": "[0, 3,000, 75,000, 600,000, 3,000,000]",
+    "reason": "C_Industrialist hit a brick wall at machine #3 (250k was unreachable in 6h), stalling at 2 machines and 50% utilization. The old curve jumped ×50 then ×40; the new curve is a smooth ~×20 per tier so building out the factory is actually attainable."
+  },
+  {
+    "entity": "Quest DIFFICULTY_BONUS reward multiplier (engine/quests)",
+    "old_value": "Easy 1.15 / Medium 1.3 / Challenging 1.55",
+    "new_value": "Easy 1.6 / Medium 2.2 / Challenging 3.2",
+    "reason": "D_QuestHunter completed 0.6 quests in 6h and ended with 13.6 coins. Quests are meant to be 'massive payouts' but barely beat selling the same potions. Steeper bonuses make fulfilling a quest clearly worth the workforce reshuffle."
+  },
+  {
+    "entity": "Quest TIER_SCORE quota bands (engine/quests)",
+    "old_value": "Easy [40,130] / Medium [180,450] / Challenging [550,1000]",
+    "new_value": "Easy [20,60] / Medium [80,200] / Challenging [300,600]",
+    "reason": "Quota = score / avg-recipe-complexity, so the old bands demanded brewing 30-100+ of one specific potion name — impossible at gather-limited throughput. Roughly halving the bands made quests completable (D went 0.6 → 5.5 completions)."
+  },
+  {
+    "entity": "Quest TIER_NAME_COUNT distinct-names-per-quest (engine/quests)",
+    "old_value": "Easy [1,2] / Medium [2,3] / Challenging [3,5]",
+    "new_value": "Easy [1,1] / Medium [1,2] / Challenging [2,3]",
+    "reason": "Requiring up to 5 different potion names per quest forced the player to maintain many recipes at once — unfulfillable for a gather-limited brewer. Fewer names per quest makes each one a focused, achievable objective."
+  }
+]
