@@ -104,10 +104,13 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
             <>
               {(() => {
                 const manualEntries = entries.filter(([hash]) => !autoSellHashes.includes(hash));
+                let firstPotion = true;
                 const renderRow = (hash: string, count: number, auto: boolean) => {
                   const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
                   if (!d) return null;
                   const checked = selected.has(hash);
+                  const isFirstPotion = firstPotion;
+                  firstPotion = false;
                   return (
                     <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
                       {auto && selectMode && (
@@ -116,6 +119,7 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
                         </button>
                       )}
                       <button
+                        {...(isFirstPotion ? { "data-tut": "potion-entry" } : {})}
                         onClick={() => (auto && selectMode ? toggleSel(hash) : setDetail({ hash }))}
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                       >

@@ -29,11 +29,13 @@ interface WorkerRowProps {
   tripColor: string;
   onSelect: (idx: number) => void;
   onDetail: (idx: number) => void;
+  dataTut?: string;
 }
-const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, tripPct, tripColor, onSelect, onDetail }: WorkerRowProps) {
+const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, tripPct, tripColor, onSelect, onDetail, dataTut }: WorkerRowProps) {
   const tokens = worker.upgrade_tokens ?? 0;
   return (
     <button
+      {...(dataTut ? { "data-tut": dataTut } : {})}
       onClick={() => (selectMode ? onSelect(idx) : onDetail(idx))}
       className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
         selectMode && checked
@@ -157,7 +159,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     setBulkDest("");
   };
 
-  const renderRow = ({ w: worker, i: idx }: { w: Worker; i: number }) => {
+  const renderRow = ({ w: worker, i: idx, isTutTarget }: { w: Worker; i: number; isTutTarget?: boolean }) => {
     const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
     const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
     const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
@@ -177,6 +179,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         tripColor={tripColor}
         onSelect={toggleSel}
         onDetail={setDetailIdx}
+        dataTut={isTutTarget ? "worker-idle" : undefined}
       />
     );
   };
@@ -225,7 +228,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                   <div className="h-px flex-1 bg-slate-800" />
                 </div>
               )}
-              {sec.items.map(renderRow)}
+              {sec.items.map((item, itemIdx) => renderRow({ ...item, isTutTarget: sec.key === "idle" && itemIdx === 0 }))}
             </div>
           ))}
         </div>
@@ -464,6 +467,7 @@ function WorkerDetailModal({
           )}
           <div className="flex gap-2">
             <button
+              data-tut="assign-location"
               onClick={() => onOpenMap(workerIndex)}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
             >

@@ -74,6 +74,7 @@ export default function MapView({
 
   const locations = Object.values(cfg.locations);
   const { nodes, height } = buildLayout(locations);
+  const firstUnlockedId = nodes.find((n) => unlocked.includes(n.loc.id))?.loc.id;
 
   // ── Drag to pan ─────────────────────────────────────────────────────────────
   const vpRef = useRef<HTMLDivElement>(null);
@@ -140,6 +141,7 @@ export default function MapView({
                 workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
                 ingredients={n.loc.drops}
                 discoveredDrops={discoveredDrops[n.loc.id] ?? []}
+                dataTut={n.loc.id === firstUnlockedId ? "map-location" : undefined}
                 onClick={() => setSelected(n.loc)}
               />
             ))}
@@ -168,6 +170,7 @@ function MapNode({
   workerColors,
   ingredients,
   discoveredDrops,
+  dataTut,
   onClick,
 }: {
   node: PlacedNode;
@@ -177,6 +180,7 @@ function MapNode({
   workerColors: string[];
   ingredients: { ingredientId: string; weight: number }[];
   discoveredDrops: string[];
+  dataTut?: string;
   onClick: () => void;
 }) {
   const cfg = useConfigStore();
@@ -208,6 +212,7 @@ function MapNode({
 
       {/* Node circle */}
       <button
+        {...(dataTut ? { "data-tut": dataTut } : {})}
         onClick={onClick}
         className="relative flex items-center justify-center rounded-full border-2 transition active:scale-95"
         style={{
@@ -391,6 +396,7 @@ function LocationDetailModal({
                   </button>
                 ) : (
                   <button
+                    data-tut="assign-confirm"
                     onClick={() => { assignWorker(lockedWorkerIndex!, loc.id); onClose(); }}
                     className="mt-3 w-full rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-500 active:scale-[0.99]"
                   >

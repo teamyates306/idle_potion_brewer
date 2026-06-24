@@ -853,7 +853,6 @@ export const useGameStore = create<GameState>()(
             i === mi ? { ...m, brew_started_at: now() - newElapsedMs } : m
           ),
         });
-        get().advanceTutorial(1); // tutorial: poked the cauldron while brewing
       },
 
       refreshQuests: () => {
