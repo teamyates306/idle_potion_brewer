@@ -101,11 +101,6 @@ function dominantAttrs(stats: Attributes): [keyof Attributes, keyof Attributes |
   return [firstKey, secondKey];
 }
 
-const SECONDARY_CONNECTORS = ["& ", "laced with ", "tinged with ", "edged with "];
-function secondaryConnector(h: number): string {
-  return SECONDARY_CONNECTORS[h % SECONDARY_CONNECTORS.length];
-}
-
 export function describePotion(
   ingredients: Ingredient[],
   f: BaseFormulas
@@ -140,11 +135,8 @@ export function describePotion(
   const type = CATEGORY_TYPE[primaryCategory] ?? "Tonic";
 
   // Name incorporates dominant + (when strong enough) secondary attribute for wider name space.
-  const [primaryAttr, secondaryAttr] = dominantAttrs(stats);
-  const primarySuffix = ATTRIBUTE_SUFFIX_REGISTRY[primaryAttr];
-  const suffix = secondaryAttr
-    ? `${primarySuffix} ${secondaryConnector(h)}${ATTRIBUTE_SUFFIX_REGISTRY[secondaryAttr]}`
-    : primarySuffix;
+  const [primaryAttr] = dominantAttrs(stats);
+  const suffix = ATTRIBUTE_SUFFIX_REGISTRY[primaryAttr];
   const name = `${prefix} ${type} of ${suffix}`;
 
   return { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility };
