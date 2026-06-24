@@ -166,8 +166,6 @@ body {
 .tut-target {
   animation: tut-target-pulse 1.4s ease-in-out infinite;
   border-radius: inherit;
-  position: relative;
-  z-index: 1;
 }
 /* Legacy ring class kept for any external references */
 @keyframes tut-ring {

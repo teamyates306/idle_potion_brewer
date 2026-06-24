@@ -591,6 +591,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           label="Market"
           onClick={() => onOpen("potion")}
           top={badgeY.market}
+          dataTut="market"
         />
       </div>
 

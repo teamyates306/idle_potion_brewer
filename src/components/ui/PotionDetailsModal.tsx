@@ -161,6 +161,7 @@ export default function PotionDetailsModal({
 
         {/* Auto-sell toggle */}
         <button
+          data-tut="auto-sell"
           onClick={() => toggleAutoSellPotion(activeHash)}
           className={`mb-3 flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition ${
             isAutoSell
