@@ -19,6 +19,13 @@ import type { Worker } from "../types";
 
 const HIRE_COST_BASE = 500;
 
+// "2.5" → "Guarantees 2, 50% chance for 3" (fractional carry yield).
+function carryHint(size: number): string {
+  const base = Math.floor(size);
+  const frac = Math.round((size - base) * 100);
+  return frac === 0 ? `Always ${base}` : `Guarantees ${base}, ${frac}% chance for ${base + 1}`;
+}
+
 export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void; onOpenMap: (workerIndex?: number) => void }) {
   const workers = useGameStore((s) => s.workers);
   const machines = useGameStore((s) => s.machines);
@@ -370,8 +377,9 @@ function WorkerDetailModal({
             <div className="mt-0.5 font-semibold text-slate-100">{worker.gather_speed.toFixed(2)}</div>
           </div>
           <div className="rounded-lg bg-slate-800/60 p-2.5">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400"><Package size={13} /> Retrieval Size</div>
-            <div className="mt-0.5 font-semibold text-slate-100">×{worker.retrieval_size.toFixed(0)}</div>
+            <div className="flex items-center gap-1.5 text-xs text-slate-400"><Package size={13} /> Carry Size</div>
+            <div className="mt-0.5 font-semibold text-slate-100">{worker.retrieval_size.toFixed(1)}</div>
+            <div className="text-[9px] leading-tight text-slate-500">{carryHint(worker.retrieval_size)}</div>
           </div>
           <div className="rounded-lg bg-slate-800/60 p-2.5">
             <div className="flex items-center gap-1.5 text-xs text-slate-400"><Timer size={13} /> Click Speed</div>
@@ -404,8 +412,8 @@ function WorkerDetailModal({
                 { key: "gspeed", icon: <Gauge size={14} />, label: "+0.25 Gather Speed",
                   detail: `${worker.gather_speed.toFixed(2)} → ${(worker.gather_speed + 0.25).toFixed(2)}`,
                   cost: speedCost, affordable: coins >= speedCost, onBuy: () => buySpeed(workerIndex) },
-                { key: "gsize", icon: <Package size={14} />, label: "+1 Retrieval Size",
-                  detail: `×${worker.retrieval_size.toFixed(0)} → ×${(worker.retrieval_size + 1).toFixed(0)}`,
+                { key: "gsize", icon: <Package size={14} />, label: "+0.5 Carry Size",
+                  detail: `${worker.retrieval_size.toFixed(1)} → ${(worker.retrieval_size + 0.5).toFixed(1)} · ${carryHint(worker.retrieval_size + 0.5)}`,
                   cost: sizeCost, affordable: coins >= sizeCost, onBuy: () => buySize(workerIndex) },
                 { key: "cspeed", icon: <Timer size={14} />, label: "+0.2× Click Speed",
                   detail: `${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + 0.2).toFixed(1)}×`,

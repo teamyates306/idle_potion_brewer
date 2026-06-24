@@ -157,6 +157,11 @@ export function useGameLoop(): LoopProgress {
         return { brewProgress, brewActive };
       });
 
+      // Tutorial step 0 → 1: the first brew actually started ticking.
+      if (!g.has_completed_tutorial && g.tutorial_step === 0 && machineStates.some((m) => m.brewActive && m.brewProgress > 0)) {
+        g.advanceTutorial(0);
+      }
+
       progRef.current = { workers: workerStates, machines: machineStates };
       setTick((x) => (x + 1) % 1000000);
     };

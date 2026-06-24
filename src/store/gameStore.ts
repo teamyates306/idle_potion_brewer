@@ -34,6 +34,8 @@ import {
 } from "../engine/quests";
 import { pushGameEvent } from "../util/gameEvents";
 import { MACHINE_COSTS, HIRE_COST_BASE } from "../engine/economyConstants";
+import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type AchievementTrigger } from "../data/achievements";
+import { pushAchievementToast } from "../util/achievementToast";
 
 // Re-exported for existing UI importers (MachineView, WorkerView).
 export { MACHINE_COSTS };
@@ -186,6 +188,12 @@ interface GameState {
   exploredLocations: string[];
   /** Per-location: which of its drops a worker has actually brought back (rest render as ???). */
   discovered_location_drops: Record<string, string[]>;
+  // onboarding
+  tutorial_step: number;
+  has_completed_tutorial: boolean;
+  // achievements
+  unlocked_achievements: string[];
+  total_brews: number;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
 
@@ -237,6 +245,15 @@ interface GameState {
   buySlot: (machineId: number) => void;
   unlockLocation: (locationId: string) => void;
 
+  // onboarding
+  advanceTutorial: (expectedStep?: number) => void;
+  skipTutorial: () => void;
+  // achievements (event-driven — never polled in the loop)
+  checkAchievements: (trigger: AchievementTrigger, value: number) => void;
+  unlockAchievement: (id: string) => void;
+  /** Silently mark already-met achievements as unlocked (retroactive, no reward/toast). */
+  reconcileAchievements: () => void;
+
   // lifecycle
   applyOffline: () => void;
   dismissWelcome: () => void;
@@ -277,21 +294,46 @@ function getMachineIdx(machines: BrewingMachine[], machineId: number): number {
   return machines.findIndex((m) => m.id === machineId);
 }
 
+// Build the state patch for unlocking a set of achievements: marks them unlocked,
+// applies their (coin / token) rewards, and fires an "Achievement Unlocked" toast.
+function applyAchievementUnlocks(s: GameState, list: typeof ACHIEVEMENTS): Partial<GameState> {
+  const unlocked = new Set(s.unlocked_achievements);
+  let coins = s.coins;
+  let tokenBonus = 0;
+  for (const a of list) {
+    if (unlocked.has(a.id)) continue;
+    unlocked.add(a.id);
+    for (const r of a.rewards) {
+      if (r.type === "coins") coins += r.amount;
+      else tokenBonus += r.amount;
+    }
+    pushAchievementToast(a.name, a.description);
+  }
+  const patch: Partial<GameState> = { unlocked_achievements: Array.from(unlocked), coins };
+  if (tokenBonus > 0) patch.workers = s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + tokenBonus }));
+  return patch;
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       coins: 100,
       workers: [newWorker(0)],
       machines: [newMachine(0)],
-      ingredientInv: {},
+      // New initiates start with exactly 10 Rootmoss to brew their first potion.
+      ingredientInv: { rootmoss: 10 },
       potionInv: {},
       discoveredPotions: [],
       autoSellHashes: [],
-      discovered: [],
+      discovered: ["rootmoss"],
       discoveredAttributes: [],
       unlockedLocations: ["hollow"],
       exploredLocations: ["hollow"],
-      discovered_location_drops: {},
+      discovered_location_drops: { hollow: ["rootmoss"] },
+      tutorial_step: 0,
+      has_completed_tutorial: false,
+      unlocked_achievements: [],
+      total_brews: 0,
       lastSeen: now(),
       welcomeBack: null,
       questsUnlocked: false,
@@ -302,7 +344,7 @@ export const useGameStore = create<GameState>()(
 
       // ---- Workers ----------------------------------------------------------
 
-      assignWorker: (workerIndex, locationId) =>
+      assignWorker: (workerIndex, locationId) => {
         set((s) => {
           const cfg = useConfigStore.getState();
           const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
@@ -320,7 +362,9 @@ export const useGameStore = create<GameState>()(
               ? [...s.exploredLocations, locationId]
               : s.exploredLocations;
           return { workers, exploredLocations };
-        }),
+        });
+        if (locationId) get().advanceTutorial(3); // tutorial: sent a worker to the map
+      },
 
       assignWorkerToMachine: (workerIndex, machineId) =>
         set((s) => {
@@ -336,7 +380,7 @@ export const useGameStore = create<GameState>()(
           return { workers };
         }),
 
-      bulkAssign: (workerIndices, locationId, machineId) =>
+      bulkAssign: (workerIndices, locationId, machineId) => {
         set((s) => {
           const cfg = useConfigStore.getState();
           const idxSet = new Set(workerIndices);
@@ -359,9 +403,11 @@ export const useGameStore = create<GameState>()(
               flavor_status: statusFor(phase, danger) };
           });
           return { workers, exploredLocations: Array.from(exploredSet) };
-        }),
+        });
+        if (locationId) get().advanceTutorial(3); // tutorial: sent workers to the map
+      },
 
-      buyClickSpeed: (workerIndex) =>
+      buyClickSpeed: (workerIndex) => {
         set((s) => {
           const cfg = useConfigStore.getState();
           const w = s.workers[workerIndex];
@@ -378,7 +424,10 @@ export const useGameStore = create<GameState>()(
                 : wk
             ),
           };
-        }),
+        });
+        const sp = get().workers[workerIndex]?.auto_click_speed ?? 0;
+        get().checkAchievements("worker_click_speed", sp);
+      },
 
       buyClickPower: (workerIndex) =>
         set((s) => {
@@ -523,7 +572,7 @@ export const useGameStore = create<GameState>()(
         }
       },
 
-      hireWorker: () =>
+      hireWorker: () => {
         set((s) => {
           const cost = HIRE_COST_BASE * Math.pow(s.workers.length, 2);
           if (s.coins < cost) return {};
@@ -531,11 +580,13 @@ export const useGameStore = create<GameState>()(
             coins: s.coins - cost,
             workers: [...s.workers, newWorker(s.workers.length)],
           };
-        }),
+        });
+        get().checkAchievements("workers_hired", get().workers.length);
+      },
 
       // ---- Machines ---------------------------------------------------------
 
-      buyMachine: () =>
+      buyMachine: () => {
         set((s) => {
           if (s.machines.length >= 5) return {};
           const cost = MACHINE_COSTS[s.machines.length];
@@ -544,7 +595,9 @@ export const useGameStore = create<GameState>()(
             coins: s.coins - cost,
             machines: [...s.machines, newMachine(s.machines.length)],
           };
-        }),
+        });
+        get().checkAchievements("machines_built", get().machines.length);
+      },
 
       programSlot: (machineId, index, ingredientId) =>
         set((s) => {
@@ -655,11 +708,13 @@ export const useGameStore = create<GameState>()(
           brew_stalled: false,
         };
 
+        const totalBrews = (s.total_brews ?? 0) + outputs;
         set({
           coins,
           ingredientInv: inv,
           potionInv,
           discoveredPotions,
+          total_brews: totalBrews,
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
 
@@ -671,6 +726,15 @@ export const useGameStore = create<GameState>()(
         }
 
         if (!prevDiscovered.includes(potion.hash)) get().refreshQuests();
+
+        // Achievements (event-driven)
+        const g = get();
+        g.checkAchievements("potions_brewed", totalBrews);
+        g.checkAchievements("single_potion_value", potion.value);
+        const volatileCount = ingredients.filter((ing) => (ing.attributes.volatility ?? 0) >= 10).length;
+        if (volatileCount > 0) g.checkAchievements("volatile_recipe", volatileCount);
+        if (!prevDiscovered.includes(potion.hash)) g.checkAchievements("potions_discovered", discoveredPotions.length);
+        if (autoSell) g.checkAchievements("coins", coins);
       },
 
       // Proactive guard: a running machine with insufficient ingredients is
@@ -701,6 +765,7 @@ export const useGameStore = create<GameState>()(
           return;
         }
         const autoSellHashes = [...s.autoSellHashes, hash];
+        get().advanceTutorial(2); // tutorial: auto-sell toggled ON
         // Retroactive: immediately liquidate existing stock of this exact recipe.
         const have = s.potionInv[hash] ?? 0;
         if (have <= 0) { set({ autoSellHashes }); return; }
@@ -711,6 +776,7 @@ export const useGameStore = create<GameState>()(
         delete potionInv[hash];
         set({ autoSellHashes, potionInv, coins: s.coins + earned });
         if (earned > 0) pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
+        if (earned > 0) get().checkAchievements("coins", s.coins + earned);
       },
 
       clearAutoSell: () => set({ autoSellHashes: [] }),
@@ -735,6 +801,7 @@ export const useGameStore = create<GameState>()(
         if (potionInv[hash] <= 0) delete potionInv[hash];
         set({ coins: s.coins + earned, potionInv });
         pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
+        get().checkAchievements("coins", s.coins + earned);
       },
 
       sellAll: () => {
@@ -751,6 +818,7 @@ export const useGameStore = create<GameState>()(
         }
         set({ coins, potionInv: {} });
         if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
+        if (totalEarned > 0) get().checkAchievements("coins", coins);
       },
 
       clickBrew: (machineId) => {
@@ -776,6 +844,7 @@ export const useGameStore = create<GameState>()(
             i === mi ? { ...m, brew_started_at: now() - newElapsedMs } : m
           ),
         });
+        get().advanceTutorial(1); // tutorial: poked the cauldron while brewing
       },
 
       refreshQuests: () => {
@@ -817,6 +886,7 @@ export const useGameStore = create<GameState>()(
 
         set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
+        get().checkAchievements("coins", s.coins + quest.reward);
       },
 
       // ---- Worker upgrades --------------------------------------------------
@@ -924,7 +994,7 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
-      unlockLocation: (locationId) =>
+      unlockLocation: (locationId) => {
         set((s) => {
           if (s.unlockedLocations.includes(locationId)) return {};
           const cfg = useConfigStore.getState();
@@ -934,7 +1004,9 @@ export const useGameStore = create<GameState>()(
             coins: s.coins - loc.unlockCost,
             unlockedLocations: [...s.unlockedLocations, locationId],
           };
-        }),
+        });
+        get().checkAchievements("locations_unlocked", get().unlockedLocations.length);
+      },
 
       // ---- Offline simulation -----------------------------------------------
 
@@ -1130,6 +1202,7 @@ export const useGameStore = create<GameState>()(
             discovered: Array.from(discovered),
             discoveredAttributes,
             discovered_location_drops: discoveredLocDrops,
+            total_brews: (s.total_brews ?? 0) + totalPotionsBrewedCount,
             workers: workersSim,
             machines,
             welcomeBack,
@@ -1144,15 +1217,19 @@ export const useGameStore = create<GameState>()(
           coins: 100,
           workers: [newWorker(0)],
           machines: [newMachine(0)],
-          ingredientInv: {},
+          ingredientInv: { rootmoss: 10 },
           potionInv: {},
-          discovered: [],
+          discovered: ["rootmoss"],
           discoveredPotions: [],
           discoveredAttributes: [],
           autoSellHashes: [],
           unlockedLocations: ["hollow"],
           exploredLocations: ["hollow"],
-          discovered_location_drops: {},
+          discovered_location_drops: { hollow: ["rootmoss"] },
+          tutorial_step: 0,
+          has_completed_tutorial: false,
+          unlocked_achievements: [],
+          total_brews: 0,
           lastSeen: now(),
           welcomeBack: null,
           questsUnlocked: false,
@@ -1176,6 +1253,60 @@ export const useGameStore = create<GameState>()(
           if (!unlock || s.coins < unlock.cost) return s;
           return { coins: s.coins - unlock.cost, unlocked_globals: [...s.unlocked_globals, id] };
         }),
+
+      // ---- Onboarding tutorial ---------------------------------------------
+      advanceTutorial: (expectedStep) =>
+        set((s) => {
+          if (s.has_completed_tutorial) return {};
+          if (expectedStep !== undefined && s.tutorial_step !== expectedStep) return {};
+          const next = s.tutorial_step + 1;
+          return next > 4 ? { tutorial_step: 5, has_completed_tutorial: true } : { tutorial_step: next };
+        }),
+      skipTutorial: () => set({ has_completed_tutorial: true }),
+
+      // ---- Achievements (fired from actions, never the loop) ----------------
+      checkAchievements: (trigger, value) => {
+        const s = get();
+        const unlocked = new Set(s.unlocked_achievements);
+        const newly = ACHIEVEMENTS.filter(
+          (a) => a.trigger_type === trigger && !unlocked.has(a.id) && value >= a.target_value
+        );
+        if (newly.length === 0) return;
+        const patch = applyAchievementUnlocks(s, newly);
+        set(patch);
+        // A coin reward can itself cross a coin milestone — cascade once.
+        if (trigger !== "coins" && patch.coins !== undefined && patch.coins !== s.coins) {
+          get().checkAchievements("coins", patch.coins);
+        }
+      },
+      unlockAchievement: (id) => {
+        const s = get();
+        if (s.unlocked_achievements.includes(id)) return;
+        const a = ACHIEVEMENTS_BY_ID[id];
+        if (a) set(applyAchievementUnlocks(s, [a]));
+      },
+      reconcileAchievements: () =>
+        set((s) => {
+          const unlocked = new Set(s.unlocked_achievements);
+          const maxClick = s.workers.reduce((m, w) => Math.max(m, w.auto_click_speed), 0);
+          const stat = (t: AchievementTrigger): number => {
+            switch (t) {
+              case "coins": return s.coins;
+              case "potions_discovered": return s.discoveredPotions.length;
+              case "potions_brewed": return s.total_brews;
+              case "machines_built": return s.machines.length;
+              case "workers_hired": return s.workers.length;
+              case "locations_unlocked": return s.unlockedLocations.length;
+              case "worker_click_speed": return maxClick;
+              default: return 0; // recipe-event achievements can't be reconciled from a snapshot
+            }
+          };
+          let changed = false;
+          for (const a of ACHIEVEMENTS) {
+            if (!unlocked.has(a.id) && stat(a.trigger_type) >= a.target_value) { unlocked.add(a.id); changed = true; }
+          }
+          return changed ? { unlocked_achievements: Array.from(unlocked) } : {};
+        }),
     }),
     {
       name: "idle-potion-brewer",
@@ -1192,6 +1323,10 @@ export const useGameStore = create<GameState>()(
         unlockedLocations: s.unlockedLocations,
         exploredLocations: s.exploredLocations,
         discovered_location_drops: s.discovered_location_drops,
+        tutorial_step: s.tutorial_step,
+        has_completed_tutorial: s.has_completed_tutorial,
+        unlocked_achievements: s.unlocked_achievements,
+        total_brews: s.total_brews,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
@@ -1219,12 +1354,19 @@ export const useGameStore = create<GameState>()(
         } else {
           machines = current.machines;
         }
+        // Existing saves (any persisted keys) skip the tutorial; only a genuinely
+        // fresh player (no persisted state) sees onboarding.
+        const isExistingSave = Object.keys(p).length > 0;
         return {
           ...current,
           ...p,
           workers,
           machines,
           discovered_location_drops: p.discovered_location_drops ?? {},
+          tutorial_step: p.tutorial_step ?? 0,
+          has_completed_tutorial: p.has_completed_tutorial ?? isExistingSave,
+          unlocked_achievements: p.unlocked_achievements ?? [],
+          total_brews: p.total_brews ?? 0,
           player_click_power_level: p.player_click_power_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
         };

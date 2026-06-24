@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Search, Plus, Trash2, ChevronDown, ChevronRight, X } from "lucide-react";
 import { useConfigStore, type BaseFormulas } from "../store/configStore";
 import { useGameStore } from "../store/gameStore";
+import { ACHIEVEMENTS } from "../data/achievements";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
 type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations";
@@ -138,6 +139,35 @@ function CheatsTab() {
         <div className="flex flex-wrap gap-2">
           <Btn onClick={() => useGameStore.setState((s) => ({ workers: s.workers.map((w) => ({ ...w, xp: w.xp + 500 })) }))}>+500 XP all workers</Btn>
           <Btn onClick={() => useGameStore.setState((s) => ({ workers: s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + 1 })) }))}>+1 Token all workers</Btn>
+        </div>
+      </Section>
+      <Section title="Onboarding">
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={() => useGameStore.setState({ tutorial_step: 0, has_completed_tutorial: false })}>Restart Tutorial</Btn>
+          <Btn onClick={() => game.skipTutorial()}>Complete Tutorial</Btn>
+        </div>
+      </Section>
+      <Section title="Achievements — force trigger">
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={() => useGameStore.setState({ unlocked_achievements: [] })} danger>Lock all</Btn>
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          {ACHIEVEMENTS.map((a) => {
+            const got = game.unlocked_achievements.includes(a.id);
+            return (
+              <button
+                key={a.id}
+                onClick={() => game.unlockAchievement(a.id)}
+                disabled={got}
+                className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
+                  got ? "cursor-default border-amber-700/40 bg-amber-950/30 text-amber-300/70" : "border-slate-700 bg-slate-800 text-slate-200 hover:border-amber-500/60"
+                }`}
+              >
+                <span className="truncate">{a.is_secret ? "🔒 " : ""}{a.name}</span>
+                <span className="shrink-0 text-[10px] text-slate-500">{got ? "✓" : "trigger"}</span>
+              </button>
+            );
+          })}
         </div>
       </Section>
       <Section title="Danger Zone">

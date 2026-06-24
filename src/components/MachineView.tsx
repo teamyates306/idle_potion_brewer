@@ -8,6 +8,7 @@ import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
+import IngredientSelectionModal from "./IngredientSelectionModal";
 import type { BrewingMachine } from "../types";
 
 // Per-machine hue-rotate for the cauldron tint in the tab indicator
@@ -96,9 +97,7 @@ function MachinePanelBody({
   coins: number;
   accent: string;
 }) {
-  const discovered = useGameStore((s) => s.discovered);
   const inv = useGameStore((s) => s.ingredientInv);
-  const programSlot = useGameStore((s) => s.programSlot);
   const setRecipe = useGameStore((s) => s.setRecipe);
   const toggleRunning = useGameStore((s) => s.toggleRunning);
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
@@ -106,7 +105,7 @@ function MachinePanelBody({
   const buySlot = useGameStore((s) => s.buySlot);
   const cfg = useConfigStore();
 
-  const [picking, setPicking] = useState<number | null>(null);
+  const [slotModal, setSlotModal] = useState<number | null>(null);
   const [potionExpanded, setPotionExpanded] = useState(false);
   const [showRecipePicker, setShowRecipePicker] = useState(false);
 
@@ -194,12 +193,10 @@ function MachinePanelBody({
           return (
             <button
               key={i}
-              onClick={() => !locked && setPicking(picking === i ? null : i)}
+              onClick={() => !locked && setSlotModal(i)}
               className={`relative flex aspect-square flex-col items-center justify-center rounded-lg border text-xs transition active:scale-95 ${
                 locked
                   ? "border-slate-700 bg-slate-900 text-slate-600"
-                  : picking === i
-                  ? "border-amber-400 bg-amber-950/40"
                   : "border-amber-500/40 bg-slate-800 hover:border-amber-400"
               }`}
             >
@@ -223,41 +220,7 @@ function MachinePanelBody({
         })}
       </div>
 
-      {/* Ingredient picker */}
-      {picking !== null && (
-        <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900 p-2">
-          <p className="mb-2 text-xs text-slate-400">
-            Assign to slot {picking + 1} — duplicates allowed:
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => { programSlot(machine.id, picking, null); setPicking(null); }}
-              className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
-            >
-              Clear
-            </button>
-            {discovered.length === 0 && (
-              <span className="text-xs text-slate-500">Gather something first…</span>
-            )}
-            {discovered.map((id) => {
-              const ing = cfg.ingredients[id];
-              if (!ing) return null;
-              const count = inv[id] ?? 0;
-              return (
-                <button
-                  key={id}
-                  onClick={() => { programSlot(machine.id, picking, id); setPicking(null); }}
-                  className="flex items-center gap-1.5 rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700"
-                >
-                  <IngredientSvg category={ing.category} size={14} />
-                  <span className="text-slate-200">{ing.name}</span>
-                  <span className="text-slate-500">×{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* Tap a slot above to open the spacious ingredient picker (modal). */}
 
       {/* Potion preview */}
       <button
@@ -350,6 +313,14 @@ function MachinePanelBody({
         </div>
       ) : (
         <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
+      )}
+
+      {slotModal !== null && (
+        <IngredientSelectionModal
+          machineId={machine.id}
+          initialSlot={slotModal}
+          onClose={() => setSlotModal(null)}
+        />
       )}
 
       {showRecipePicker && (

@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText, ArrowUpCircle } from "lucide-react";
+import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText, ArrowUpCircle, Trophy } from "lucide-react";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
+import AchievementsModal from "./components/AchievementsModal";
+import TutorialOverlay from "./components/TutorialOverlay";
+import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
 import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
@@ -18,7 +21,7 @@ import { useGameStore } from "./store/gameStore";
 import { useSettingsStore } from "./store/settingsStore";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "dev" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "dev" | null;
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -31,6 +34,7 @@ export default function App() {
   const welcomeBack = useGameStore((s) => s.welcomeBack);
   const applyOffline = useGameStore((s) => s.applyOffline);
   const refreshQuests = useGameStore((s) => s.refreshQuests);
+  const reconcileAchievements = useGameStore((s) => s.reconcileAchievements);
   const questsUnlocked = useGameStore((s) => s.questsUnlocked);
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const [panel, setPanel] = useState<Panel>(null);
@@ -45,6 +49,7 @@ export default function App() {
   useEffect(() => {
     applyOffline();
     refreshQuests();
+    reconcileAchievements(); // silently grandfather already-met achievements (badge only)
     // Catch up whenever the tab becomes visible again. Background tabs throttle
     // requestAnimationFrame, so the game loop stalls; applyOffline advances trip
     // and brew timers so workers resume mid-journey instead of snapping home.
@@ -53,7 +58,7 @@ export default function App() {
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [applyOffline, refreshQuests]);
+  }, [applyOffline, refreshQuests, reconcileAchievements]);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -104,6 +109,14 @@ export default function App() {
           <ArrowUpCircle size={18} className="text-violet-400" />
           <span>Upgrades</span>
         </button>
+        <button
+          onClick={() => setPanel("achievements")}
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+          title="Achievements"
+        >
+          <Trophy size={18} className="text-amber-400" />
+          <span>Trophies</span>
+        </button>
       </div>
 
       {/* Hidden dev toggle */}
@@ -123,7 +136,12 @@ export default function App() {
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
+      {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
+
+      {/* Onboarding + achievement surfacing */}
+      <TutorialOverlay />
+      <AchievementToasts />
 
       {settingsOpen && (
         <Modal title="Settings" onClose={() => setSettingsOpen(false)} accent="#f59e0b">

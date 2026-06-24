@@ -237,6 +237,7 @@ function MachineColumn({
       {/* Cauldron — cog button in top-right corner */}
       <div
         ref={cauldronRef}
+        data-tut={machineIdx === 0 ? "cauldron" : undefined}
         onClick={handleCauldronClick}
         className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${bumping ? "cauldron-bump" : ""}`}
         style={{
@@ -251,6 +252,7 @@ function MachineColumn({
       >
         {/* Cog — top-right corner, opens MachineView for this machine */}
         <button
+          data-tut={machineIdx === 0 ? "brewer" : undefined}
           onClick={(e) => { e.stopPropagation(); onManage(); }}
           className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-600/70 bg-slate-900/80 text-slate-400 shadow backdrop-blur-sm transition hover:bg-slate-700 hover:text-slate-100 active:scale-90"
           title={`Manage ${machine.name}`}
@@ -355,13 +357,14 @@ function MachineColumn({
 
 // ── Right-rail badge ──────────────────────────────────────────────────────────
 function RailBadge({
-  icon, label, onClick, top, glow = false, badge,
+  icon, label, onClick, top, glow = false, badge, dataTut,
 }: {
   icon: React.ReactNode; label: string; onClick: () => void;
-  top: number; glow?: boolean; badge?: string;
+  top: number; glow?: boolean; badge?: string; dataTut?: string;
 }) {
   return (
     <button
+      data-tut={dataTut}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
       className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
         glow
@@ -563,6 +566,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           top={badgeY.workers}
           glow={anyTokens}
           badge={anyTokens ? `✦${totalWorkerTokens}` : undefined}
+          dataTut="workers"
         />
         <RailBadge
           icon={<Package size={14} className="text-amber-400" />}
@@ -577,6 +581,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           top={badgeY.brewing}
           glow={anyMachineTokens}
           badge={anyMachineTokens ? `✦${machines.reduce((a, m) => a + (m.upgrade_tokens ?? 0), 0)}` : undefined}
+          dataTut="brewing"
         />
         <RailBadge
           icon={<ShoppingBag size={14} className="text-purple-400" />}
