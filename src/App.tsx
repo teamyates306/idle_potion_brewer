@@ -115,7 +115,7 @@ export default function App() {
           title="Achievements"
         >
           <Trophy size={18} className="text-amber-400" />
-          <span>Trophies</span>
+          <span>Achievements</span>
         </button>
       </div>
 

@@ -35,11 +35,25 @@ export default function TutorialOverlay() {
 
   const selector = !done && step < STEPS.length ? STEPS[step].selector : null;
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const [showIngredientHint, setShowIngredientHint] = useState(false);
 
   // Re-measure the highlighted element continuously (the workshop scrolls/zooms).
   useEffect(() => {
-    if (!selector) { setRect(null); return; }
+    if (!selector) { setRect(null); setShowIngredientHint(false); return; }
     const measure = () => {
+      // For step 0: check if ingredient-slot is visible; if so, glow that instead
+      if (step === 0) {
+        const slotEl = document.querySelector('[data-tut="ingredient-slot"]') as HTMLElement | null;
+        const slotRect = slotEl ? slotEl.getBoundingClientRect() : null;
+        const slotVisible = slotRect != null && slotRect.width > 0 && slotRect.top >= 0 && slotRect.bottom <= window.innerHeight;
+        setShowIngredientHint(slotVisible);
+        if (slotVisible && slotRect) {
+          setRect(slotRect);
+          return;
+        }
+      } else {
+        setShowIngredientHint(false);
+      }
       const el = document.querySelector(selector) as HTMLElement | null;
       setRect(el ? el.getBoundingClientRect() : null);
     };
@@ -47,7 +61,7 @@ export default function TutorialOverlay() {
     const iv = window.setInterval(measure, 120);
     window.addEventListener("resize", measure);
     return () => { window.clearInterval(iv); window.removeEventListener("resize", measure); };
-  }, [selector]);
+  }, [selector, step]);
 
   if (done || step >= STEPS.length) return null;
   const isLast = step === STEPS.length - 1;
@@ -63,8 +77,8 @@ export default function TutorialOverlay() {
         />
       )}
 
-      {/* dialog — bottom centre, always on top */}
-      <div className="pointer-events-auto fixed bottom-4 left-1/2 z-[80] w-[92%] max-w-md -translate-x-1/2 rounded-2xl border border-amber-700/70 bg-stone-900/95 p-4 shadow-2xl backdrop-blur">
+      {/* dialog — bottom centre normally, top-4 when ingredient hint is shown on mobile */}
+      <div className={`pointer-events-auto fixed left-1/2 z-[80] w-[92%] max-w-md -translate-x-1/2 rounded-2xl border border-amber-700/70 bg-stone-900/95 p-4 shadow-2xl backdrop-blur ${showIngredientHint ? "top-4" : "bottom-4"}`}>
         <div className="mb-1 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-amber-500/80">
             Guild Tutorial · {step + 1} / {STEPS.length}

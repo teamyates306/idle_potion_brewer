@@ -193,6 +193,7 @@ interface GameState {
   has_completed_tutorial: boolean;
   // achievements
   unlocked_achievements: string[];
+  collected_achievements: string[];  // achievement ids where reward has been collected
   total_brews: number;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
@@ -251,6 +252,7 @@ interface GameState {
   // achievements (event-driven — never polled in the loop)
   checkAchievements: (trigger: AchievementTrigger, value: number) => void;
   unlockAchievement: (id: string) => void;
+  collectAchievementReward: (id: string) => void;
   /** Silently mark already-met achievements as unlocked (retroactive, no reward/toast). */
   reconcileAchievements: () => void;
 
@@ -333,6 +335,7 @@ export const useGameStore = create<GameState>()(
       tutorial_step: 0,
       has_completed_tutorial: false,
       unlocked_achievements: [],
+      collected_achievements: [],
       total_brews: 0,
       lastSeen: now(),
       welcomeBack: null,
@@ -717,6 +720,12 @@ export const useGameStore = create<GameState>()(
           total_brews: totalBrews,
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
+
+        // Auto-advance tutorial: step 1 is "click to speed up" — close it when first brew completes
+        const tutState = get();
+        if (!tutState.has_completed_tutorial && tutState.tutorial_step === 1) {
+          get().advanceTutorial(1);
+        }
 
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
@@ -1284,6 +1293,26 @@ export const useGameStore = create<GameState>()(
         if (s.unlocked_achievements.includes(id)) return;
         const a = ACHIEVEMENTS_BY_ID[id];
         if (a) set(applyAchievementUnlocks(s, [a]));
+      },
+
+      collectAchievementReward: (id) => {
+        const s = get();
+        if (!s.unlocked_achievements.includes(id)) return;
+        if (s.collected_achievements.includes(id)) return;
+        const a = ACHIEVEMENTS_BY_ID[id];
+        if (!a) return;
+        let coins = s.coins;
+        let tokenBonus = 0;
+        for (const r of a.rewards) {
+          if (r.type === "coins") coins += r.amount;
+          else tokenBonus += r.amount;
+        }
+        const patch: Partial<GameState> = {
+          coins,
+          collected_achievements: [...s.collected_achievements, id],
+        };
+        if (tokenBonus > 0) patch.workers = s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + tokenBonus }));
+        set(patch);
       },
       reconcileAchievements: () =>
         set((s) => {
