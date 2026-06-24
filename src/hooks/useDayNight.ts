@@ -81,8 +81,8 @@ export function computeDayNight(phase: number): DayNightState {
       : [9, 24, 40] as [number,number,number];     // night: near-black blue
   windowColor = `rgb(${wr},${wg},${wb})`;
 
-  // Vignette: subtle during day, pronounced at night
-  const vigOpacity = 0.15 + (1 - dayness) * 0.55;
+  // Vignette: +20% more prominent at all times. Day: 0.35 (was 0.15), Night: 0.85 (was 0.70)
+  const vigOpacity = 0.35 + (1 - dayness) * 0.50;
   const vignetteStyle = `radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,${vigOpacity.toFixed(2)}) 100%)`;
 
   // Environment tint overlay

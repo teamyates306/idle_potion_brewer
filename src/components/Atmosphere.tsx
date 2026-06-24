@@ -9,26 +9,37 @@ const MOTE_COUNT = 28;
 const MOTES = Array.from({ length: MOTE_COUNT }, () => ({
   left:  Math.random() * 100,
   top:   Math.random() * 100,
-  size:  1.5 + Math.random() * 2.5,       // px diameter
-  rise: -(28 + Math.random() * 52),        // px upward travel
-  mid:   (Math.random() - 0.5) * 34,      // px horizontal mid-drift
-  end:   (Math.random() - 0.5) * 22,      // px horizontal final position
-  op:    0.18 + Math.random() * 0.28,     // individual opacity (no outer multiplier)
-  dur:   7  + Math.random() * 9,          // animation duration (s)
-  delay: -(Math.random() * 16),           // negative → starts mid-cycle
+  size:  1.5 + Math.random() * 2.5,
+  rise: -(28 + Math.random() * 52),
+  mid:   (Math.random() - 0.5) * 34,
+  end:   (Math.random() - 0.5) * 22,
+  op:    0.18 + Math.random() * 0.28,
+  dur:   7  + Math.random() * 9,
+  delay: -(Math.random() * 16),
 }));
 
-// Sets day/night CSS vars on <html> every 8 s.
-// Covers both Atmosphere overlays and Workshop wall elements so that
-// Workshop.tsx never needs to call useDayNight() at all.
+// Updates all day/night CSS vars on <html> every 3 s (sunset spans ~24 s of
+// game-time, so 8 s intervals caused jumpy hue shifts; 3 s keeps it smooth).
+// Two separate tint layers avoid the colour-switching artefact:
+//   --dn-warm-tint: always the same amber, alpha driven by sunrise/sunset strength
+//   --dn-cool-tint: always the same night-blue, alpha driven by darkness
+// Each layer only ever changes opacity → CSS can interpolate without weird midpoints.
 function applyDayNightVars() {
   const dn   = computeDayNight(getDayPhase());
   const root = document.documentElement.style;
   const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
 
-  // Atmosphere overlays
+  // Vignette
   root.setProperty("--dn-vignette", dn.vignetteStyle);
-  root.setProperty("--dn-tint",     dn.tintColor);
+
+  // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.07
+  const warmAlpha = Math.max(sr, ss) * 0.07;
+  root.setProperty("--dn-warm-tint", `rgba(215,145,55,${warmAlpha.toFixed(3)})`);
+
+  // Cool tint: night-blue, fades out at sunrise, fully gone by noon
+  const coolAlpha = (1 - dy) * 0.12;
+  root.setProperty("--dn-cool-tint", `rgba(8,15,50,${coolAlpha.toFixed(3)})`);
+
   // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
   root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
 
@@ -55,37 +66,51 @@ export default function Atmosphere() {
   const dayNight = useGameStore((s) => s.graphics.dayNight);
 
   useEffect(() => {
-    applyDayNightVars();                          // immediate sync on mount
-    const iv = setInterval(applyDayNightVars, 8_000);
+    applyDayNightVars();
+    const iv = setInterval(applyDayNightVars, 3_000);
     return () => clearInterval(iv);
   }, []);
 
   return (
     <>
-      {/* Vignette — z-[3] overlays the Workshop (z-[2]) with pointer-events-none */}
+      {/* Vignette */}
       {vignette && (
         <div
-          className="pointer-events-none fixed inset-0 z-[3] transition-[background] duration-[3000ms]"
+          className="pointer-events-none fixed inset-0 z-[3]"
           style={{
-            background:
-              "var(--dn-vignette, radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,0.42) 100%))",
+            background: "var(--dn-vignette, radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,0.50) 100%))",
+            transition: "background 3.5s ease-in-out",
           }}
         />
       )}
 
-      {/* Colour tint */}
+      {/* Warm tint: amber layer for dawn / dusk — same hue always, only alpha varies */}
       {dayNight && (
         <div
-          className="pointer-events-none fixed inset-0 z-[3] transition-[background] duration-[4000ms]"
-          style={{ background: "var(--dn-tint, transparent)" }}
+          className="pointer-events-none fixed inset-0 z-[3]"
+          style={{
+            background: "var(--dn-warm-tint, rgba(215,145,55,0))",
+            transition: "background 3.5s ease-in-out",
+          }}
         />
       )}
 
-      {/* Dust motes — z-[3]; container opacity driven by day/night CSS var (dawn/dusk brightest) */}
+      {/* Cool tint: night-blue layer — same hue always, only alpha varies */}
+      {dayNight && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[3]"
+          style={{
+            background: "var(--dn-cool-tint, rgba(8,15,50,0))",
+            transition: "background 3.5s ease-in-out",
+          }}
+        />
+      )}
+
+      {/* Dust motes — container opacity brightens at dawn/dusk */}
       {motes && (
         <div
           className="pointer-events-none fixed inset-0 z-[3] overflow-hidden"
-          style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 8s ease-in-out" }}
+          style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 3.5s ease-in-out" }}
         >
           {MOTES.map((m, i) => (
             <div
