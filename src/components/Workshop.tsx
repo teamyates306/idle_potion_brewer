@@ -3,7 +3,7 @@ import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
-import { useDayNight, type DayNightState } from "../hooks/useDayNight";
+
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -388,7 +388,6 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const machines     = useGameStore((s) => s.machines);
   const potionInv    = useGameStore((s) => s.potionInv);
   const loopProgress = useGameLoop();
-  const dn           = useDayNight();
 
   // Refs for the scrollable container and each content section
   const scrollRef        = useRef<HTMLDivElement>(null);
@@ -615,7 +614,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           />
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
-          <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} dn={dn} width={contentWidth} />
+          <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
 
           {/* Inner scene — brewers centred in the fixed world */}
           <div className="relative z-[1] mx-auto flex w-full flex-col" style={{ maxWidth: totalWidth }}>
@@ -701,9 +700,7 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
     </g>
   );
 }
-function WallWindow({ cx, wc, stars, hillNear, hillFar }: {
-  cx: number; wc: string; stars: number; hillNear: string; hillFar: string;
-}) {
+function WallWindow({ cx }: { cx: number }) {
   const id = `win${Math.round(cx)}`;
   const x = cx - 24, w = 48, y = 22, h = 64;
   return (
@@ -711,13 +708,20 @@ function WallWindow({ cx, wc, stars, hillNear, hillFar }: {
       <clipPath id={id}><rect x={x} y={y} width={w} height={h} rx="7" /></clipPath>
       <rect x={x - 3} y={y - 2} width={w + 6} height={h + 5} rx="5" fill="#2a1808" />
       <g clipPath={`url(#${id})`}>
-        <rect x={x} y={y} width={w} height={h} fill={wc} />
-        <path d={`M ${x},${y + 42} Q ${cx - 10},${y + 31} ${cx},${y + 37} Q ${cx + 12},${y + 43} ${x + w},${y + 33} L ${x + w},${y + h} L ${x},${y + h} Z`} fill={hillFar} />
-        <path d={`M ${x},${y + 52} Q ${cx - 6},${y + 42} ${cx + 4},${y + 47} Q ${cx + 14},${y + 51} ${x + w},${y + 45} L ${x + w},${y + h} L ${x},${y + h} Z`} fill={hillNear} />
-        <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0" opacity={0.7 * stars} />
-        <circle cx={cx - 2} cy={y + 6} r="1.1" fill="#e0eeff" opacity={0.6 * stars} />
-        <circle cx={cx + 12} cy={y + 11} r="0.9" fill="#c8dcf0" opacity={0.5 * stars} />
-        <circle cx={cx + 6} cy={y + 5} r="0.7" fill="#e0eeff" opacity={0.55 * stars} />
+        <rect x={x} y={y} width={w} height={h}
+          style={{ fill: "var(--dn-window-color, #a8d0f0)", transition: "fill 3s ease-in-out" }} />
+        <path d={`M ${x},${y + 42} Q ${cx - 10},${y + 31} ${cx},${y + 37} Q ${cx + 12},${y + 43} ${x + w},${y + 33} L ${x + w},${y + h} L ${x},${y + h} Z`}
+          style={{ fill: "var(--dn-hill-far, rgb(80,120,60))", transition: "fill 3s ease-in-out" }} />
+        <path d={`M ${x},${y + 52} Q ${cx - 6},${y + 42} ${cx + 4},${y + 47} Q ${cx + 14},${y + 51} ${x + w},${y + 45} L ${x + w},${y + h} L ${x},${y + h} Z`}
+          style={{ fill: "var(--dn-hill-near, rgb(58,122,24))", transition: "fill 3s ease-in-out" }} />
+        <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0"
+          style={{ opacity: "calc(0.7 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
+        <circle cx={cx - 2} cy={y + 6} r="1.1" fill="#e0eeff"
+          style={{ opacity: "calc(0.6 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
+        <circle cx={cx + 12} cy={y + 11} r="0.9" fill="#c8dcf0"
+          style={{ opacity: "calc(0.5 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
+        <circle cx={cx + 6} cy={y + 5} r="0.7" fill="#e0eeff"
+          style={{ opacity: "calc(0.55 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
       </g>
       <line x1={cx} y1={y} x2={cx} y2={y + h} stroke="#2a1808" strokeWidth="2" />
       <line x1={x} y1={y + 30} x2={x + w} y2={y + 30} stroke="#2a1808" strokeWidth="2" />
@@ -725,28 +729,20 @@ function WallWindow({ cx, wc, stars, hillNear, hillFar }: {
     </g>
   );
 }
-function WallLamp({ cx, flame, glow }: { cx: number; flame: string; glow: string }) {
+function WallLamp({ cx }: { cx: number }) {
   return (
     <g transform={`translate(${cx},46)`}>
       <line x1="0" y1="-24" x2="0" y2="-17" stroke="#7a6040" strokeWidth="1.5" />
       <rect x="-7" y="-17" width="14" height="20" rx="2" fill="#3a2810" stroke="#7a6040" strokeWidth="1" />
-      <rect x="-5" y="-15" width="10" height="16" rx="1" fill={flame} />
-      <ellipse cx="0" cy="6" rx="11" ry="4" fill={glow} />
+      <rect x="-5" y="-15" width="10" height="16" rx="1"
+        style={{ fill: "var(--dn-lamp-flame, rgba(251,191,36,0.50))", transition: "fill 3s ease-in-out" }} />
+      <ellipse cx="0" cy="6" rx="11" ry="4"
+        style={{ fill: "var(--dn-lamp-glow, rgba(251,191,36,0.00))", transition: "fill 3s ease-in-out" }} />
     </g>
   );
 }
 
-function WorkshopWall({ onClick, workerActive, dn, width }: { onClick: () => void; workerActive: boolean; dn: DayNightState; width: number }) {
-  const wc = dn.windowColor;
-  const stars = dn.starOpacity;
-  const lamp = dn.lampGlow;
-  const lampFlame = `rgba(251,191,36,${(0.5 + lamp * 0.5).toFixed(2)})`;
-  const lampGlow  = `rgba(251,191,36,${(lamp * 0.18).toFixed(2)})`;
-
-  const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
-  const hNear = `rgb(${Math.round(12 + dy * 46 + sr * 28 + ss * 38)},${Math.round(28 + dy * 94 + sr * 18 - ss * 18)},${Math.round(8 + dy * 16 - sr * 4 - ss * 6)})`;
-  const hFar  = `rgb(${Math.round(28 + dy * 52 + sr * 35 + ss * 45)},${Math.round(48 + dy * 72 + sr * 22 - ss * 12)},${Math.round(18 + dy * 42 - sr * 8 - ss * 4)})`;
-
+function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; workerActive: boolean; width: number }) {
   // Tile windows + lamps across the width, leaving a clear gap in the middle for
   // the single central door (where workers emerge). No repeating doors.
   const SPACING = 150;
@@ -781,10 +777,10 @@ function WorkshopWall({ onClick, workerActive, dn, width }: { onClick: () => voi
         </defs>
         <rect width={width} height="96" fill="url(#wallBricks)" />
         {windows.map((x) => (
-          <WallWindow key={x} cx={x} wc={wc} stars={stars} hillNear={hNear} hillFar={hFar} />
+          <WallWindow key={x} cx={x} />
         ))}
         {lamps.map((x) => (
-          <WallLamp key={x} cx={x} flame={lampFlame} glow={lampGlow} />
+          <WallLamp key={x} cx={x} />
         ))}
         {/* Single central door — workers emerge here */}
         <WallDoor cx={center} workerActive={workerActive} />

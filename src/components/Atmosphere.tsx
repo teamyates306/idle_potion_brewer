@@ -7,28 +7,44 @@ import { getDayPhase, computeDayNight } from "../hooks/useDayNight";
 // No JS rAF loop, no React state changes — zero render pressure.
 const MOTE_COUNT = 28;
 const MOTES = Array.from({ length: MOTE_COUNT }, () => ({
-  left:  Math.random() * 100,            // % across viewport
-  top:   Math.random() * 100,            // % down viewport
-  size:  1 + Math.random() * 2.2,        // px diameter
-  rise: -(25 + Math.random() * 55),      // px upward travel
-  mid:   (Math.random() - 0.5) * 32,     // px horizontal mid-drift
-  end:   (Math.random() - 0.5) * 22,     // px horizontal final position
-  op:    0.07 + Math.random() * 0.16,    // base opacity
-  dur:   7  + Math.random() * 9,         // animation duration (s)
-  delay: -(Math.random() * 16),          // negative → each mote starts mid-cycle
+  left:  Math.random() * 100,
+  top:   Math.random() * 100,
+  size:  1.5 + Math.random() * 2.5,       // px diameter
+  rise: -(28 + Math.random() * 52),        // px upward travel
+  mid:   (Math.random() - 0.5) * 34,      // px horizontal mid-drift
+  end:   (Math.random() - 0.5) * 22,      // px horizontal final position
+  op:    0.18 + Math.random() * 0.28,     // individual opacity (no outer multiplier)
+  dur:   7  + Math.random() * 9,          // animation duration (s)
+  delay: -(Math.random() * 16),           // negative → starts mid-cycle
 }));
 
-// Writes day/night values as CSS custom properties on <html>.
-// The overlay divs use CSS transitions to blend smoothly between values.
-// Updating every 8 s means ≈15 steps per 2-min game day — "a few times a day"
-// from the player's perspective, while CSS transitions hide any discretisation.
+// Sets day/night CSS vars on <html> every 8 s.
+// Covers both Atmosphere overlays and Workshop wall elements so that
+// Workshop.tsx never needs to call useDayNight() at all.
 function applyDayNightVars() {
   const dn   = computeDayNight(getDayPhase());
   const root = document.documentElement.style;
+  const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
+
+  // Atmosphere overlays
   root.setProperty("--dn-vignette", dn.vignetteStyle);
   root.setProperty("--dn-tint",     dn.tintColor);
-  // Normalise moteOpacity (can exceed 1) to a 0–1 container opacity
-  root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity * 0.45)));
+
+  // Workshop wall: window glass, hills, stars, lamps
+  root.setProperty("--dn-window-color", dn.windowColor);
+  root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
+  const lf = (0.5 + dn.lampGlow * 0.5).toFixed(2);
+  const lg = (dn.lampGlow * 0.18).toFixed(2);
+  root.setProperty("--dn-lamp-flame",   `rgba(251,191,36,${lf})`);
+  root.setProperty("--dn-lamp-glow",    `rgba(251,191,36,${lg})`);
+  const rn = `${Math.round(12 + dy*46 + sr*28 + ss*38)}`;
+  const gn = `${Math.round(28 + dy*94 + sr*18 - ss*18)}`;
+  const bn = `${Math.round(8  + dy*16 - sr*4  - ss*6 )}`;
+  const rf = `${Math.round(28 + dy*52 + sr*35 + ss*45)}`;
+  const gf = `${Math.round(48 + dy*72 + sr*22 - ss*12)}`;
+  const bf = `${Math.round(18 + dy*42 - sr*8  - ss*4 )}`;
+  root.setProperty("--dn-hill-near",  `rgb(${rn},${gn},${bn})`);
+  root.setProperty("--dn-hill-far",   `rgb(${rf},${gf},${bf})`);
 }
 
 export default function Atmosphere() {
@@ -44,28 +60,28 @@ export default function Atmosphere() {
 
   return (
     <>
+      {/* Vignette — z-[3] overlays the Workshop (z-[2]) with pointer-events-none */}
       {vignette && (
         <div
-          className="pointer-events-none fixed inset-0 z-[1] transition-[background] duration-[3000ms]"
+          className="pointer-events-none fixed inset-0 z-[3] transition-[background] duration-[3000ms]"
           style={{
             background:
-              "var(--dn-vignette, radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,0.40) 100%))",
+              "var(--dn-vignette, radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,0.42) 100%))",
           }}
         />
       )}
 
+      {/* Colour tint */}
       {dayNight && (
         <div
-          className="pointer-events-none fixed inset-0 z-[1] transition-[background] duration-[4000ms]"
+          className="pointer-events-none fixed inset-0 z-[3] transition-[background] duration-[4000ms]"
           style={{ background: "var(--dn-tint, transparent)" }}
         />
       )}
 
+      {/* Dust motes — z-[3], each div has its own opacity baked in */}
       {motes && (
-        <div
-          className="pointer-events-none fixed inset-0 z-[1] overflow-hidden"
-          style={{ opacity: "var(--dn-mote-op, 0.5)" }}
-        >
+        <div className="pointer-events-none fixed inset-0 z-[3] overflow-hidden">
           {MOTES.map((m, i) => (
             <div
               key={i}
