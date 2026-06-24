@@ -157,6 +157,22 @@ body {
 }
 .token-reveal { animation: token-reveal 0.34s ease-out both; }
 
+/* Dust motes — purely CSS-driven, no JS rAF. Each mote is a static DOM element
+   that floats upward with a subtle sinusoidal drift via mid/end keyframe points.
+   transform: translate3d() keeps this on the GPU compositor thread. */
+@keyframes mote-float {
+  0%   { transform: translate3d(0, 0, 0);                                              opacity: 0; }
+  8%   { opacity: 1; }
+  50%  { transform: translate3d(var(--mote-mid, 6px), calc(var(--mote-rise, -40px) * 0.48), 0); }
+  92%  { opacity: 1; }
+  100% { transform: translate3d(var(--mote-end, 0px), var(--mote-rise, -40px), 0);    opacity: 0; }
+}
+
+/* Battery-saver mode: suppress decorative conveyor motion */
+.anim-throttle .conveyor-on { animation: none; }
+.anim-throttle .conveyor-ingredient,
+.anim-throttle .conveyor-potion { display: none; }
+
 /* Tutorial spotlight — applied directly to the target element so it works inside
    any modal without z-index fights. border-radius:inherit follows the shape. */
 @keyframes tut-target-pulse {

@@ -33,6 +33,7 @@ import {
   deductQuest,
 } from "../engine/quests";
 import { pushGameEvent } from "../util/gameEvents";
+import { pushToast } from "../util/toast";
 import { MACHINE_COSTS, HIRE_COST_BASE } from "../engine/economyConstants";
 import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type AchievementTrigger } from "../data/achievements";
 import { pushAchievementToast } from "../util/achievementToast";
@@ -165,6 +166,20 @@ function newMachine(index = 0): BrewingMachine {
   };
 }
 
+export interface GraphicsSettings {
+  motes: boolean;
+  vignette: boolean;
+  dayNight: boolean;
+  throttle_animations: boolean;
+}
+
+const DEFAULT_GRAPHICS: GraphicsSettings = {
+  motes: true,
+  vignette: true,
+  dayNight: true,
+  throttle_animations: false,
+};
+
 export interface WelcomeBack {
   seconds: number;
   gathers: number;
@@ -197,6 +212,7 @@ interface GameState {
   total_brews: number;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
+  graphics: GraphicsSettings;
 
   // quests
   questsUnlocked: boolean;
@@ -266,6 +282,8 @@ interface GameState {
   buyGlobalUnlock: (id: string) => void;
 
   hardReset: () => void;
+  downgradeGraphics: () => void;
+  setGraphics: (patch: Partial<GraphicsSettings>) => void;
 }
 
 const now = () => Date.now();
@@ -344,6 +362,7 @@ export const useGameStore = create<GameState>()(
       questCooldowns: {},
       player_click_power_level: 0,
       unlocked_globals: [],
+      graphics: { ...DEFAULT_GRAPHICS },
 
       // ---- Workers ----------------------------------------------------------
 
@@ -1219,6 +1238,24 @@ export const useGameStore = create<GameState>()(
         }),
 
       dismissWelcome: () => set({ welcomeBack: null }),
+
+      downgradeGraphics: () =>
+        set((s) => {
+          const g = s.graphics;
+          if (g.motes) {
+            pushToast(
+              "The Guild notes your device is overheating. Magickal atmospheric effects have been temporarily suppressed.",
+              "amber"
+            );
+            return { graphics: { ...g, motes: false } };
+          }
+          if (g.vignette || g.dayNight) {
+            return { graphics: { ...g, vignette: false, dayNight: false } };
+          }
+          return {};
+        }),
+
+      setGraphics: (patch) => set((s) => ({ graphics: { ...s.graphics, ...patch } })),
 
       hardReset: () =>
         set({

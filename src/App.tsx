@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, Bell, BellOff, ScrollText, ArrowUpCircle, Trophy } from "lucide-react";
+import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy } from "lucide-react";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
@@ -17,8 +17,9 @@ import DevDashboard from "./components/DevDashboard";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
 import Atmosphere from "./components/Atmosphere";
+import SettingsModal from "./components/SettingsModal";
 import { useGameStore } from "./store/gameStore";
-import { useSettingsStore } from "./store/settingsStore";
+import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "dev" | null;
@@ -44,7 +45,8 @@ export default function App() {
   // that single worker; opening the map from the home screen shows all workers.
   const [mapLockedWorker, setMapLockedWorker] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { toastsEnabled, toggleToasts } = useSettingsStore();
+  const throttleAnims = useGameStore((s) => s.graphics.throttle_animations);
+  usePerformanceMonitor();
 
   useEffect(() => {
     applyOffline();
@@ -61,7 +63,7 @@ export default function App() {
   }, [applyOffline, refreshQuests, reconcileAchievements]);
 
   return (
-    <div className="relative flex h-full flex-col">
+    <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
       <Atmosphere />
       {/* HUD — styled as the top of the stone wall */}
       <header
@@ -143,26 +145,7 @@ export default function App() {
       <TutorialOverlay />
       <AchievementToasts />
 
-      {settingsOpen && (
-        <Modal title="Settings" onClose={() => setSettingsOpen(false)} accent="#f59e0b">
-          <button
-            onClick={toggleToasts}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${
-              toastsEnabled
-                ? "border-slate-600 bg-slate-800/60 text-slate-200 hover:border-amber-600/40"
-                : "border-slate-700 bg-slate-900/60 text-slate-500"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              {toastsEnabled ? <Bell size={16} className="text-amber-400" /> : <BellOff size={16} />}
-              <span>Floating text</span>
-            </div>
-            <div className={`h-5 w-9 rounded-full transition-colors ${toastsEnabled ? "bg-amber-500" : "bg-slate-700"}`}>
-              <div className={`mt-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${toastsEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
-            </div>
-          </button>
-        </Modal>
-      )}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
       <FATLayer />
 
