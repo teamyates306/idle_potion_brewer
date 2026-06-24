@@ -334,8 +334,8 @@ const MachineColumn = React.memo(function MachineColumn({
       {/* Brew progress bar */}
       <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
         <div
-          className="h-full w-full origin-left transition-transform duration-75"
-          style={{ transform: `scaleX(${brewProgress})`, background: accent }}
+          className="h-full w-full origin-left"
+          style={{ transform: `scaleX(${brewProgress})`, background: accent, transition: "transform 150ms linear" }}
         />
       </div>
 
@@ -631,7 +631,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                     bottom: 10, left: "50%",
                     transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
                     opacity,
-                    transition: "transform 90ms linear, opacity 90ms linear",
+                    transition: "transform 150ms linear, opacity 150ms linear",
                   }}
                 >
                   <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />

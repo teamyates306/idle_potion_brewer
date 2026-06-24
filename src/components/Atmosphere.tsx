@@ -29,6 +29,8 @@ function applyDayNightVars() {
   // Atmosphere overlays
   root.setProperty("--dn-vignette", dn.vignetteStyle);
   root.setProperty("--dn-tint",     dn.tintColor);
+  // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
+  root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
 
   // Workshop wall: window glass, hills, stars, lamps
   root.setProperty("--dn-window-color", dn.windowColor);
@@ -79,9 +81,12 @@ export default function Atmosphere() {
         />
       )}
 
-      {/* Dust motes — z-[3], each div has its own opacity baked in */}
+      {/* Dust motes — z-[3]; container opacity driven by day/night CSS var (dawn/dusk brightest) */}
       {motes && (
-        <div className="pointer-events-none fixed inset-0 z-[3] overflow-hidden">
+        <div
+          className="pointer-events-none fixed inset-0 z-[3] overflow-hidden"
+          style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 8s ease-in-out" }}
+        >
           {MOTES.map((m, i) => (
             <div
               key={i}
