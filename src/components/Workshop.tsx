@@ -3,7 +3,7 @@ import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
-
+import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -355,33 +355,6 @@ const MachineColumn = React.memo(function MachineColumn({
   );
 });
 
-// ── Right-rail badge ──────────────────────────────────────────────────────────
-function RailBadge({
-  icon, label, onClick, top, glow = false, badge, dataTut,
-}: {
-  icon: React.ReactNode; label: string; onClick: () => void;
-  top: number; glow?: boolean; badge?: string; dataTut?: string;
-}) {
-  return (
-    <button
-      data-tut={dataTut}
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex flex-col items-center gap-0.5 rounded-xl border px-2.5 py-2 text-[9px] uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
-        glow
-          ? "border-yellow-500/70 bg-yellow-950/50 text-yellow-300 shadow-[0_0_10px_2px_rgba(234,179,8,0.25)] hover:bg-yellow-950/70"
-          : "border-amber-800/50 bg-stone-900/60 text-amber-300/80 hover:bg-stone-900/80"
-      }`}
-      style={{ top }}
-    >
-      {icon}
-      <span>{label}</span>
-      {badge && (
-        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">{badge}</span>
-      )}
-    </button>
-  );
-}
-
 // ── Main Workshop ─────────────────────────────────────────────────────────────
 export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: number) => void }) {
   const workers      = useGameStore((s) => s.workers);
@@ -562,7 +535,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       {/* ── Right-rail badges — outside scroll, always fixed to the right ── */}
       <div className="pointer-events-none absolute inset-0 z-20">
         <RailBadge
-          icon={<User size={14} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
+          icon={<User size={18} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
           label="Workers"
           onClick={() => onOpen("worker")}
           top={badgeY.workers}
@@ -571,13 +544,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           dataTut="workers"
         />
         <RailBadge
-          icon={<Package size={14} className="text-amber-400" />}
+          icon={<Package size={18} className="text-amber-400" />}
           label="Stash"
           onClick={() => onOpen("inventory")}
           top={badgeY.stash}
         />
         <RailBadge
-          icon={<Settings2 size={14} className={anyMachineTokens ? "text-yellow-400" : "text-amber-400"} />}
+          icon={<Settings2 size={18} className={anyMachineTokens ? "text-yellow-400" : "text-amber-400"} />}
           label="Brewing"
           onClick={() => onOpen("machine")}
           top={badgeY.brewing}
@@ -586,7 +559,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           dataTut="brewing"
         />
         <RailBadge
-          icon={<ShoppingBag size={14} className="text-purple-400" />}
+          icon={<ShoppingBag size={18} className="text-purple-400" />}
           label="Market"
           onClick={() => onOpen("potion")}
           top={badgeY.market}
