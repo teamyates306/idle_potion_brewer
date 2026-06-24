@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { subscribeFAT, type FATItem } from "../../util/fat";
 import { useSettingsStore } from "../../store/settingsStore";
 
-function FATElement({ item, onDone }: { item: FATItem; onDone: () => void }) {
+const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATItem; onDone: () => void }) {
   useEffect(() => {
     const t = setTimeout(onDone, (item.delay ?? 0) + 1500);
     return () => clearTimeout(t);
@@ -40,7 +40,7 @@ function FATElement({ item, onDone }: { item: FATItem; onDone: () => void }) {
       {item.text}
     </div>
   );
-}
+});
 
 export default function FATLayer() {
   const [items, setItems] = useState<FATItem[]>([]);
@@ -53,8 +53,8 @@ export default function FATLayer() {
     });
   }, []);
 
-  const remove = (id: number) =>
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  const remove = useCallback((id: number) =>
+    setItems((prev) => prev.filter((i) => i.id !== id)), []);
 
   if (!toastsEnabled) return null;
 

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useLayoutEffect, useState } from "react";
+import React, { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -75,7 +75,7 @@ function machineWorkerScreenPos(order: number, rect: DOMRect) {
 }
 
 // ── MachineColumn ────────────────────────────────────────────────────────────
-function MachineColumn({
+const MachineColumn = React.memo(function MachineColumn({
   machine,
   machineIdx,
   loopState,
@@ -334,8 +334,8 @@ function MachineColumn({
       {/* Brew progress bar */}
       <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
         <div
-          className="h-full transition-[width] duration-75"
-          style={{ width: `${brewProgress * 100}%`, background: accent }}
+          className="h-full w-full origin-left transition-transform duration-75"
+          style={{ transform: `scaleX(${brewProgress})`, background: accent }}
         />
       </div>
 
@@ -353,7 +353,7 @@ function MachineColumn({
       <ConveyorWithPotion running={brewActive} accentColor={accent} />
     </div>
   );
-}
+});
 
 // ── Right-rail badge ──────────────────────────────────────────────────────────
 function RailBadge({
@@ -512,12 +512,15 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           });
         }
       } else {
+        // For trough channel: keep text close to the centre of the trough element
+        const rawX = cx + (Math.random() - 0.5) * (evt.channel === "trough" ? Math.min(rect.width * 0.4, 80) : rect.width * 0.5);
+        const clampedX = evt.channel === "trough" ? Math.max(20, Math.min(window.innerWidth - 60, rawX)) : rawX;
         spawnFAT({
-          x: cx + (Math.random() - 0.5) * rect.width * 0.5,
-          y: cy + (Math.random() - 0.5) * 34,
+          x: clampedX,
+          y: cy + (Math.random() - 0.5) * (evt.channel === "trough" ? 24 : 34),
           text: evt.text,
           color: CHANNEL_COLOR[evt.channel as keyof typeof CHANNEL_COLOR],
-          arcX: (Math.random() - 0.5) * 36,
+          arcX: (Math.random() - 0.5) * (evt.channel === "trough" ? 28 : 36),
           size: "md",
         });
       }

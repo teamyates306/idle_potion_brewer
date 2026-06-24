@@ -146,8 +146,8 @@ function MachinePanelBody({
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-700">
           <div
-            className="h-full rounded-full transition-[width] duration-300"
-            style={{ width: `${xpPct}%`, background: accent }}
+            className="h-full w-full origin-left rounded-full transition-transform duration-300"
+            style={{ transform: `scaleX(${xpPct / 100})`, background: accent }}
           />
         </div>
       </div>
@@ -186,14 +186,20 @@ function MachinePanelBody({
 
       {/* Recipe slots */}
       <div className="mb-3 grid grid-cols-5 gap-2">
-        {machine.recipe_slots.map((slot, i) => {
+        {(() => {
+          const firstEmptyUnlockedIdx = machine.recipe_slots.findIndex(
+            (slot, i) => !slot && i < machine.unlocked_slots
+          );
+          return machine.recipe_slots.map((slot, i) => {
           const locked = i >= machine.unlocked_slots;
           const ing = slot ? cfg.ingredients[slot] : null;
           const count = ing ? (inv[ing.id] ?? 0) : 0;
+          const isTutSlot = i === firstEmptyUnlockedIdx;
           return (
             <button
               key={i}
               onClick={() => !locked && setSlotModal(i)}
+              {...(isTutSlot ? { "data-tut": "ingredient-slot" } : {})}
               className={`relative flex aspect-square flex-col items-center justify-center rounded-lg border text-xs transition active:scale-95 ${
                 locked
                   ? "border-slate-700 bg-slate-900 text-slate-600"
@@ -217,7 +223,8 @@ function MachinePanelBody({
               )}
             </button>
           );
-        })}
+        })
+        })()}
       </div>
 
       {/* Tap a slot above to open the spacious ingredient picker (modal). */}

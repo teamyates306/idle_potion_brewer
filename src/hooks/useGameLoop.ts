@@ -86,10 +86,18 @@ export function useGameLoop(): LoopProgress {
     let raf = 0;
     let last = 0;
     let lastWall = Date.now();
+    let isPaused = document.hidden;
+    let lastRender = 0;
+
+    const onVisibility = () => {
+      isPaused = document.hidden;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     const step = (t: number) => {
       raf = requestAnimationFrame(step);
-      if (t - last < 80) return; // ~12fps
+      if (isPaused) return; // Stop all processing when tab is hidden
+      if (t - last < 80) return; // ~12fps logic
       last = t;
 
       const g = useGameStore.getState();
@@ -100,6 +108,7 @@ export function useGameLoop(): LoopProgress {
         lastWall = now;
         g.applyOffline();
         setTick((x) => (x + 1) % 1000000);
+        lastRender = t;
         return;
       }
       lastWall = now;
@@ -163,11 +172,19 @@ export function useGameLoop(): LoopProgress {
       }
 
       progRef.current = { workers: workerStates, machines: machineStates };
-      setTick((x) => (x + 1) % 1000000);
+
+      // Throttle React re-renders to ~8fps (125ms) — logic runs at ~12fps above
+      if (t - lastRender >= 125) {
+        lastRender = t;
+        setTick((x) => (x + 1) % 1000000);
+      }
     };
 
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   return progRef.current;

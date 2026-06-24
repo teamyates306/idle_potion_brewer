@@ -31,38 +31,41 @@ body {
     #5c3a1e 24px
   );
   animation: convey-v 0.55s linear infinite;
+  /* background-position is GPU-accelerated; will-change not needed */
 }
 
-/* Ingredient tokens sliding top → bottom */
+/* Ingredient tokens sliding top → bottom — use translateY to avoid layout triggers */
 @keyframes slide-ingredient-v {
-  0%   { top: -24px; opacity: 0; }
+  0%   { transform: translateX(-50%) translateY(-24px); opacity: 0; }
   8%   { opacity: 1; }
   92%  { opacity: 1; }
-  100% { top: calc(100% + 24px); opacity: 0; }
+  100% { transform: translateX(-50%) translateY(calc(100% + 64px)); opacity: 0; }
 }
 .conveyor-ingredient {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  top: 0;
   animation: slide-ingredient-v 2.8s linear infinite;
   animation-fill-mode: backwards;
   pointer-events: none;
+  will-change: transform, opacity;
 }
 
-/* Potion token sliding top → bottom */
+/* Potion token sliding top → bottom — use translateY to avoid layout triggers */
 @keyframes slide-potion-v {
-  0%   { top: -20px; opacity: 0; }
+  0%   { transform: translateX(-50%) translateY(-20px); opacity: 0; }
   10%  { opacity: 1; }
   90%  { opacity: 1; }
-  100% { top: calc(100% + 20px); opacity: 0; }
+  100% { transform: translateX(-50%) translateY(calc(100% + 60px)); opacity: 0; }
 }
 .conveyor-potion {
   position: absolute;
   left: 50%;
-  transform: translateX(-50%);
+  top: 0;
   animation: slide-potion-v 3.5s linear infinite;
   animation-fill-mode: backwards;
   pointer-events: none;
+  will-change: transform, opacity;
 }
 
 /* Floating Action Text — spawns at a viewport coordinate and drifts up */

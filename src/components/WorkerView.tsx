@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
   CheckSquare, Square, X,
@@ -18,6 +18,52 @@ import WorkerArt from "./art/WorkerArt";
 import type { Worker } from "../types";
 
 const HIRE_COST_BASE = 500;
+
+// ── Single worker row ─────────────────────────────────────────────────────────
+interface WorkerRowProps {
+  worker: Worker;
+  idx: number;
+  selectMode: boolean;
+  checked: boolean;
+  tripPct: number;
+  tripColor: string;
+  onSelect: (idx: number) => void;
+  onDetail: (idx: number) => void;
+}
+const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, tripPct, tripColor, onSelect, onDetail }: WorkerRowProps) {
+  const tokens = worker.upgrade_tokens ?? 0;
+  return (
+    <button
+      onClick={() => (selectMode ? onSelect(idx) : onDetail(idx))}
+      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
+        selectMode && checked
+          ? "border-cyan-400/80 bg-cyan-950/30"
+          : tokens > 0
+          ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
+          : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
+      }`}
+    >
+      {selectMode && (
+        <span className="shrink-0 text-cyan-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
+      )}
+      <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
+        <WorkerArt size={44} color={worker.color} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="font-semibold text-slate-100">{worker.name}</span>
+          <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
+          {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>}
+        </div>
+        <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
+        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+          <div className="h-full w-full origin-left rounded-full transition-transform duration-75" style={{ transform: `scaleX(${tripPct / 100})`, background: tripColor }} />
+        </div>
+      </div>
+      {!selectMode && <span className="text-slate-600">›</span>}
+    </button>
+  );
+});
 
 // "2.5" → "Guarantees 2, 50% chance for 3" (fractional carry yield).
 function carryHint(size: number): string {
@@ -112,7 +158,6 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   };
 
   const renderRow = ({ w: worker, i: idx }: { w: Worker; i: number }) => {
-    const tokens = worker.upgrade_tokens ?? 0;
     const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
     const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
     const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
@@ -122,36 +167,17 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     const checked = selected.has(idx);
 
     return (
-      <button
+      <WorkerRow
         key={worker.id}
-        onClick={() => (selectMode ? toggleSel(idx) : setDetailIdx(idx))}
-        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
-          selectMode && checked
-            ? "border-cyan-400/80 bg-cyan-950/30"
-            : tokens > 0
-            ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
-            : "border-slate-700 bg-slate-800/60 hover:border-cyan-500/40 hover:bg-slate-700/60"
-        }`}
-      >
-        {selectMode && (
-          <span className="shrink-0 text-cyan-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
-        )}
-        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-          <WorkerArt size={44} color={worker.color} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-slate-100">{worker.name}</span>
-            <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
-            {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>}
-          </div>
-          <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
-            <div className="h-full rounded-full transition-[width] duration-75" style={{ width: `${tripPct}%`, background: tripColor }} />
-          </div>
-        </div>
-        {!selectMode && <span className="text-slate-600">›</span>}
-      </button>
+        worker={worker}
+        idx={idx}
+        selectMode={selectMode}
+        checked={checked}
+        tripPct={tripPct}
+        tripColor={tripColor}
+        onSelect={toggleSel}
+        onDetail={setDetailIdx}
+      />
     );
   };
 
@@ -338,7 +364,7 @@ function WorkerDetailModal({
             <span>XP</span><span>{Math.floor(worker.xp)} / {xpNeed}</span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-700">
-            <div className="h-full rounded-full bg-cyan-400 transition-[width]" style={{ width: `${xpPct}%` }} />
+            <div className="h-full w-full origin-left rounded-full bg-cyan-400 transition-transform" style={{ transform: `scaleX(${xpPct / 100})` }} />
           </div>
         </div>
 
