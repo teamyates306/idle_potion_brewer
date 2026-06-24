@@ -105,10 +105,10 @@ export default function App() {
         )}
         <button
           onClick={() => setPanel("upgrades")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-violet-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-violet-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
           title="Global Upgrades"
         >
-          <ArrowUpCircle size={18} className="text-violet-400" />
+          <ArrowUpCircle size={18} className="text-amber-400" />
           <span>Upgrades</span>
         </button>
         <button

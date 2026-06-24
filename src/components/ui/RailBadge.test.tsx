@@ -83,7 +83,7 @@ describe("RailBadge — glow effect for token upgrades", () => {
       <RailBadge icon={<Icon />} label="Workers" onClick={() => {}} top={100} glow={false} />
     );
     const btn = container.querySelector("button")!;
-    expect(btn.className).toContain("border-amber-800");
+    expect(btn.className).toContain("border-amber-700");
     expect(btn.className).not.toContain("border-yellow-500");
   });
 });

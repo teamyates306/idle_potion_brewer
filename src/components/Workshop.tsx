@@ -559,7 +559,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           dataTut="brewing"
         />
         <RailBadge
-          icon={<ShoppingBag size={18} className="text-purple-400" />}
+          icon={<ShoppingBag size={18} className="text-amber-400" />}
           label="Market"
           onClick={() => onOpen("potion")}
           top={badgeY.market}
