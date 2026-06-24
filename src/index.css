@@ -157,7 +157,19 @@ body {
 }
 .token-reveal { animation: token-reveal 0.34s ease-out both; }
 
-/* Tutorial spotlight ring */
+/* Tutorial spotlight — applied directly to the target element so it works inside
+   any modal without z-index fights. border-radius:inherit follows the shape. */
+@keyframes tut-target-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px #f59e0b, 0 0 0 8px rgba(245,158,11,0.35); }
+  50%       { box-shadow: 0 0 0 4px #fbbf24, 0 0 0 16px rgba(251,191,36,0.45); }
+}
+.tut-target {
+  animation: tut-target-pulse 1.4s ease-in-out infinite;
+  border-radius: inherit;
+  position: relative;
+  z-index: 1;
+}
+/* Legacy ring class kept for any external references */
 @keyframes tut-ring {
   0%   { box-shadow: 0 0 0 3px rgba(251,191,36,0.95), 0 0 0 3px rgba(251,191,36,0.5); }
   70%  { box-shadow: 0 0 0 3px rgba(251,191,36,0.95), 0 0 0 16px rgba(251,191,36,0); }
