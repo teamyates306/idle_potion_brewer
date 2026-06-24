@@ -45,13 +45,16 @@ interface TierCfg {
   value: [number, number]; count: number;
 }
 // index 0 = Tier 1 (early) … index 5 = Tier 6 (apex). counts sum to 60.
+// Wider mag ranges + fewer nAttr mean each ingredient is concentrated on 1-2 stats
+// instead of spreading evenly across 4-5, which dramatically widens the mathematical
+// footprint of the ingredient pool (more unique stat vectors → more unique potions).
 const TIERS: TierCfg[] = [
-  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 3, mag: [2, 5],   vol: [0, 1],   tox: [0, 1],   value: [3, 8],     count: 6 },
-  { rarity: "uncommon",  pools: [DOM_BASIC, DOM_ELEM],  nAttr: 4, mag: [3, 7],   vol: [1, 3],   tox: [0, 3],   value: [10, 20],   count: 8 },
-  { rarity: "rare",      pools: [DOM_ELEM, DOM_BASIC],  nAttr: 4, mag: [5, 10],  vol: [3, 6],   tox: [2, 6],   value: [22, 42],   count: 12 },
-  { rarity: "epic",      pools: [DOM_ELEM, DOM_MENTAL], nAttr: 5, mag: [6, 11],  vol: [5, 9],   tox: [4, 9],   value: [46, 78],   count: 14 },
-  { rarity: "legendary", pools: [DOM_COSMIC, DOM_MENTAL], nAttr: 5, mag: [8, 14], vol: [9, 14],  tox: [6, 12],  value: [85, 150],  count: 12 },
-  { rarity: "legendary", pools: [DOM_COSMIC],           nAttr: 6, mag: [10, 18], vol: [12, 20], tox: [8, 16],  value: [160, 300], count: 8 },
+  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 2, mag: [4, 10],  vol: [0, 2],   tox: [0, 2],   value: [3, 8],     count: 6 },
+  { rarity: "uncommon",  pools: [DOM_BASIC, DOM_ELEM],  nAttr: 2, mag: [6, 14],  vol: [1, 4],   tox: [0, 4],   value: [10, 20],   count: 8 },
+  { rarity: "rare",      pools: [DOM_ELEM, DOM_BASIC],  nAttr: 3, mag: [8, 18],  vol: [3, 8],   tox: [2, 8],   value: [22, 42],   count: 12 },
+  { rarity: "epic",      pools: [DOM_ELEM, DOM_MENTAL], nAttr: 3, mag: [10, 20], vol: [5, 11],  tox: [4, 11],  value: [46, 78],   count: 14 },
+  { rarity: "legendary", pools: [DOM_COSMIC, DOM_MENTAL], nAttr: 3, mag: [12, 24], vol: [9, 16], tox: [6, 14],  value: [85, 150],  count: 12 },
+  { rarity: "legendary", pools: [DOM_COSMIC],           nAttr: 4, mag: [14, 28], vol: [12, 22], tox: [8, 18],  value: [160, 300], count: 8 },
 ];
 
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone"];
@@ -164,6 +167,8 @@ const LOCATION_META: LocMeta[] = [
   { id: "veil",     name: "The Sundered Veil",      flavor: "The thin spot, worn thinner. On a clear day you can see straight through to whatever is on the other side, looking back, taking notes." },
   { id: "threshold",name: "The Last Threshold",     flavor: "The doorstep of somewhere the Guild does not name in writing. Everything past here is rumour, and the rumours are expensive." },
   { id: "riftscar", name: "The Riftscar",           flavor: "Where the world was once torn and stitched back wrong. The horizon does not meet itself. Ingredients here are extraordinary and furious about being picked." },
+  { id: "whisperingbogs", name: "The Whispering Bogs",   flavor: "Murky wetlands where rare fungi grow on drowned trees and the mud bubbles with something that is not quite gas. The air here hums a chord workers can't quite identify but can't stop hearing." },
+  { id: "ashencrags",    name: "The Ashen Crags",       flavor: "Volcanic rock formations streaked with crystalline deposits that pulse with residual heat. The footholds are sharp; the harvest is sharper. Workers return ash-grey and thoughtful." },
 ];
 
 /** base_value -> ingredient tier (1..6), used to slot ingredients into locations. */
@@ -176,14 +181,24 @@ function tierOfValue(v: number): number {
   return 6;
 }
 
+// IDs of locations that are hand-authored extras beyond the 30-node geometric curve.
+// These get their own explicit distance/danger rather than the geometric formula.
+const EXTRA_LOCATION_CFG: Record<string, { distance: number; danger: number; unlockCost: number; dropIds: string[] }> = {
+  whisperingbogs: { distance: 18, danger: 4, unlockCost: 8000,
+    dropIds: ["bogamber", "whisperingspore", "ashshroom", "hexpetal", "mistcap", "bogpearl"] },
+  ashencrags:     { distance: 24, danger: 6, unlockCost: 40000,
+    dropIds: ["ashscale", "embershard", "cinderbone", "stormglass", "gravewax", "entropyshard"] },
+};
+
 /**
- * Build all 30 locations from the full ingredient pool. Round-trip gather time
- * (= distance / gather_speed × 2, with a level-1 worker's gather_speed of 1)
- * runs geometrically from 5s at the Hollow to 1800s (30 min) at the Riftscar.
+ * Build all 32 locations from the full ingredient pool. The first 30 nodes follow
+ * a geometric distance curve from 5s (Hollow) to 1800s (Riftscar); the final 2
+ * are hand-authored mid-to-late-game locations with explicit stats.
  */
 export function buildLocations(allIngredients: Record<string, Ingredient>): Record<string, Location> {
   const rng = mulberry32(0x10ca710f);
-  const N = LOCATION_META.length; // 30
+  const CURVE_META = LOCATION_META.slice(0, 30); // original 30 on the geometric curve
+  const N = CURVE_META.length; // 30
 
   // bucket ingredients by tier, cheapest first
   const byTier: Record<number, string[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
@@ -196,7 +211,7 @@ export function buildLocations(allIngredients: Record<string, Ingredient>): Reco
   };
 
   const out: Record<string, Location> = {};
-  LOCATION_META.forEach((meta, i) => {
+  CURVE_META.forEach((meta, i) => {
     // geometric distance: 2.5 (5s round trip) -> 900 (1800s / 30min round trip)
     const distance = Math.round(2.5 * Math.pow(360, i / (N - 1)) * 10) / 10;
     const danger = Math.min(6, Math.floor(i / 5));
@@ -242,10 +257,28 @@ export function buildLocations(allIngredients: Record<string, Ingredient>): Reco
     if (dropped.has(ing.id)) continue;
     const t = tierOfValue(ing.base_value);
     const host =
-      LOCATION_META.find((mt, idx) => idx > 0 && Math.min(6, 1 + Math.floor(idx / 5)) === t)?.id ??
-      LOCATION_META[Math.max(1, LOCATION_META.length - 1)].id;
+      CURVE_META.find((mt, idx) => idx > 0 && Math.min(6, 1 + Math.floor(idx / 5)) === t)?.id ??
+      CURVE_META[Math.max(1, CURVE_META.length - 1)].id;
     out[host].drops.push({ ingredientId: ing.id, weight: weightFor(ing.id) });
     dropped.add(ing.id);
   }
+
+  // Build the 2 hand-authored extra locations (The Whispering Bogs + The Ashen Crags).
+  for (const meta of LOCATION_META.slice(30)) {
+    const cfg = EXTRA_LOCATION_CFG[meta.id];
+    if (!cfg) continue;
+    const drops: DropEntry[] = cfg.dropIds
+      .filter((id) => allIngredients[id])
+      .map((id) => ({ ingredientId: id, weight: weightFor(id) }));
+    if (drops.length === 0) drops.push({ ingredientId: CURVE_META[0].id, weight: 10 });
+    out[meta.id] = {
+      id: meta.id, name: meta.name, flavor: meta.flavor,
+      distance: cfg.distance, danger: cfg.danger, unlockCost: cfg.unlockCost,
+      drops,
+    };
+    // Mark these ingredients as covered so the coverage guarantee doesn't re-place them.
+    for (const d of drops) dropped.add(d.ingredientId);
+  }
+
   return out;
 }

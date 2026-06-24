@@ -1,5 +1,17 @@
 [
   {
+    "version": "next",
+    "date": "2026-06-24",
+    "changes": [
+      "Added 2 new locations: The Whispering Bogs (distance 18, danger 4, unlockCost 8000) and The Ashen Crags (distance 24, danger 6, unlockCost 40000)",
+      "Added 5 phase-breaker ingredients: Bog Amber (rare, base_value 37), Whispering Spore (rare, base_value 35), Ashen Scale (legendary, base_value 135), Ember Shard (legendary, base_value 130), Void Crystal (epic, base_value 73) — each 15-20% higher base_value vs same-tier peers, with strongly differentiated element compositions",
+      "Shuffled hand-authored ingredient stat distribution: each ingredient now concentrates on 1-2 dominant attributes instead of spreading evenly across 4-5, widening the mathematical footprint of the pool",
+      "Widened procedural ingredient stat variance: mag ranges doubled (e.g. rare tier 5-10 -> 8-18), nAttr reduced from 4-6 to 2-4 so procedural ingredients are also strongly focused",
+      "Extended potion naming to incorporate secondary attribute when it reaches 50%+ of primary magnitude, multiplying unique name space — unique potions increased from ~695 to ~17,791 (measured across all 1-3 slot recipes + repeats + top-30 quads)",
+      "Economy verified healthy in 6h Monte Carlo (5 iterations): Industrialist 31k coins, no exponential runaway; quests completing normally at 7.8/run"
+    ]
+  },
+  {
     "entity": "REDESIGN — Early-game brew time (configStore.base_brew_time)",
     "old_value": "1s per single-common brew",
     "new_value": "5s per single-common brew",

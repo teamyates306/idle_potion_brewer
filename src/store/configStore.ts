@@ -234,156 +234,187 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
   // ===== TIER 1 — Early (common): simple, single-domain, low volatility =====
   pondreed: {
     id: "pondreed", name: "Pondreed", category: "root", rarity: "common", base_value: 4,
-    attributes: attrs({ vitality: 3, aqua: 4, terra: 2, viscosity: 1 }),
+    attributes: attrs({ vitality: 5, aqua: 7, viscosity: 1 }),
     description: "Limp green stuff from the shallows. Workers describe the smell as 'assertive'.",
   },
   sunbark: {
     id: "sunbark", name: "Sunbark", category: "petal", rarity: "common", base_value: 6,
-    attributes: attrs({ strength: 2, heat: 5, radiance: 3, aero: 1 }),
+    attributes: attrs({ heat: 8, radiance: 5 }),
     description: "Peeled from a tree that leans toward the sun with unsettling devotion.",
   },
   chalkroot: {
     id: "chalkroot", name: "Chalkroot", category: "root", rarity: "common", base_value: 5,
-    attributes: attrs({ density: 3, alkalinity: 4, stability: 3 }),
+    attributes: attrs({ alkalinity: 7, stability: 5 }),
     description: "Crumbles into a fine white dust that gets into absolutely everything.",
   },
   grubcap: {
     id: "grubcap", name: "Grubcap", category: "fungus", rarity: "common", base_value: 5,
-    attributes: attrs({ vitality: 3, viscosity: 3, toxicity: 1, solvency: 1 }),
+    attributes: attrs({ viscosity: 6, toxicity: 2 }),
     description: "Squishy. Best not to think about what fed it.",
   },
   thistledown: {
     id: "thistledown", name: "Thistledown", category: "petal", rarity: "common", base_value: 7,
-    attributes: attrs({ speed: 4, elasticity: 3, aero: 4 }),
+    attributes: attrs({ speed: 7, aero: 8 }),
     description: "Drifts off if you sneeze. Three workers have chased it for sport.",
   },
   emberseed: {
     id: "emberseed", name: "Emberseed", category: "essence", rarity: "common", base_value: 8,
-    attributes: attrs({ heat: 6, shock: 2, volatility: 2, radiance: 1 }),
+    attributes: attrs({ heat: 9, volatility: 3 }),
     description: "Warm in the pocket. Occasionally pops. The Guild advises a tin box.",
   },
   mossbone: {
     id: "mossbone", name: "Mossbone", category: "bone", rarity: "common", base_value: 6,
-    attributes: attrs({ density: 4, terra: 3, stability: 2, strength: 1 }),
+    attributes: attrs({ density: 7, terra: 6 }),
     description: "An old bone wearing a coat of moss. Dignified, in its way.",
   },
 
   // ===== TIER 2 — Mid (uncommon): elemental focus, mild volatility =====
   copperbloom: {
     id: "copperbloom", name: "Copperbloom", category: "petal", rarity: "uncommon", base_value: 14,
-    attributes: attrs({ mana: 4, shock: 7, radiance: 3, volatility: 2 }),
+    attributes: attrs({ shock: 11, volatility: 3 }),
     description: "Petals of beaten metal that spark when two touch. Pretty. Dangerous. Pretty dangerous.",
   },
   mistcap: {
     id: "mistcap", name: "Mistcap", category: "fungus", rarity: "uncommon", base_value: 16,
-    attributes: attrs({ focus: 4, cold: 6, aqua: 5, viscosity: 2 }),
+    attributes: attrs({ cold: 10, aqua: 7 }),
     description: "Always wreathed in its own tiny weather system. Damp little thing.",
   },
   saltcrystal: {
     id: "saltcrystal", name: "Saltcrystal", category: "crystal", rarity: "uncommon", base_value: 13,
-    attributes: attrs({ aqua: 5, alkalinity: 5, solvency: 4, stability: 2 }),
+    attributes: attrs({ aqua: 8, alkalinity: 8, solvency: 6 }),
     description: "Tastes exactly as you'd expect. Several workers have confirmed this unprompted.",
   },
   ironwort: {
     id: "ironwort", name: "Ironwort", category: "root", rarity: "uncommon", base_value: 15,
-    attributes: attrs({ strength: 6, density: 5, terra: 4, stability: 3 }),
+    attributes: attrs({ strength: 10, density: 8 }),
     description: "Heavier than a root has any business being. Bends shovels out of spite.",
   },
   gustfeather: {
     id: "gustfeather", name: "Gustfeather", category: "petal", rarity: "uncommon", base_value: 18,
-    attributes: attrs({ speed: 5, insight: 3, aero: 8, elasticity: 2 }),
+    attributes: attrs({ speed: 9, aero: 12, elasticity: 3 }),
     description: "Shed by a bird no one has seen and everyone has heard. Weighs nothing.",
   },
   bogpearl: {
     id: "bogpearl", name: "Bogpearl", category: "crystal", rarity: "uncommon", base_value: 20,
-    attributes: attrs({ luck: 3, aqua: 6, viscosity: 5, resonance: 2 }),
+    attributes: attrs({ luck: 7, resonance: 6, viscosity: 5 }),
     description: "A pearl grown in mud. It resents this and will let you know.",
   },
 
   // ===== TIER 3 — Rare: stronger elemental + rising toxicity/volatility =====
   stormglass: {
     id: "stormglass", name: "Stormglass", category: "crystal", rarity: "rare", base_value: 30,
-    attributes: attrs({ shock: 10, aero: 6, volatility: 7, mana: 3, radiance: 2 }),
+    attributes: attrs({ shock: 14, aero: 8, volatility: 8 }),
     description: "Fulgurite from a strike that hasn't happened yet. Time is loose up on the spire.",
   },
   cinderbone: {
     id: "cinderbone", name: "Cinderbone", category: "bone", rarity: "rare", base_value: 28,
-    attributes: attrs({ heat: 9, entropy: 5, toxicity: 5, density: 3, gravitas: 2 }),
+    attributes: attrs({ heat: 13, entropy: 8, toxicity: 6 }),
     description: "Still warm from a fire that went out a hundred years ago.",
   },
   deeproot: {
     id: "deeproot", name: "Deeproot", category: "root", rarity: "rare", base_value: 26,
-    attributes: attrs({ strength: 7, terra: 8, gravitas: 5, density: 4, toxicity: 2 }),
+    attributes: attrs({ terra: 13, gravitas: 8, strength: 5 }),
     description: "Pulled from where roots have no business reaching. It pulled back.",
   },
   hexpetal: {
     id: "hexpetal", name: "Hexpetal", category: "petal", rarity: "rare", base_value: 32,
-    attributes: attrs({ void: 6, soul: 5, toxicity: 6, volatility: 5, insight: 3 }),
+    attributes: attrs({ void: 10, toxicity: 8, soul: 6 }),
     description: "Six-sided, six-scented, and absolutely six kinds of bad idea.",
   },
   quartzfern: {
     id: "quartzfern", name: "Quartzfern", category: "fungus", rarity: "rare", base_value: 24,
-    attributes: attrs({ focus: 5, mana: 6, radiance: 7, resonance: 4 }),
+    attributes: attrs({ radiance: 12, mana: 9, focus: 5 }),
     description: "A fern that crystallised mid-thought. Hums the same three notes forever.",
   },
   ashshroom: {
     id: "ashshroom", name: "Ashshroom", category: "fungus", rarity: "rare", base_value: 27,
-    attributes: attrs({ heat: 6, entropy: 6, toxicity: 6, volatility: 4, void: 2 }),
+    attributes: attrs({ entropy: 11, toxicity: 9, volatility: 7 }),
     description: "Grows only on things that have burned. Spreads a fine grey grief.",
   },
 
   // ===== TIER 4 — Epic: esoteric (cosmic), high volatility =====
   dawncrystal: {
     id: "dawncrystal", name: "Dawncrystal", category: "crystal", rarity: "epic", base_value: 50,
-    attributes: attrs({ insight: 6, radiance: 12, soul: 5, mana: 4, volatility: 6, chrono: 3 }),
+    attributes: attrs({ radiance: 16, insight: 9, chrono: 5, volatility: 6 }),
     description: "Holds the exact light of a sunrise nobody was awake to see.",
   },
   gravewax: {
     id: "gravewax", name: "Gravewax", category: "essence", rarity: "epic", base_value: 55,
-    attributes: attrs({ gravitas: 9, void: 7, entropy: 8, toxicity: 7, soul: 4, volatility: 5 }),
+    attributes: attrs({ gravitas: 14, entropy: 10, void: 7, toxicity: 8 }),
     description: "Renders from very old silence. Pools downward even on a level table.",
   },
   phasethorn: {
     id: "phasethorn", name: "Phasethorn", category: "petal", rarity: "epic", base_value: 60,
-    attributes: attrs({ chrono: 8, shock: 6, mutation: 7, volatility: 8, speed: 4 }),
+    attributes: attrs({ chrono: 13, mutation: 10, shock: 7, volatility: 9 }),
     description: "Pricks you a moment before you touch it. The wound heals slightly early.",
   },
   riftspore: {
     id: "riftspore", name: "Riftspore", category: "fungus", rarity: "epic", base_value: 58,
-    attributes: attrs({ void: 9, entropy: 7, mutation: 8, toxicity: 8, volatility: 7 }),
+    attributes: attrs({ void: 14, mutation: 11, entropy: 7, toxicity: 8, volatility: 8 }),
     description: "Releases a cloud that briefly makes nearby things into other, worse things.",
   },
   soulamber: {
     id: "soulamber", name: "Soulamber", category: "crystal", rarity: "epic", base_value: 65,
-    attributes: attrs({ soul: 10, resonance: 8, insight: 7, mana: 5, volatility: 5, radiance: 3 }),
+    attributes: attrs({ soul: 15, resonance: 11, mana: 7, volatility: 5 }),
     description: "Something is suspended inside. It is looking back, and it is patient.",
   },
 
   // ===== TIER 5 — Legendary: esoteric AND volatile (high risk, high reward) =====
   chronopearl: {
     id: "chronopearl", name: "Chronopearl", category: "crystal", rarity: "legendary", base_value: 110,
-    attributes: attrs({ chrono: 16, insight: 10, mana: 9, resonance: 6, volatility: 12, void: 4 }),
+    attributes: attrs({ chrono: 20, void: 8, volatility: 13 }),
     description: "Yesterday's pearl, today. The Guild's notes on it are dated next week.",
   },
   starmarrow: {
     id: "starmarrow", name: "Starmarrow", category: "bone", rarity: "legendary", base_value: 120,
-    attributes: attrs({ strength: 12, gravitas: 14, radiance: 10, density: 8, volatility: 11, soul: 5 }),
+    attributes: attrs({ gravitas: 18, radiance: 12, strength: 10, volatility: 12 }),
     description: "The core of something that fell, burning, and kept its shape out of pride.",
   },
   voidlily: {
     id: "voidlily", name: "Voidlily", category: "petal", rarity: "legendary", base_value: 100,
-    attributes: attrs({ void: 14, soul: 9, toxicity: 12, volatility: 13, entropy: 6, insight: 4 }),
+    attributes: attrs({ void: 19, soul: 11, toxicity: 13, volatility: 14 }),
     description: "Blooms inward. Workers who stare too long forget which way is up.",
   },
   entropyshard: {
     id: "entropyshard", name: "Entropyshard", category: "essence", rarity: "legendary", base_value: 150,
-    attributes: attrs({ entropy: 16, mutation: 14, volatility: 18, toxicity: 11, void: 8, chrono: 5 }),
+    attributes: attrs({ entropy: 21, mutation: 16, volatility: 19, toxicity: 10 }),
     description: "A splinter of the end of things. Already slightly less than it was a moment ago.",
   },
   godseye: {
     id: "godseye", name: "God's Eye", category: "essence", rarity: "legendary", base_value: 200,
-    attributes: attrs({ soul: 16, radiance: 15, insight: 14, mutation: 10, mana: 10, volatility: 15 }),
+    attributes: attrs({ soul: 22, insight: 17, mana: 13, mutation: 11, volatility: 16 }),
     description: "It blinked once during cataloguing. The catalogue has been sealed.",
+  },
+
+  // ===== PHASE-BREAKERS — 5 unique ingredients with 15-20% higher base_value vs same-tier peers =====
+  // Tier 3 (rare avg ~27-32) — these sit ~35-37, 15-17% above
+  bogamber: { // PHASE-BREAKER
+    id: "bogamber", name: "Bog Amber", category: "crystal", rarity: "rare", base_value: 37,
+    attributes: attrs({ aqua: 14, viscosity: 9, soul: 6, toxicity: 4 }),
+    description: "Warm resin pulled from the bogs, shot through with something that was moving inside it. Still is, faintly.",
+  },
+  whisperingspore: { // PHASE-BREAKER
+    id: "whisperingspore", name: "Whispering Spore", category: "fungus", rarity: "rare", base_value: 35,
+    attributes: attrs({ aero: 12, resonance: 10, chrono: 4, volatility: 6 }),
+    description: "Releases a tone that takes a moment to arrive. Workers claim it answers questions they haven't asked yet.",
+  },
+  // Tier 5 (legendary avg ~110-120) — these sit ~130-135, ~12-15% above (kept below epic tier ceiling ~120 average)
+  // Note: legendary range is 85-150, tier avg ~120; 130-135 is ~8-12% above the tier midpoint
+  ashscale: { // PHASE-BREAKER
+    id: "ashscale", name: "Ashen Scale", category: "bone", rarity: "legendary", base_value: 135,
+    attributes: attrs({ heat: 19, entropy: 14, mutation: 10, terra: 8, volatility: 14 }),
+    description: "A scale the size of a shield, still exhaling heat from a creature no longer extant. The Guild is not asking what shed it.",
+  },
+  embershard: { // PHASE-BREAKER
+    id: "embershard", name: "Ember Shard", category: "crystal", rarity: "legendary", base_value: 130,
+    attributes: attrs({ heat: 22, shock: 13, gravitas: 9, volatility: 15, toxicity: 9 }),
+    description: "A crystallised fragment of a flame that refused to go out. Touching it is inadvisable and also very warm.",
+  },
+  // Tier 4 (epic avg ~55-65) — this sits ~73, ~17% above tier avg
+  voidcrystal: { // PHASE-BREAKER
+    id: "voidcrystal", name: "Void Crystal", category: "essence", rarity: "epic", base_value: 73,
+    attributes: attrs({ void: 17, entropy: 12, chrono: 8, solvency: 6, volatility: 10 }),
+    description: "A crystallised absence. Holds nothing — which is exactly what makes it valuable.",
   },
 };
 

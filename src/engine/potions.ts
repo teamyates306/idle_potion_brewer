@@ -80,17 +80,30 @@ function strHash(s: string): number {
   return Math.abs(h);
 }
 
-function dominantSuffix(stats: Attributes): string {
-  let maxKey: keyof Attributes = "strength";
-  let maxAbs = 0;
+/** Returns [dominantKey, secondaryKey | null] for the two largest absolute attr values. */
+function dominantAttrs(stats: Attributes): [keyof Attributes, keyof Attributes | null] {
+  let firstKey: keyof Attributes = "strength";
+  let firstAbs = 0;
+  let secondKey: keyof Attributes | null = null;
+  let secondAbs = 0;
   for (const key of ATTR_KEYS) {
     const abs = Math.abs(stats[key]);
-    if (abs > maxAbs) {
-      maxAbs = abs;
-      maxKey = key;
+    if (abs > firstAbs) {
+      secondAbs = firstAbs; secondKey = firstKey;
+      firstAbs = abs; firstKey = key;
+    } else if (abs > secondAbs) {
+      secondAbs = abs; secondKey = key;
     }
   }
-  return ATTRIBUTE_SUFFIX_REGISTRY[maxKey];
+  // Only surface the secondary attr when it is at least 50% of the primary's magnitude.
+  // Below that threshold the primary dominates enough that a secondary label is misleading.
+  if (secondKey && secondAbs < firstAbs * 0.5) secondKey = null;
+  return [firstKey, secondKey];
+}
+
+const SECONDARY_CONNECTORS = ["& ", "laced with ", "tinged with ", "edged with "];
+function secondaryConnector(h: number): string {
+  return SECONDARY_CONNECTORS[h % SECONDARY_CONNECTORS.length];
 }
 
 export function describePotion(
@@ -125,7 +138,13 @@ export function describePotion(
   }
   const primaryCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "root";
   const type = CATEGORY_TYPE[primaryCategory] ?? "Tonic";
-  const suffix = dominantSuffix(stats);
+
+  // Name incorporates dominant + (when strong enough) secondary attribute for wider name space.
+  const [primaryAttr, secondaryAttr] = dominantAttrs(stats);
+  const primarySuffix = ATTRIBUTE_SUFFIX_REGISTRY[primaryAttr];
+  const suffix = secondaryAttr
+    ? `${primarySuffix} ${secondaryConnector(h)}${ATTRIBUTE_SUFFIX_REGISTRY[secondaryAttr]}`
+    : primarySuffix;
   const name = `${prefix} ${type} of ${suffix}`;
 
   return { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility };
