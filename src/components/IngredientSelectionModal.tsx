@@ -133,10 +133,11 @@ export default function IngredientSelectionModal({
                     <div className="h-px flex-1 bg-slate-800" />
                   </div>
                   <div className="grid grid-cols-4 gap-2">
-                    {items.map(({ id, ing, count }) => (
+                    {items.map(({ id, ing, count }, itemIdx) => (
                       <button
                         key={id}
                         onClick={() => assign(id)}
+                        {...(itemIdx === 0 ? { "data-tut": "ingredient-item" } : {})}
                         className="relative flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 p-2 transition hover:border-amber-500/60 active:scale-95"
                       >
                         <IngredientSvg category={ing.category} size={28} />

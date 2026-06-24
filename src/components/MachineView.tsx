@@ -268,6 +268,7 @@ function MachinePanelBody({
       </button>
 
       <button
+        data-tut="start-brewing"
         onClick={() => toggleRunning(machine.id)}
         disabled={!preview}
         className={`mb-4 flex w-full items-center justify-center gap-2 rounded-lg py-2.5 font-semibold transition ${
