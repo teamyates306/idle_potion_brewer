@@ -85,14 +85,19 @@ export default function IngredientSelectionModal({
                   key={i}
                   disabled={locked}
                   onClick={() => setActiveSlot(i)}
-                  className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border text-xs transition ${
+                  className={`relative flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-lg border text-xs transition ${
                     locked ? "border-slate-800 bg-slate-900 text-slate-700"
                     : active ? "border-amber-400 bg-amber-950/40 ring-2 ring-amber-400/50"
                     : "border-slate-700 bg-slate-800 hover:border-amber-500/50"
                   }`}
                   title={locked ? "Locked slot" : `Slot ${i + 1}`}
                 >
-                  {locked ? <Lock size={14} /> : ing ? <IngredientSvg category={ing.category} size={26} /> : <span className="text-[10px] text-slate-500">{i + 1}</span>}
+                  {locked ? <Lock size={14} /> : ing ? (
+                    <>
+                      <IngredientSvg category={ing.category} size={20} />
+                      <span className="mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300" style={{ fontSize: "7px" }}>{ing.name}</span>
+                    </>
+                  ) : <span className="text-[10px] text-slate-500">{i + 1}</span>}
                 </button>
               );
             })}
