@@ -30,7 +30,10 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
           color: item.color,
           pointerEvents: "none",
           userSelect: "none",
-          whiteSpace: "nowrap",
+          whiteSpace: item.glow ? "normal" : "nowrap",
+          maxWidth: item.glow ? "80vw" : undefined,
+          textAlign: item.glow ? "center" : undefined,
+          lineHeight: item.glow ? 1.3 : undefined,
           textShadow: item.glow
             ? `0 0 20px ${item.color}, 0 0 40px ${item.color}, 0 0 6px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.95)`
             : "0 1px 8px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.7)",
