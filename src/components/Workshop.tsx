@@ -479,7 +479,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           color: "#fde68a",
           arcX: 0,
           size: "lg",
-          duration: 3500,
+          duration: 7000,
           glow: true,
         });
         return;

@@ -26,6 +26,7 @@ export default function IngredientSelectionModal({
   const programSlot = useGameStore((s) => s.programSlot);
   const inv = useGameStore((s) => s.ingredientInv);
   const discovered = useGameStore((s) => s.discovered);
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
   const cfg = useConfigStore();
   const [activeSlot, setActiveSlot] = useState(initialSlot);
   const [query, setQuery] = useState("");
@@ -152,11 +153,17 @@ export default function IngredientSelectionModal({
           )}
         </div>
 
-        {/* Preview footer */}
+        {/* Preview footer — hide name/value for undiscovered recipes */}
         {preview && (
           <div className="border-t border-slate-800 px-4 py-2.5 text-center text-xs">
-            <span className="font-semibold text-amber-300">{preview.name}</span>
-            <span className="text-slate-500"> · 🪙 {fmt(preview.value)}</span>
+            {discoveredPotions.includes(preview.hash) ? (
+              <>
+                <span className="font-semibold text-amber-300">{preview.name}</span>
+                <span className="text-slate-500"> · 🪙 {fmt(preview.value)}</span>
+              </>
+            ) : (
+              <span className="font-semibold italic text-slate-500 tracking-wider">??? Undiscovered — brew to find out</span>
+            )}
           </div>
         )}
       </div>
