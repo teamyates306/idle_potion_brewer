@@ -7,6 +7,8 @@ export interface FATItem {
   arcX?: number;  // horizontal drift in px (for burst)
   delay?: number; // ms before animation starts
   size?: "sm" | "md" | "lg";
+  duration?: number; // ms total on-screen lifetime (default 1500)
+  glow?: boolean;    // coloured glow shadow + slow-rise animation
 }
 
 type FATListener = (item: FATItem) => void;

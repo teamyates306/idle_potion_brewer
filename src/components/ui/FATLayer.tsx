@@ -3,13 +3,19 @@ import { subscribeFAT, type FATItem } from "../../util/fat";
 import { useSettingsStore } from "../../store/settingsStore";
 
 const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATItem; onDone: () => void }) {
+  const totalDuration = item.duration ?? 1500;
+
   useEffect(() => {
-    const t = setTimeout(onDone, (item.delay ?? 0) + 1500);
+    const t = setTimeout(onDone, (item.delay ?? 0) + totalDuration);
     return () => clearTimeout(t);
   }, []);
 
   const fontSize =
-    item.size === "sm" ? 11 : item.size === "lg" ? 20 : 15;
+    item.size === "sm" ? 11 : item.size === "lg" ? (item.glow ? 26 : 20) : 15;
+
+  const animDuration = item.glow
+    ? `${totalDuration}ms`
+    : `${Math.round(totalDuration * 0.833)}ms`;
 
   return (
     <div
@@ -25,12 +31,13 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
           pointerEvents: "none",
           userSelect: "none",
           whiteSpace: "nowrap",
-          textShadow: "0 1px 8px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.7)",
+          textShadow: item.glow
+            ? `0 0 20px ${item.color}, 0 0 40px ${item.color}, 0 0 6px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.95)`
+            : "0 1px 8px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.7)",
           zIndex: 9999,
-          // CSS custom property for arc – read by the @keyframes in index.css
           "--fat-arc": `${item.arcX ?? 0}px`,
-          animationName: "fat-float",
-          animationDuration: "1.25s",
+          animationName: item.glow ? "fat-float-long" : "fat-float",
+          animationDuration: animDuration,
           animationDelay: `${item.delay ?? 0}ms`,
           animationTimingFunction: "ease-out",
           animationFillMode: "both",

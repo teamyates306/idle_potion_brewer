@@ -256,7 +256,7 @@ function MachinePanelBody({
               {isKnownPotion ? (
                 <span className="font-semibold text-amber-300">{preview.name}</span>
               ) : (
-                <span className="font-semibold text-violet-300">✨ New Recipe</span>
+                <span className="font-semibold text-slate-500 italic tracking-wider">??? Undiscovered</span>
               )}
               {isKnownPotion && (potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />)}
             </div>
@@ -264,7 +264,7 @@ function MachinePanelBody({
               {isKnownPotion ? (
                 <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{!potionExpanded && " · tap for stats"}</>
               ) : (
-                <>{bt.toFixed(2)}s brew · brew it to reveal what you've made</>
+                <>{bt.toFixed(2)}s brew · brew it to discover what you've made</>
               )}
             </div>
             {isKnownPotion && potionExpanded && (

@@ -73,6 +73,13 @@ body {
   0%   { transform: translateX(calc(-50% + 0px))              translateY(0);     opacity: 1; }
   100% { transform: translateX(calc(-50% + var(--fat-arc, 0px))) translateY(-72px); opacity: 0; }
 }
+@keyframes fat-float-long {
+  0%   { transform: translateX(calc(-50% + 0px)) translateY(0);      opacity: 0; }
+  8%   { opacity: 1; }
+  65%  { transform: translateX(calc(-50% + var(--fat-arc, 0px))) translateY(-52px); opacity: 1; }
+  85%  { transform: translateX(calc(-50% + var(--fat-arc, 0px))) translateY(-58px); opacity: 1; }
+  100% { transform: translateX(calc(-50% + var(--fat-arc, 0px))) translateY(-62px); opacity: 0; }
+}
 
 /* Cauldron active-click bump */
 @keyframes cauldron-bump {

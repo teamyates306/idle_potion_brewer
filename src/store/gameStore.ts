@@ -852,7 +852,8 @@ export const useGameStore = create<GameState>()(
           const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
           const bonus = Math.round(10 * Math.pow(1.18, discoveryIdx - 1));
           set((cur) => ({ coins: cur.coins + bonus }));
-          pushGameEvent("discovery", `✨ New potion! +${bonus.toLocaleString()} 🪙`);
+          pushGameEvent("discovery", `✨ ${potion.name} discovered!`);
+          pushGameEvent("pile", `+${bonus.toLocaleString()} 🪙 discovery bonus`);
           get().refreshQuests();
         }
 

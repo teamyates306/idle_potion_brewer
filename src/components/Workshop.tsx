@@ -472,14 +472,15 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const cy   = rect.top  + rect.height / 3;
 
       if (evt.channel === "discovery") {
-        // Centre of screen, large text, floats upward
         spawnFAT({
-          x: window.innerWidth / 2 + (Math.random() - 0.5) * 60,
-          y: window.innerHeight / 2,
+          x: window.innerWidth / 2,
+          y: window.innerHeight * 0.42,
           text: evt.text,
-          color: CHANNEL_COLOR.discovery,
-          arcX: (Math.random() - 0.5) * 20,
+          color: "#fde68a",
+          arcX: 0,
           size: "lg",
+          duration: 3500,
+          glow: true,
         });
         return;
       }
