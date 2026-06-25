@@ -318,7 +318,7 @@ function LocationDetailModal({
     >
       <div
         className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-[#0f172a] p-4 shadow-2xl sm:rounded-2xl"
-        style={{ maxHeight: "85vh" }}
+        style={{ maxHeight: "85dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

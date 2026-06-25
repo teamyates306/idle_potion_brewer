@@ -355,7 +355,7 @@ function WorkerDetailModal({
     >
       <div
         className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-[#0f172a] p-4 shadow-2xl sm:rounded-2xl"
-        style={{ maxHeight: "85vh" }}
+        style={{ maxHeight: "85dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #22d3ee33" }}>

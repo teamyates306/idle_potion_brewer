@@ -16,7 +16,7 @@ export default function Modal({ title, onClose, children, subHeader, accent = "#
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-[#0f172a] shadow-2xl"
+        className="w-full sm:max-w-md max-h-[85dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-[#0f172a] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sticky title row */}

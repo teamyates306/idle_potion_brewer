@@ -66,7 +66,7 @@ export default function IngredientSelectionModal({
 
   return (
     <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/70 p-3 backdrop-blur-sm sm:items-center" onClick={onClose}>
-      <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-amber-700/50 bg-[#0f172a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-amber-700/50 bg-[#0f172a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <h3 className="text-base font-bold text-amber-300">{machine.name} · Recipe</h3>

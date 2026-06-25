@@ -395,7 +395,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/70 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
-      <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-violet-700/50 bg-[#0f172a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="flex max-h-[85dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-violet-700/50 bg-[#0f172a] shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-slate-800 p-4">
           {selected && (
             <button onClick={() => setName(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><ChevronLeft size={18} /></button>

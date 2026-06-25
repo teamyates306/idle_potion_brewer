@@ -83,7 +83,7 @@ export default function IngredientModal({
     >
       <div
         className="w-full max-w-sm overflow-y-auto rounded-2xl border border-amber-700/40 bg-[#0f172a] p-5 shadow-2xl"
-        style={{ maxHeight: "85vh" }}
+        style={{ maxHeight: "85dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
