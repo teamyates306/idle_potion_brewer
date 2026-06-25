@@ -26,13 +26,15 @@ export default function RailBadge({
       }`}
       style={{ top }}
     >
-      {icon}
+      <div className="relative">
+        {icon}
+        {badge && (
+          <span className="absolute -top-1.5 -right-2 rounded-full bg-yellow-500 px-1 text-[7px] font-bold text-black leading-tight">
+            {badge}
+          </span>
+        )}
+      </div>
       <span>{label}</span>
-      {badge && (
-        <span className="mt-0.5 rounded-full bg-yellow-500 px-1.5 text-[8px] font-bold text-black leading-tight">
-          {badge}
-        </span>
-      )}
     </button>
   );
 }

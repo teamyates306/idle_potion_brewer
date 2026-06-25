@@ -69,7 +69,7 @@ export default function App() {
       <Atmosphere />
       {/* HUD — styled as the top of the stone wall */}
       <header
-        className="relative z-[2] flex items-center justify-between px-4 py-2.5"
+        className="relative z-[4] flex items-center justify-between px-4 py-2.5"
         style={{
           background: "linear-gradient(to bottom, #3d2810 0%, #5a4028 100%)",
           borderBottom: "2px solid #3a2008",
@@ -94,7 +94,7 @@ export default function App() {
       </main>
 
       {/* Left-edge button stack */}
-      <div className="absolute left-2 top-1/2 z-[3] flex -translate-y-1/2 flex-col items-center gap-2">
+      <div className="absolute left-2 top-1/2 z-[4] flex -translate-y-1/2 flex-col items-center gap-2">
         {questsUnlocked && (
           <button
             onClick={() => setPanel("quests")}
@@ -136,7 +136,7 @@ export default function App() {
       {/* Hidden dev toggle */}
       <button
         onClick={() => setPanel("dev")}
-        className="absolute bottom-2 left-2 z-[2] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100"
+        className="absolute bottom-2 left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100"
         title="Dev Dashboard"
       >
         <Settings2 size={16} />
