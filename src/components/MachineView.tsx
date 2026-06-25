@@ -4,6 +4,7 @@ import Modal from "./ui/Modal";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
+import { autoClickReductionPerSec } from "../engine/autoclick";
 import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
@@ -104,7 +105,10 @@ function MachinePanelBody({
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
   const buyMultiBrew = useGameStore((s) => s.buyMultiBrew);
   const buySlot = useGameStore((s) => s.buySlot);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const workers = useGameStore((s) => s.workers);
   const cfg = useConfigStore();
+  const hasGloves = unlocked_globals.includes("gloves_of_engineering");
 
   const [slotModal, setSlotModal] = useState<number | null>(null);
   const [potionExpanded, setPotionExpanded] = useState(false);
@@ -298,6 +302,11 @@ function MachinePanelBody({
         {machine.running ? <><Pause size={18} /> Stop Brewing</> : <><Play size={18} /> Set to Brew</>}
       </button>
 
+      {/* Gloves of Engineering — True Brew Rate analytics */}
+      {hasGloves && preview && (
+        <BrewAnalytics machine={machine} bt={bt} workers={workers} />
+      )}
+
       {tokens > 0 ? (
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
@@ -466,6 +475,51 @@ function RecipePickerModal({ machine, onPick, onClose }: {
               </div>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Gloves of Engineering — show the True Brew Rate formula breakdown
+function BrewAnalytics({
+  machine, bt, workers,
+}: {
+  machine: BrewingMachine;
+  bt: number;
+  workers: { assigned_machine_id: number | null; auto_click_speed: number; click_power_level: number; click_power_mult?: number }[];
+}) {
+  const cfg = useConfigStore();
+  const assigned = workers.filter((w) => w.assigned_machine_id === machine.id);
+  const workerReduction = assigned.reduce(
+    (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0),
+    0
+  );
+  const effectiveBt = Math.max(0.5, bt / (1 + workerReduction));
+  const brewsPerHour = 3600 / effectiveBt;
+  const baseBt = cfg.formulas.base_brew_time / machine.brew_speed;
+
+  return (
+    <div className="mb-4 rounded-xl border border-teal-700/40 bg-teal-950/20 p-3">
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-teal-400">True Brew Rate</p>
+      <div className="space-y-1 text-[11px] text-slate-400 font-mono">
+        <div className="flex justify-between">
+          <span>base_brew_time / brew_speed</span>
+          <span className="text-slate-300">{baseBt.toFixed(2)}s</span>
+        </div>
+        <div className="flex justify-between">
+          <span>× complexity + toxicity</span>
+          <span className="text-slate-300">{bt.toFixed(2)}s</span>
+        </div>
+        {workerReduction > 0 && (
+          <div className="flex justify-between text-teal-300">
+            <span>÷ (1 + {workerReduction.toFixed(2)} worker s/s)</span>
+            <span>{effectiveBt.toFixed(2)}s effective</span>
+          </div>
+        )}
+        <div className="mt-1.5 flex justify-between border-t border-teal-800/40 pt-1.5 font-semibold text-teal-200">
+          <span>= True brew rate</span>
+          <span>{brewsPerHour.toFixed(1)} brews/hr</span>
         </div>
       </div>
     </div>

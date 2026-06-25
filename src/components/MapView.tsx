@@ -69,6 +69,8 @@ export default function MapView({
   const explored = useGameStore((s) => s.exploredLocations);
   const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
   const workers = useGameStore((s) => s.workers);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const hasCompass = unlocked_globals.includes("cartographers_compass");
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
 
@@ -141,6 +143,7 @@ export default function MapView({
                 workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
                 ingredients={n.loc.drops}
                 discoveredDrops={discoveredDrops[n.loc.id] ?? []}
+                hasCompass={hasCompass}
                 dataTut={n.loc.id === firstUnlockedId ? "map-location" : undefined}
                 onClick={() => setSelected(n.loc)}
               />
@@ -170,6 +173,7 @@ function MapNode({
   workerColors,
   ingredients,
   discoveredDrops,
+  hasCompass,
   dataTut,
   onClick,
 }: {
@@ -180,6 +184,7 @@ function MapNode({
   workerColors: string[];
   ingredients: { ingredientId: string; weight: number }[];
   discoveredDrops: string[];
+  hasCompass: boolean;
   dataTut?: string;
   onClick: () => void;
 }) {
@@ -249,6 +254,8 @@ function MapNode({
               const ing = cfg.ingredients[d.ingredientId];
               if (!ing) return null;
               const found = discoveredDrops.includes(d.ingredientId);
+              const totalWeight = ingredients.reduce((a, x) => a + x.weight, 0);
+              const pct = hasCompass && found ? ((d.weight / totalWeight) * 100).toFixed(1) + "%" : null;
               return (
                 <span
                   key={d.ingredientId}
@@ -256,6 +263,7 @@ function MapNode({
                 >
                   <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
                   {found ? ing.name : "???"}
+                  {pct && <span className="text-emerald-400 ml-0.5">{pct}</span>}
                 </span>
               );
             })
@@ -284,9 +292,12 @@ function LocationDetailModal({
   const coins = useGameStore((s) => s.coins);
   const isUnlocked = useGameStore((s) => s.unlockedLocations.includes(loc.id));
   const unlockLocation = useGameStore((s) => s.unlockLocation);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const hasCompass = unlocked_globals.includes("cartographers_compass");
   const cfg = useConfigStore();
   const isExplored = useGameStore((s) => s.exploredLocations.includes(loc.id));
   const discoveredDrops = useGameStore((s) => s.discovered_location_drops[loc.id] ?? []);
+  const totalDropWeight = loc.drops.reduce((a, d) => a + d.weight, 0);
 
   const baseTrip = gatherRoundTrip(loc.distance, 1);
   const lockedWorker = lockedWorkerIndex != null ? workers[lockedWorkerIndex] : null;
@@ -342,10 +353,12 @@ function LocationDetailModal({
               const ing = cfg.ingredients[d.ingredientId];
               if (!ing) return null;
               const found = discoveredDrops.includes(d.ingredientId);
+              const pct = hasCompass && found ? ((d.weight / totalDropWeight) * 100).toFixed(1) + "%" : null;
               return (
                 <span key={d.ingredientId} className="flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-200">
                   <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
                   {found ? ing.name : "???"}
+                  {pct && <span className="text-emerald-400 font-semibold">{pct}</span>}
                 </span>
               );
             })}

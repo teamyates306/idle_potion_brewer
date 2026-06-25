@@ -10,8 +10,9 @@ import { useConfigStore } from "../store/configStore";
 import { describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
+import { gatherRoundTrip, brewTime } from "../engine/formulas";
 
-type Tab = "sell" | "discovered";
+type Tab = "sell" | "discovered" | "supply";
 type Detail = { hash: string } | { name: string } | null;
 type SortKey = "value" | "recipes" | "name";
 
@@ -23,6 +24,8 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
   const autoSellHashes = useGameStore((s) => s.autoSellHashes);
   const clearAutoSell = useGameStore((s) => s.clearAutoSell);
   const removeAutoSell = useGameStore((s) => s.removeAutoSell);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const hasAbacus = unlocked_globals.includes("merchants_abacus");
   const cfg = useConfigStore();
 
   const [tab, setTab] = useState<Tab>("sell");
@@ -95,6 +98,16 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
           >
             Discovered {nameGroups.length > 0 && `(${nameGroups.length})`}
           </button>
+          {hasAbacus && (
+            <button
+              onClick={() => setTab("supply")}
+              className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
+                tab === "supply" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              🧮 Supply
+            </button>
+          )}
         </div>
 
         {tab === "sell" ? (
@@ -197,6 +210,8 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
               </button>
             </>
           )
+        ) : tab === "supply" ? (
+          <SupplyChainDashboard />
         ) : (
           /* Discovered tab — grouped by unique NAME, with search / sort / filter */
           nameGroups.length === 0 ? (
@@ -272,5 +287,114 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
         <PotionDetailsModal potionName={detail.name} onClose={() => setDetail(null)} />
       )}
     </>
+  );
+}
+
+// ── Merchant's Abacus — supply chain dashboard ──────────────────────────────
+function SupplyChainDashboard() {
+  const workers = useGameStore((s) => s.workers);
+  const machines = useGameStore((s) => s.machines);
+  const ingredientInv = useGameStore((s) => s.ingredientInv);
+  const cfg = useConfigStore();
+
+  // Compute per-ingredient income rate (items/hr from gathering workers)
+  const incomePerHr = useMemo(() => {
+    const rates: Record<string, number> = {};
+    for (const w of workers) {
+      if (!w.assigned_location) continue;
+      const loc = cfg.locations[w.assigned_location];
+      if (!loc) continue;
+      const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
+      const tripsPerHr = 3600 / tripSecs;
+      // Expected yield per trip: floor(size) + frac chance for +1
+      const expectedYield = w.retrieval_size;
+      // Spread evenly across drop table by weight
+      const totalWeight = loc.drops.reduce((a, d) => a + d.weight, 0);
+      for (const drop of loc.drops) {
+        rates[drop.ingredientId] = (rates[drop.ingredientId] ?? 0) + (drop.weight / totalWeight) * expectedYield * tripsPerHr;
+      }
+    }
+    return rates;
+  }, [workers, cfg.locations]);
+
+  // Compute per-ingredient consumption rate from running brewers
+  const consumePerHr = useMemo(() => {
+    const rates: Record<string, number> = {};
+    for (const m of machines) {
+      if (!m.running) continue;
+      const activeIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
+      if (activeIds.length === 0) continue;
+      const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
+      const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
+      const bt = brewTime(m, toxicity, cfg.formulas, ingredients);
+      const brewsPerHr = 3600 / Math.max(0.1, bt);
+      for (const id of activeIds) {
+        rates[id] = (rates[id] ?? 0) + brewsPerHr;
+      }
+    }
+    return rates;
+  }, [machines, cfg.ingredients, cfg.formulas]);
+
+  // All tracked ingredient IDs
+  const allIds = useMemo(() => {
+    return [...new Set([...Object.keys(incomePerHr), ...Object.keys(consumePerHr)])].sort((a, b) => {
+      const netA = (incomePerHr[a] ?? 0) - (consumePerHr[a] ?? 0);
+      const netB = (incomePerHr[b] ?? 0) - (consumePerHr[b] ?? 0);
+      return netA - netB; // deficits first
+    });
+  }, [incomePerHr, consumePerHr]);
+
+  if (allIds.length === 0) {
+    return (
+      <p className="py-6 text-center text-sm text-slate-500">
+        Assign workers to locations and set brewers to run to see supply chain analytics.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] text-slate-500">Live rates assume current worker assignments and active brewers. Red = deficit.</p>
+      {allIds.map((id) => {
+        const ing = cfg.ingredients[id];
+        const income = incomePerHr[id] ?? 0;
+        const consume = consumePerHr[id] ?? 0;
+        const net = income - consume;
+        const stock = ingredientInv[id] ?? 0;
+        const timeUntilEmptyHrs = net < 0 ? stock / (-net) : null;
+        const isDeficit = net < -0.5;
+        const isSurplus = net > 0.5;
+
+        return (
+          <div
+            key={id}
+            className={`rounded-lg border p-3 ${
+              isDeficit
+                ? "border-red-700/50 bg-red-950/20"
+                : isSurplus
+                ? "border-emerald-700/50 bg-emerald-950/10"
+                : "border-slate-700 bg-slate-800/40"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-200">{ing?.name ?? id}</span>
+              <span className={`text-xs font-semibold ${isDeficit ? "text-red-400" : isSurplus ? "text-emerald-400" : "text-slate-400"}`}>
+                {net > 0 ? "+" : ""}{net.toFixed(1)}/hr
+              </span>
+            </div>
+            <div className="mt-1 flex gap-3 text-[11px] text-slate-500">
+              <span>⬆ {income.toFixed(1)}/hr in</span>
+              <span>⬇ {consume.toFixed(1)}/hr out</span>
+              <span className="ml-auto">×{stock} stock</span>
+            </div>
+            {isDeficit && timeUntilEmptyHrs !== null && (
+              <p className="mt-1 text-[10px] text-red-400">
+                ⚠ Runs out in {timeUntilEmptyHrs < 1 ? `${Math.round(timeUntilEmptyHrs * 60)}m` : `${timeUntilEmptyHrs.toFixed(1)}h`}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

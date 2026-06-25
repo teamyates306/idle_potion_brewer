@@ -59,10 +59,31 @@ export function playerClickPowerCost(level: number): number {
 export const GLOBAL_UNLOCKS = [
   {
     id: "alchemist_spectacles",
-    name: "Alchemist Spectacles",
-    description: "Reveals hidden attribute synergies in the potion lab.",
+    name: "Alchemist's Spectacles",
+    description: "Unlocks detailed numerical stats in ingredient and potion modals. Without them, only vague alchemical impressions are visible.",
     cost: 10_000,
     icon: "🔭",
+  },
+  {
+    id: "gloves_of_engineering",
+    name: "Gloves of Engineering",
+    description: "Reveals the true brew rate formula in each cauldron, showing how speed, complexity, toxicity and worker clicks combine.",
+    cost: 100_000,
+    icon: "🧤",
+  },
+  {
+    id: "cartographers_compass",
+    name: "Cartographer's Compass",
+    description: "Shows exact drop percentages on map locations for discovered ingredients, and a 'Sourced From' section in ingredient details.",
+    cost: 100_000,
+    icon: "🧭",
+  },
+  {
+    id: "merchants_abacus",
+    name: "Merchant's Abacus",
+    description: "Unlocks a supply chain dashboard: live income rate, consumption rate, net flow, and bottleneck warnings per ingredient.",
+    cost: 1_000_000,
+    icon: "🧮",
   },
 ] as const;
 

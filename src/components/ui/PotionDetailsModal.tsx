@@ -26,6 +26,8 @@ export default function PotionDetailsModal({
   const autoSellHashes = useGameStore((s) => s.autoSellHashes);
   const sellPotion = useGameStore((s) => s.sellPotion);
   const toggleAutoSellPotion = useGameStore((s) => s.toggleAutoSellPotion);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const hasSpectacles = unlocked_globals.includes("alchemist_spectacles");
   const cfg = useConfigStore();
 
   // Resolve the name (from prop, or from the seed hash)
@@ -135,29 +137,37 @@ export default function PotionDetailsModal({
           </div>
         </div>
 
-        {/* Attribute grid — non-zero only */}
-        <div className="mb-4 grid grid-cols-4 gap-1.5">
-          {(Object.entries(potion.stats) as [string, number][])
-            .filter(([, val]) => val !== 0)
-            .map(([attr, val]) => (
-              <div key={attr} className="rounded-lg bg-slate-800 p-2 text-center">
-                <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
-                <div
-                  className={`text-base font-bold ${
-                    val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
-                  }`}
-                >
-                  {val > 0 ? "+" : ""}
-                  {val}
-                </div>
-              </div>
-            ))}
-        </div>
-
-        {/* Total value */}
-        <div className="mb-4 text-xs text-slate-400">
-          Total value in stock: 🪙 {fmt(potion.value * count)}
-        </div>
+        {/* Attribute grid — gated by Spectacles */}
+        {hasSpectacles ? (
+          <>
+            <div className="mb-4 grid grid-cols-4 gap-1.5">
+              {(Object.entries(potion.stats) as [string, number][])
+                .filter(([, val]) => val !== 0)
+                .map(([attr, val]) => (
+                  <div key={attr} className="rounded-lg bg-slate-800 p-2 text-center">
+                    <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
+                    <div
+                      className={`text-base font-bold ${
+                        val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
+                      }`}
+                    >
+                      {val > 0 ? "+" : ""}
+                      {val}
+                    </div>
+                  </div>
+                ))}
+            </div>
+            <div className="mb-4 text-xs text-slate-400">
+              Total value in stock: 🪙 {fmt(potion.value * count)}
+            </div>
+          </>
+        ) : (
+          <div className="mb-4 rounded-lg border border-purple-800/30 bg-purple-950/20 p-3">
+            <p className="text-xs italic text-purple-200/60">
+              The potion shimmers with unseen potential. Equip Alchemist's Spectacles to read its true properties and value.
+            </p>
+          </div>
+        )}
 
         {/* Auto-sell toggle */}
         <button
