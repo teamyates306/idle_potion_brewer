@@ -104,7 +104,7 @@ function descOf(ids: string[]): Desc {
   return d;
 }
 
-function buildCatalog(): { all: RecipeEntry[]; byName: Map<string, RecipeEntry[]> } {
+function buildCatalog(): { all: RecipeEntry[]; byName: Map<string, RecipeEntry[]>; byValue: RecipeEntry[] } {
   const all: RecipeEntry[] = [];
   const seen = new Set<string>();
   const add = (ids: string[]) => {
@@ -128,7 +128,8 @@ function buildCatalog(): { all: RecipeEntry[]; byName: Map<string, RecipeEntry[]
     byName.set(r.name, arr);
   }
   for (const arr of byName.values()) arr.sort((a, b) => b.value - a.value);
-  return { all, byName };
+  const byValue = [...all].sort((a, b) => b.value - a.value);
+  return { all, byName, byValue };
 }
 const CATALOG = buildCatalog();
 
@@ -164,6 +165,7 @@ interface SimState {
   ingredientInv: Record<string, number>;
   potionInv: Record<string, number>;
   discovered: Set<string>;
+  discoveredArray: string[]; // mirrors discovered but as ordered array — no spread cost
   discoveredPotions: Set<string>;
   unlockedLocations: Set<string>;
   questsUnlocked: boolean;
@@ -210,6 +212,7 @@ function initialState(): SimState {
     ingredientInv: { rootmoss: 10 },
     potionInv: {},
     discovered: new Set(["rootmoss"]),
+    discoveredArray: ["rootmoss"],
     discoveredPotions: new Set(),
     unlockedLocations: new Set(["hollow"]),
     questsUnlocked: false,
@@ -308,6 +311,9 @@ function programRecipe(m: SimMachine, ids: string[]): void {
   const slots: (string | null)[] = [null, null, null, null, null];
   for (let i = 0; i < Math.min(ids.length, m.unlocked_slots); i++) slots[i] = ids[i];
   m.recipe_slots = slots;
+  // Mirror the game: changing the recipe resets the brew timer.
+  m.brew_elapsed = 0;
+  m.brew_stalled = false;
 }
 function buyWorkerUpgrade(s: SimState, wi: number, kind: "speed" | "size" | "clkspd" | "clkpow"): boolean {
   const w = s.workers[wi];
@@ -436,6 +442,7 @@ function tick(s: SimState): void {
       for (let i = 0; i < count; i++) {
         const id = pickDrop(loc.drops);
         s.ingredientInv[id] = (s.ingredientInv[id] ?? 0) + 1;
+        if (!s.discovered.has(id)) s.discoveredArray.push(id);
         s.discovered.add(id);
         s.gatheredTotal += 1;
       }
@@ -808,6 +815,27 @@ function diagnose(name: string, rep: StrategyReport): void {
 }
 
 // ── Strategy helpers ──────────────────────────────────────────────────────────
+
+// Map a flat index into a 1-or-2-ingredient combo from pool[] without
+// pre-building the full array.  Layout:
+//   [0 .. n-1]          → single ingredients
+//   [n .. n+C(n,2)-1]   → pairs, enumerated row-by-row (i=0: j=1..n-1, etc.)
+function comboFromIdx(pool: string[], idx: number, slots: number): string[] | null {
+  const n = pool.length;
+  if (idx < n) return [pool[idx]];
+  if (slots < 2) return null;
+  idx -= n;
+  let i = 0;
+  while (i < n - 1 && idx >= n - 1 - i) {
+    idx -= (n - 1 - i);
+    i++;
+  }
+  const j = i + 1 + idx;
+  return j < n ? [pool[i], pool[j]] : null;
+}
+const comboTotal = (n: number, slots: number): number =>
+  n + (slots >= 2 ? (n * (n - 1)) / 2 : 0);
+
 const gathererIdx = (s: SimState): number[] =>
   s.workers.map((w, i) => (w.assigned_machine_id == null ? i : -1)).filter((i) => i >= 0);
 
@@ -853,29 +881,94 @@ const stratSprinter: Strategy = (s) => {
 };
 
 // ── Strategy B — The Completionist ───────────────────────────────────────────
+// Models a player who systematically tries every discovered-ingredient combination.
+//
+// Key changes vs the old approach:
+//   • Unlocks ALL affordable locations per decision to maximise ingredient variety.
+//   • Uses s.discovered (all known types) for the combo pool, not current
+//     inventory — workers will bring ingredients, the machine waits a brew cycle.
+//   • Per-machine rotation index (cRot0, cRot1, …) so machines explore in parallel.
+//   • Stays on the current recipe until its NAME is discovered, then advances.
+//     Avoids the old "recipe resets every 15s before any brew completes" bug
+//     that capped discovery at ~30.
+//   • Uses comboFromIdx() to enumerate combos mathematically — no array pre-build,
+//     so the O(n²) combo space doesn't cost O(n²) allocations every decision.
+//   • Resets the rotation pointer when new ingredients are discovered so the
+//     fresh ingredient's combos get tried promptly.
 const stratCompletionist: Strategy = (s) => {
-  for (const loc of LOCATIONS_BY_COST) if (!s.unlockedLocations.has(loc.id)) { if (unlockLocation(s, loc.id)) break; }
-  const unlocked = [...s.unlockedLocations];
-  const gs = gathererIdx(s);
-  gs.forEach((wi, k) => assignToLocation(s, wi, unlocked[k % unlocked.length]));
-  const discoveredNames = s.discoveredNames;
-  for (const m of s.machines) {
-    const have = (id: string) => (s.ingredientInv[id] ?? 0) > 0;
-    let start = (s.scratch.bRot ?? 0) % CATALOG.all.length;
-    let chosen: RecipeEntry | null = null, fallback: RecipeEntry | null = null;
-    for (let k = 0; k < CATALOG.all.length; k++) {
-      const r = CATALOG.all[(start + k) % CATALOG.all.length];
-      if (r.ids.length > m.unlocked_slots || !r.ids.every(have)) continue;
-      if (!fallback) fallback = r;
-      if (!discoveredNames.has(r.name)) { chosen = r; s.scratch.bRot = (start + k + 1) % CATALOG.all.length; break; }
+  // Unlock every affordable location in cheapest-first order
+  for (const loc of LOCATIONS_BY_COST)
+    if (!s.unlockedLocations.has(loc.id)) unlockLocation(s, loc.id);
+
+  const locArr = [...s.unlockedLocations];
+  gathererIdx(s).forEach((wi, k) => assignToLocation(s, wi, locArr[k % locArr.length]));
+
+  const disc = s.discoveredArray;
+  const n = disc.length;
+
+  for (let mi = 0; mi < s.machines.length; mi++) {
+    const m = s.machines[mi];
+    const rotKey = `cRot${mi}`;
+
+    // Stay on the current recipe while its name is undiscovered and machine is not stalled.
+    const curIds = filledSlots(m);
+    if (curIds.length > 0 && !m.brew_stalled && !s.discoveredNames.has(descOf(curIds).name)) {
+      m.running = true;
+      continue;
     }
-    const pick = chosen ?? fallback;
-    if (pick) { programRecipe(m, pick.ids); m.running = true; }
+
+    const slots = m.unlocked_slots;
+    const total = comboTotal(n, slots);
+    if (total === 0) continue;
+
+    const start = (s.scratch[rotKey] ?? 0) % total;
+    let chosen: string[] | null = null;
+    let fallback: string[] | null = null;
+
+    for (let k = 0; k < total; k++) {
+      const ids = comboFromIdx(disc, (start + k) % total, slots);
+      if (!ids) continue;
+      if (!fallback) fallback = ids;
+      if (!s.discoveredNames.has(descOf(ids).name)) {
+        chosen = ids;
+        s.scratch[rotKey] = (start + k + 1) % total;
+        break;
+      }
+    }
+
+    // Only call programRecipe (which resets brew_elapsed) when advancing to a new
+    // undiscovered target, or when the machine has no recipe yet.
+    if (chosen) {
+      programRecipe(m, chosen);
+      m.running = true;
+    } else {
+      // No undiscovered combo — switch to best-value gold-sprint recipe, but only
+      // re-evaluate when the ingredient pool grows (new location unlock).
+      // Guard key `cGN${mi}` tracks the disc.length at the last gold-sprint pick.
+      const goldNKey = `cGN${mi}`;
+      if (curIds.length === 0 || (s.scratch[goldNKey] ?? -1) !== n) {
+        s.scratch[goldNKey] = n;
+        // Scan CATALOG.byValue for the highest-value recipe all discovered ingredients can brew.
+        let goldFallback: string[] | null = null;
+        for (const r of CATALOG.byValue) {
+          if (r.ids.length > slots) continue;
+          if (r.ids.every(id => s.discovered.has(id))) { goldFallback = r.ids; break; }
+        }
+        const best = goldFallback ?? fallback;
+        if (curIds.length === 0 && best) {
+          programRecipe(m, best);
+        } else if (goldFallback && curIds.length > 0 && descOf(goldFallback).value > descOf(curIds).value * 1.5) {
+          programRecipe(m, goldFallback);
+        }
+      }
+      m.running = true;
+    }
   }
+
   spendMachineTokens(s, ["slot", "speed"]);
   spendWorkerTokens(s, ["size", "speed"]);
   if (s.coins >= MACHINE_COSTS[s.machines.length] && s.machines.length < 3) buyMachine(s);
-  while (hireWorker(s)) { /* more variety */ }
+  while (hireWorker(s)) {}
   sellAll(s);
 };
 
@@ -980,17 +1073,43 @@ const stratAchievementHunter: Strategy = (s, t) => {
 function ahDiversityBrew(s: SimState, mi: number): void {
   const m = s.machines[mi];
   if (!m) return;
-  const have = (id: string) => (s.ingredientInv[id] ?? 0) > 0;
-  const start = (s.scratch.ahRot ?? 0) % CATALOG.all.length;
-  let chosen: RecipeEntry | null = null, fallback: RecipeEntry | null = null;
-  for (let k = 0; k < CATALOG.all.length; k++) {
-    const r = CATALOG.all[(start + k) % CATALOG.all.length];
-    if (r.ids.length > m.unlocked_slots || !r.ids.every(have)) continue;
-    if (!fallback) fallback = r;
-    if (!s.discoveredNames.has(r.name)) { chosen = r; s.scratch.ahRot = (start + k + 1) % CATALOG.all.length; break; }
+
+  // Stay on current recipe while its name is undiscovered (same logic as Completionist)
+  const curIds = filledSlots(m);
+  if (curIds.length > 0 && !m.brew_stalled && !s.discoveredNames.has(descOf(curIds).name)) {
+    m.running = true;
+    return;
   }
-  const pick = chosen ?? fallback;
-  if (pick) { programRecipe(m, pick.ids); m.running = true; }
+
+  const disc = s.discoveredArray;
+  const n = disc.length;
+  const rotKey = `ahRot${mi}`;
+  const total = comboTotal(n, m.unlocked_slots);
+  if (total === 0) return;
+
+  const start = (s.scratch[rotKey] ?? 0) % total;
+  let chosen: string[] | null = null, fallback: string[] | null = null;
+
+  for (let k = 0; k < total; k++) {
+    const ids = comboFromIdx(disc, (start + k) % total, m.unlocked_slots);
+    if (!ids) continue;
+    if (!fallback) fallback = ids;
+    if (!s.discoveredNames.has(descOf(ids).name)) {
+      chosen = ids;
+      s.scratch[rotKey] = (start + k + 1) % total;
+      break;
+    }
+  }
+
+  if (chosen) {
+    programRecipe(m, chosen);
+    m.running = true;
+  } else if (curIds.length === 0 && fallback) {
+    programRecipe(m, fallback);
+    m.running = true;
+  } else {
+    m.running = true;
+  }
 }
 
 // ── Strategy F — The Everyman ─────────────────────────────────────────────────
