@@ -83,6 +83,7 @@ export default function PotionDetailsModal({
           </div>
           <button
             onClick={onClose}
+            data-tut="close-potion-detail"
             className="ml-2 rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
           >
             ✕

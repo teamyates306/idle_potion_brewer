@@ -4,85 +4,99 @@ import { useGameStore } from "../store/gameStore";
 // The tutorial applies .tut-target directly to DOM elements so the glow renders
 // in the element's own stacking context — works inside any modal, no z-index fights.
 //
-// Steps 0, 2, and 3 each walk a priority chain so the glow follows the player
-// deeper into the UI and the hint text updates to match each sub-action.
-//
-// Step 0 priority (lowest → highest): brewer → ingredient-slot → ingredient-item → start-brewing
-// Step 2 priority (lowest → highest): market → potion-entry → auto-sell
-// Step 3 priority (lowest → highest): workers → worker-idle → assign-location → map-location → assign-confirm
+// Step 0 priority chain (highest wins): close-ingredient > ingredient-item >
+//   ingredient-slot > start-brewing > brewer
+// Step 1 priority chain: close-brewer > tap-cauldron
+// Step 2 priority chain: auto-sell > potion-entry > market
+// Step 3 priority chain: assign-confirm > map-location > assign-location >
+//   worker-idle > close-potion-detail > close-market > workers
 
-type Step0Phase = "brewer" | "ingredient-slot" | "ingredient-item" | "start-brewing";
+type Step0Phase = "brewer" | "ingredient-slot" | "ingredient-item" | "close-ingredient" | "start-brewing";
+type Step1Phase = "close-brewer" | "tap-cauldron";
 type Step2Phase = "market" | "potion-entry" | "auto-sell";
-type Step3Phase = "workers" | "worker-idle" | "assign-location" | "map-location" | "assign-confirm";
+type Step3Phase = "close-potion-detail" | "close-market" | "workers" | "worker-idle" | "assign-location" | "map-location" | "assign-confirm";
 
 const STEP0: Record<Step0Phase, { sel: string; text: string }> = {
   brewer: {
     sel: '[data-tut="brewer"]',
-    text: "We've left some Rootmoss in your stash. Tap the ⚙ icon on the cauldron to open a Brewer.",
+    text: "We've left some Rootmoss in your stash. Click the glowing ⚙ button on the cauldron to open the Brewer.",
   },
   "ingredient-slot": {
     sel: '[data-tut="ingredient-slot"]',
-    text: "Tap an ingredient slot to add Rootmoss to the recipe.",
+    text: "Click the glowing slot to choose an ingredient for your recipe.",
   },
   "ingredient-item": {
     sel: '[data-tut="ingredient-item"]',
-    text: "Pick an ingredient from your stash to add it to the slot.",
+    text: "Click the glowing ingredient to add it to the slot.",
+  },
+  "close-ingredient": {
+    sel: '[data-tut="close-ingredient"]',
+    text: "Slot filled! Click the glowing ✕ to close this menu.",
   },
   "start-brewing": {
     sel: '[data-tut="start-brewing"]',
-    text: "Recipe set! Tap Set to Brew to start the cauldron.",
+    text: "Recipe set! Click the glowing button to fire up the cauldron.",
+  },
+};
+
+const STEP1: Record<Step1Phase, { sel: string; text: string }> = {
+  "close-brewer": {
+    sel: '[data-tut="close-brewer"]',
+    text: "The brew is underway! Click the glowing ✕ to close this panel and watch your cauldron.",
+  },
+  "tap-cauldron": {
+    sel: '[data-tut="cauldron"]',
+    text: "It's boiling! Tap the glowing cauldron repeatedly to speed it up. Like a peasant.",
   },
 };
 
 const STEP2: Record<Step2Phase, { sel: string; text: string }> = {
   market: {
     sel: '[data-tut="market"]',
-    text: "A potion! Open the Market to sell it.",
+    text: "A potion! Click the glowing Market button to open the Potion Pile.",
   },
   "potion-entry": {
     sel: '[data-tut="potion-entry"]',
-    text: "Tap the potion to open its details.",
+    text: "Click the glowing potion to open its details.",
   },
   "auto-sell": {
     sel: '[data-tut="auto-sell"]',
-    text: "Toggle Auto-Sell so it sells automatically when brewed.",
+    text: "Toggle the glowing Auto-Sell switch so it sells automatically when brewed.",
   },
 };
 
 const STEP3: Record<Step3Phase, { sel: string; text: string }> = {
+  "close-potion-detail": {
+    sel: '[data-tut="close-potion-detail"]',
+    text: "Auto-sell is on! Click the glowing ✕ to close the potion details.",
+  },
+  "close-market": {
+    sel: '[data-tut="close-market"]',
+    text: "Now click the glowing ✕ to close the Market.",
+  },
   workers: {
     sel: '[data-tut="workers"]',
-    text: "You'll run out of Rootmoss soon. Open the Worker menu.",
+    text: "You'll run out of Rootmoss soon. Click the glowing Worker button to manage your crew.",
   },
   "worker-idle": {
     sel: '[data-tut="worker-idle"]',
-    text: "Tap your idle worker to select them.",
+    text: "Click the glowing idle worker to select them.",
   },
   "assign-location": {
     sel: '[data-tut="assign-location"]',
-    text: "Tap 'Assign to Location' to send them out gathering.",
+    text: "Click the glowing 'Assign to Location' button to send them out gathering.",
   },
   "map-location": {
     sel: '[data-tut="map-location"]',
-    text: "Tap the Damp Hollow — the only location you've unlocked.",
+    text: "Click the glowing Damp Hollow — the only location you've unlocked.",
   },
   "assign-confirm": {
     sel: '[data-tut="assign-confirm"]',
-    text: "Confirm the assignment and your worker will head out!",
+    text: "Click the glowing Confirm button to send your worker out!",
   },
 };
 
-// Steps 1 and 4 — static text + single selector
-const STATIC_STEPS: Record<number, { text: string; selector: string | null }> = {
-  1: {
-    text: "It's boiling. Poke the cauldron repeatedly to speed it up. Like a peasant.",
-    selector: '[data-tut="cauldron"]',
-  },
-  4: {
-    text: "Quests, Upgrades, and rampant monopolistic capitalism await. Do not embarrass the Guild.",
-    selector: null,
-  },
-};
+const STEP4_TEXT = "Quests, Upgrades, and rampant monopolistic capitalism await. Do not embarrass the Guild.";
 
 const TOTAL_STEPS = 5;
 
@@ -91,26 +105,37 @@ function inDOM(sel: string) {
 }
 
 function resolveStep0(): Step0Phase {
-  // Priority: ingredient-item beats ingredient-slot beats start-brewing beats brewer.
-  // start-brewing is last because it's always in DOM when MachineView is open —
-  // we only want to show it once the player has actually filled their slots.
-  if (inDOM('[data-tut="ingredient-item"]'))  return "ingredient-item";
-  if (inDOM('[data-tut="ingredient-slot"]'))  return "ingredient-slot";
-  if (inDOM('[data-tut="start-brewing"]'))    return "start-brewing";
+  if (inDOM('[data-tut="ingredient-item"]')) {
+    // All slots filled — user should close the ingredient selection modal
+    if (!inDOM('[data-tut="ingredient-slot"]')) return "close-ingredient";
+    return "ingredient-item";
+  }
+  if (inDOM('[data-tut="ingredient-slot"]')) return "ingredient-slot";
+  if (inDOM('[data-tut="start-brewing"]')) return "start-brewing";
   return "brewer";
 }
 
+function resolveStep1(): Step1Phase {
+  // If MachineView is still open, direct the player to close it first
+  if (inDOM('[data-tut="start-brewing"]')) return "close-brewer";
+  return "tap-cauldron";
+}
+
 function resolveStep2(): Step2Phase {
-  if (inDOM('[data-tut="auto-sell"]'))     return "auto-sell";
+  if (inDOM('[data-tut="auto-sell"]')) return "auto-sell";
   if (inDOM('[data-tut="potion-entry"]')) return "potion-entry";
   return "market";
 }
 
 function resolveStep3(): Step3Phase {
-  if (inDOM('[data-tut="assign-confirm"]'))   return "assign-confirm";
-  if (inDOM('[data-tut="map-location"]'))     return "map-location";
-  if (inDOM('[data-tut="assign-location"]'))  return "assign-location";
-  if (inDOM('[data-tut="worker-idle"]'))      return "worker-idle";
+  // Deep worker-flow phases take highest priority
+  if (inDOM('[data-tut="assign-confirm"]')) return "assign-confirm";
+  if (inDOM('[data-tut="map-location"]')) return "map-location";
+  if (inDOM('[data-tut="assign-location"]')) return "assign-location";
+  if (inDOM('[data-tut="worker-idle"]')) return "worker-idle";
+  // Market modals left open from step 2 — close innermost first
+  if (inDOM('[data-tut="auto-sell"]')) return "close-potion-detail";
+  if (inDOM('[data-tut="potion-entry"]')) return "close-market";
   return "workers";
 }
 
@@ -126,6 +151,7 @@ export default function TutorialOverlay() {
   const skipTutorial   = useGameStore((s) => s.skipTutorial);
 
   const [step0Phase, setStep0Phase] = useState<Step0Phase>("brewer");
+  const [step1Phase, setStep1Phase] = useState<Step1Phase>("tap-cauldron");
   const [step2Phase, setStep2Phase] = useState<Step2Phase>("market");
   const [step3Phase, setStep3Phase] = useState<Step3Phase>("workers");
 
@@ -137,6 +163,10 @@ export default function TutorialOverlay() {
         const phase = resolveStep0();
         setStep0Phase(phase);
         applyHighlight(STEP0[phase].sel);
+      } else if (step === 1) {
+        const phase = resolveStep1();
+        setStep1Phase(phase);
+        applyHighlight(STEP1[phase].sel);
       } else if (step === 2) {
         const phase = resolveStep2();
         setStep2Phase(phase);
@@ -146,8 +176,7 @@ export default function TutorialOverlay() {
         setStep3Phase(phase);
         applyHighlight(STEP3[phase].sel);
       } else {
-        const s = STATIC_STEPS[step];
-        applyHighlight(s?.selector ?? null);
+        applyHighlight(null);
       }
     };
 
@@ -161,12 +190,13 @@ export default function TutorialOverlay() {
   const isLast = step === TOTAL_STEPS - 1;
   let displayText: string;
   if (step === 0)      displayText = STEP0[step0Phase].text;
+  else if (step === 1) displayText = STEP1[step1Phase].text;
   else if (step === 2) displayText = STEP2[step2Phase].text;
   else if (step === 3) displayText = STEP3[step3Phase].text;
-  else                 displayText = STATIC_STEPS[step]?.text ?? "";
+  else                 displayText = STEP4_TEXT;
 
   // Dialog is permanently anchored just below the ~52px game header.
-  // Bottom-sheet modals cap at 85vh so the top strip is always clear.
+  // Bottom-sheet modals cap at 85dvh so the top strip is always clear.
   return (
     <div className="pointer-events-auto fixed left-0 right-0 top-[52px] z-[80] mx-auto w-[96%] max-w-lg px-2 pt-1">
       <div className="rounded-2xl border border-amber-700/70 bg-stone-900/97 px-4 py-3 shadow-2xl backdrop-blur">

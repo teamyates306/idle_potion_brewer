@@ -7,9 +7,10 @@ interface ModalProps {
   children: ReactNode;
   subHeader?: ReactNode;
   accent?: string;
+  closeTutAttr?: string;
 }
 
-export default function Modal({ title, onClose, children, subHeader, accent = "#a855f7" }: ModalProps) {
+export default function Modal({ title, onClose, children, subHeader, accent = "#a855f7", closeTutAttr }: ModalProps) {
   return (
     <div
       className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -29,6 +30,7 @@ export default function Modal({ title, onClose, children, subHeader, accent = "#
           </h2>
           <button
             onClick={onClose}
+            {...(closeTutAttr ? { "data-tut": closeTutAttr } : {})}
             className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
           >
             <X size={20} />

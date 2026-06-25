@@ -80,7 +80,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
 
   return (
     <>
-      <Modal title="The Potion Pile" onClose={onClose} accent="#a855f7">
+      <Modal title="The Potion Pile" onClose={onClose} accent="#a855f7" closeTutAttr="close-market">
         {/* Tabs */}
         <div className="mb-3 flex rounded-lg bg-slate-800 p-1">
           <button

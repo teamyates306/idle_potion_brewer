@@ -70,7 +70,7 @@ export default function IngredientSelectionModal({
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <h3 className="text-base font-bold text-amber-300">{machine.name} · Recipe</h3>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
+          <button onClick={onClose} data-tut="close-ingredient" className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
 
         {/* Slot tabs */}
