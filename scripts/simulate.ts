@@ -106,16 +106,21 @@ function descOf(ids: string[]): Desc {
 
 function buildCatalog(): { all: RecipeEntry[]; byName: Map<string, RecipeEntry[]> } {
   const all: RecipeEntry[] = [];
+  const seen = new Set<string>();
   const add = (ids: string[]) => {
-    const p = descOf(ids);
-    all.push({ ids, hash: p.hash, name: p.name, value: p.value,
-      ingredientCost: ids.reduce((a, id) => a + INGREDIENTS[id].base_value, 0) });
+    const sorted = [...ids].sort();
+    const key = sorted.join("+");
+    if (seen.has(key)) return;
+    seen.add(key);
+    const p = descOf(sorted);
+    all.push({ ids: sorted, hash: p.hash, name: p.name, value: p.value,
+      ingredientCost: sorted.reduce((a, id) => a + INGREDIENTS[id].base_value, 0) });
   };
+  // Full 1-ingredient catalog
   for (const id of ING_IDS) add([id]);
-  const step = Math.max(1, Math.ceil(ING_IDS.length / 34));
-  const subset = ING_IDS.filter((_, i) => i % step === 0);
-  for (let i = 0; i < subset.length; i++)
-    for (let j = i + 1; j < subset.length; j++) add([subset[i], subset[j]]);
+  // Full 2-ingredient catalog (all pairwise combos across all 105 ingredients)
+  for (let i = 0; i < ING_IDS.length; i++)
+    for (let j = i + 1; j < ING_IDS.length; j++) add([ING_IDS[i], ING_IDS[j]]);
   const byName = new Map<string, RecipeEntry[]>();
   for (const r of all) {
     const arr = byName.get(r.name) ?? [];

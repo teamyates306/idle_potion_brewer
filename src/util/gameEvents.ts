@@ -1,4 +1,4 @@
-export type GameEventChannel = "trough" | "cauldron" | "pile" | "pile-burst";
+export type GameEventChannel = "trough" | "cauldron" | "pile" | "pile-burst" | "discovery";
 
 export interface GameEvent {
   id: number;

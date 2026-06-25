@@ -58,6 +58,7 @@ const CHANNEL_COLOR = {
   cauldron:     "#c084fc",
   pile:         "#fbbf24",
   "pile-burst": "#fbbf24",
+  discovery:    "#a78bfa",
 } as const;
 
 function machineWorkerLayout(order: number) {
@@ -470,29 +471,43 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const cx   = rect.left + rect.width  / 2;
       const cy   = rect.top  + rect.height / 3;
 
+      if (evt.channel === "discovery") {
+        // Centre of screen, large text, floats upward
+        spawnFAT({
+          x: window.innerWidth / 2 + (Math.random() - 0.5) * 60,
+          y: window.innerHeight / 2,
+          text: evt.text,
+          color: CHANNEL_COLOR.discovery,
+          arcX: (Math.random() - 0.5) * 20,
+          size: "lg",
+        });
+        return;
+      }
+
       if (evt.channel === "pile-burst") {
         const count = 5 + Math.floor(Math.random() * 6);
         for (let i = 0; i < count; i++) {
           spawnFAT({
-            x: cx + (Math.random() - 0.5) * rect.width  * 0.9,
-            y: cy + Math.random()         * rect.height  * 0.4,
+            x: cx + (Math.random() - 0.5) * Math.min(rect.width * 0.6, 80),
+            y: cy + Math.random() * rect.height * 0.4,
             text: evt.text,
             color: CHANNEL_COLOR["pile-burst"],
-            arcX: (Math.random() - 0.5) * 130,
+            arcX: (Math.random() - 0.5) * 80,
             delay: Math.floor(Math.random() * 420),
             size: "sm",
           });
         }
       } else {
-        // For trough channel: keep text close to the centre of the trough element
-        const rawX = cx + (Math.random() - 0.5) * (evt.channel === "trough" ? Math.min(rect.width * 0.4, 80) : rect.width * 0.5);
-        const clampedX = evt.channel === "trough" ? Math.max(20, Math.min(window.innerWidth - 60, rawX)) : rawX;
+        // pile: tight cluster close to the potion pile graphic
+        const spread = evt.channel === "trough" ? Math.min(rect.width * 0.4, 80) : Math.min(rect.width * 0.3, 50);
+        const rawX = cx + (Math.random() - 0.5) * spread;
+        const clampedX = Math.max(20, Math.min(window.innerWidth - 60, rawX));
         spawnFAT({
           x: clampedX,
-          y: cy + (Math.random() - 0.5) * (evt.channel === "trough" ? 24 : 34),
+          y: cy + (Math.random() - 0.5) * (evt.channel === "trough" ? 24 : 28),
           text: evt.text,
           color: CHANNEL_COLOR[evt.channel as keyof typeof CHANNEL_COLOR],
-          arcX: (Math.random() - 0.5) * (evt.channel === "trough" ? 28 : 36),
+          arcX: (Math.random() - 0.5) * (evt.channel === "trough" ? 28 : 30),
           size: "md",
         });
       }

@@ -98,6 +98,7 @@ function MachinePanelBody({
   accent: string;
 }) {
   const inv = useGameStore((s) => s.ingredientInv);
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
   const setRecipe = useGameStore((s) => s.setRecipe);
   const toggleRunning = useGameStore((s) => s.toggleRunning);
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
@@ -115,6 +116,8 @@ function MachinePanelBody({
   const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
   const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
   const preview = ingredients.length ? describePotion(ingredients, cfg.formulas) : null;
+  // Only reveal the potion identity after it has been brewed at least once.
+  const isKnownPotion = preview ? discoveredPotions.includes(preview.hash) : false;
   const bt = brewTime(machine, toxicity, cfg.formulas, ingredients);
 
   const speedCost = upgradeCost(machine.speed_upgrades, cfg.formulas);
@@ -210,10 +213,16 @@ function MachinePanelBody({
                 <Lock size={16} />
               ) : ing ? (
                 <>
-                  <IngredientSvg category={ing.category} size={28} />
+                  <IngredientSvg category={ing.category} size={24} />
                   <span
-                    className="absolute bottom-1 right-1.5 font-bold leading-none text-slate-300"
-                    style={{ fontSize: count > 99 ? "8px" : "10px" }}
+                    className="mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300"
+                    style={{ fontSize: "7px" }}
+                  >
+                    {ing.name}
+                  </span>
+                  <span
+                    className="absolute right-1 top-1 font-bold leading-none text-slate-300"
+                    style={{ fontSize: count > 99 ? "7px" : "9px" }}
                   >
                     {count > 999 ? "999+" : count}
                   </span>
@@ -240,14 +249,21 @@ function MachinePanelBody({
         {preview ? (
           <>
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-amber-300">{preview.name}</span>
-              {potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+              {isKnownPotion ? (
+                <span className="font-semibold text-amber-300">{preview.name}</span>
+              ) : (
+                <span className="font-semibold text-violet-300">✨ New Recipe</span>
+              )}
+              {isKnownPotion && (potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />)}
             </div>
             <div className="mt-0.5 text-xs text-slate-400">
-              🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew
-              {!potionExpanded && " · tap for stats"}
+              {isKnownPotion ? (
+                <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{!potionExpanded && " · tap for stats"}</>
+              ) : (
+                <>{bt.toFixed(2)}s brew · brew it to reveal what you've made</>
+              )}
             </div>
-            {potionExpanded && (
+            {isKnownPotion && potionExpanded && (
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 {(Object.entries(preview.stats) as [string, number][])
                   .filter(([, val]) => val !== 0)

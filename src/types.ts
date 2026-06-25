@@ -75,6 +75,8 @@ export interface Location {
   drops: DropEntry[];
 }
 
+export type WorkerSpecialization = "none" | "explorer" | "caravan" | "pounder" | "manic" | "standard";
+
 export interface Worker {
   id: number;
   name: string;
@@ -98,6 +100,10 @@ export interface Worker {
   // runtime trip tracking
   trip_started_at: number | null;
   trip_phase: "idle" | "outbound" | "inbound";
+  // Level 10 permanent job class
+  specialization: WorkerSpecialization;
+  // Multiplier applied to click-power effective seconds-per-hit (1.0 default, 1.2 Pounder, 0.8 Manic)
+  click_power_mult: number;
 }
 
 export interface BrewingMachine {

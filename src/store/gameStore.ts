@@ -6,6 +6,7 @@ import type {
   IngredientInventory,
   PotionInventory,
   Worker,
+  WorkerSpecialization,
 } from "../types";
 import { useConfigStore } from "./configStore";
 import {
@@ -142,7 +143,18 @@ function newWorker(index = 0): Worker {
     upgrade_tokens: 0,
     trip_started_at: null,
     trip_phase: "idle",
+    specialization: "none",
+    click_power_mult: 1.0,
   };
+}
+
+// Return the effective multiplier for a given upgrade type based on specialization.
+function specMult(spec: WorkerSpecialization, upgradeType: "speed" | "size" | "clkspd" | "clkpow"): number {
+  if (spec === "explorer") return upgradeType === "speed" ? 1.2 : upgradeType === "size" ? 0.8 : 1.0;
+  if (spec === "caravan")  return upgradeType === "size"  ? 1.2 : upgradeType === "speed" ? 0.8 : 1.0;
+  if (spec === "pounder")  return upgradeType === "clkpow" ? 1.2 : upgradeType === "clkspd" ? 0.8 : 1.0;
+  if (spec === "manic")    return upgradeType === "clkspd" ? 1.2 : upgradeType === "clkpow" ? 0.8 : 1.0;
+  return 1.0;
 }
 
 function newMachine(index = 0): BrewingMachine {
@@ -222,6 +234,7 @@ interface GameState {
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
   assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
+  specializeWorker: (workerIndex: number, choice: WorkerSpecialization) => void;
   bulkAssign: (workerIndices: number[], locationId: string | null, machineId: number | null) => void;
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
@@ -368,16 +381,22 @@ export const useGameStore = create<GameState>()(
 
       assignWorker: (workerIndex, locationId) => {
         set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          // Pounder and Manic cannot be assigned to Locations
+          if (locationId != null && (w.specialization === "pounder" || w.specialization === "manic")) {
+            return {};
+          }
           const cfg = useConfigStore.getState();
           const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
           const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
-          const workers = s.workers.map((w, i) =>
+          const workers = s.workers.map((wk, i) =>
             i === workerIndex
-              ? { ...w, assigned_location: locationId, assigned_machine_id: null,
+              ? { ...wk, assigned_location: locationId, assigned_machine_id: null,
                   trip_phase: phase,
                   trip_started_at: locationId ? now() : null,
                   flavor_status: statusFor(phase, danger) }
-              : w
+              : wk
           );
           const exploredLocations =
             locationId && !s.exploredLocations.includes(locationId)
@@ -390,14 +409,20 @@ export const useGameStore = create<GameState>()(
 
       assignWorkerToMachine: (workerIndex, machineId) =>
         set((s) => {
-          const workers = s.workers.map((w, i) =>
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          // Explorer and Caravan cannot be assigned to Brewers
+          if (machineId != null && (w.specialization === "explorer" || w.specialization === "caravan")) {
+            return {};
+          }
+          const workers = s.workers.map((wk, i) =>
             i === workerIndex
-              ? { ...w, assigned_machine_id: machineId,
+              ? { ...wk, assigned_machine_id: machineId,
                   assigned_location: null, trip_started_at: null, trip_phase: "idle" as const,
                   flavor_status: machineId
                     ? `Hammering ${s.machines.find((m) => m.id === machineId)?.name ?? "the cauldron"} with great enthusiasm.`
                     : pick(STATUS_IDLE) }
-              : w
+              : wk
           );
           return { workers };
         }),
@@ -412,10 +437,17 @@ export const useGameStore = create<GameState>()(
             : null;
           const workers = s.workers.map((w, i) => {
             if (!idxSet.has(i)) return w;
+            const spec = w.specialization ?? "none";
             if (machineId != null) {
+              // explorer/caravan cannot be assigned to machines
+              if (spec === "explorer" || spec === "caravan") return w;
               return { ...w, assigned_machine_id: machineId, assigned_location: null,
                 trip_started_at: null, trip_phase: "idle" as const,
                 flavor_status: `Hammering ${machineName} with great enthusiasm.` };
+            }
+            if (locationId != null) {
+              // pounder/manic cannot be assigned to locations
+              if (spec === "pounder" || spec === "manic") return w;
             }
             const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
             const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
@@ -438,11 +470,12 @@ export const useGameStore = create<GameState>()(
           if (tokens < 1) return {};
           const cost = upgradeCost(autoClickSpeedLevel(w.auto_click_speed), cfg.formulas);
           if (s.coins < cost) return {};
+          const gain = CLICK_SPEED_STEP * specMult(w.specialization ?? "none", "clkspd");
           return {
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, auto_click_speed: wk.auto_click_speed + CLICK_SPEED_STEP, upgrade_tokens: tokens - 1 }
+                ? { ...wk, auto_click_speed: wk.auto_click_speed + gain, upgrade_tokens: tokens - 1 }
                 : wk
             ),
           };
@@ -467,6 +500,34 @@ export const useGameStore = create<GameState>()(
                 ? { ...wk, click_power_level: wk.click_power_level + 1, upgrade_tokens: tokens - 1 }
                 : wk
             ),
+          };
+        }),
+
+      specializeWorker: (workerIndex, choice) =>
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w || w.level < 10 || w.specialization !== "none") return {};
+          // Apply immediate doubling/halving of relevant stats on specialization choice
+          let patch: Partial<Worker> = { specialization: choice };
+          if (choice === "explorer") {
+            patch = { ...patch, retrieval_size: w.retrieval_size * 0.5, gather_speed: w.gather_speed * 2.0 };
+          } else if (choice === "caravan") {
+            patch = { ...patch, retrieval_size: w.retrieval_size * 2.0, gather_speed: w.gather_speed * 0.5 };
+          } else if (choice === "pounder") {
+            patch = { ...patch, click_power_mult: (w.click_power_mult ?? 1.0) * 2.0, auto_click_speed: w.auto_click_speed * 0.5 };
+          } else if (choice === "manic") {
+            patch = { ...patch, auto_click_speed: w.auto_click_speed * 2.0, click_power_mult: (w.click_power_mult ?? 1.0) * 0.5 };
+          }
+          // explorer/caravan cannot be assigned to machines — unassign immediately if they are
+          if ((choice === "explorer" || choice === "caravan") && w.assigned_machine_id != null) {
+            patch = { ...patch, assigned_machine_id: null };
+          }
+          // pounder/manic cannot be assigned to locations — unassign immediately if they are
+          if ((choice === "pounder" || choice === "manic") && w.assigned_location != null) {
+            patch = { ...patch, assigned_location: null, trip_phase: "idle", trip_started_at: null };
+          }
+          return {
+            workers: s.workers.map((wk, i) => (i === workerIndex ? { ...wk, ...patch } : wk)),
           };
         }),
 
@@ -500,7 +561,7 @@ export const useGameStore = create<GameState>()(
           const assigned = s.workers.filter((w) => w.assigned_machine_id === machine.id);
           if (assigned.length === 0) return machine;
           const reductionMs = assigned.reduce(
-            (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level) * dt * 1000, 0
+            (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0) * dt * 1000, 0
           );
           return { ...machine, brew_started_at: machine.brew_started_at - reductionMs };
         });
@@ -629,8 +690,15 @@ export const useGameStore = create<GameState>()(
           if (index >= machine.unlocked_slots) return {};
           const slots = [...machine.recipe_slots];
           slots[index] = ingredientId;
+          // Recipe change: reset brew timer so a player can't save time by
+          // swapping to a long recipe at the last second of a short one.
+          const resetBrew = machine.running
+            ? { brew_started_at: now(), brew_stalled: false }
+            : {};
           return {
-            machines: s.machines.map((m, i) => i === mi ? { ...m, recipe_slots: slots } : m),
+            machines: s.machines.map((m, i) =>
+              i === mi ? { ...m, recipe_slots: slots, ...resetBrew } : m
+            ),
           };
         }),
 
@@ -643,8 +711,13 @@ export const useGameStore = create<GameState>()(
           for (let i = 0; i < Math.min(ingredientIds.length, machine.unlocked_slots); i++) {
             slots[i] = ingredientIds[i];
           }
+          const resetBrew = machine.running
+            ? { brew_started_at: now(), brew_stalled: false }
+            : {};
           return {
-            machines: s.machines.map((m, i) => i === mi ? { ...m, recipe_slots: slots } : m),
+            machines: s.machines.map((m, i) =>
+              i === mi ? { ...m, recipe_slots: slots, ...resetBrew } : m
+            ),
           };
         }),
 
@@ -753,7 +826,14 @@ export const useGameStore = create<GameState>()(
           pushGameEvent("pile", `+${(potion.value * outputs).toLocaleString()} 🪙`);
         }
 
-        if (!prevDiscovered.includes(potion.hash)) get().refreshQuests();
+        if (!prevDiscovered.includes(potion.hash)) {
+          // Discovery bonus: starts at 10 coins, grows with each new potion found.
+          const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
+          const bonus = Math.round(10 * Math.pow(1.18, discoveryIdx - 1));
+          set((cur) => ({ coins: cur.coins + bonus }));
+          pushGameEvent("discovery", `✨ New potion! +${bonus.toLocaleString()} 🪙`);
+          get().refreshQuests();
+        }
 
         // Achievements (event-driven)
         const g = get();
@@ -762,7 +842,7 @@ export const useGameStore = create<GameState>()(
         const volatileCount = ingredients.filter((ing) => (ing.attributes.volatility ?? 0) >= 10).length;
         if (volatileCount > 0) g.checkAchievements("volatile_recipe", volatileCount);
         if (!prevDiscovered.includes(potion.hash)) g.checkAchievements("potions_discovered", discoveredPotions.length);
-        if (autoSell) g.checkAchievements("coins", coins);
+        if (autoSell) g.checkAchievements("coins", get().coins);
       },
 
       // Proactive guard: a running machine with insufficient ingredients is
@@ -927,11 +1007,12 @@ export const useGameStore = create<GameState>()(
           if (tokens < 1) return {};
           const cost = upgradeCost(w.speed_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
+          const gain = 0.25 * specMult(w.specialization ?? "none", "speed");
           return {
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, gather_speed: wk.gather_speed + 0.25,
+                ? { ...wk, gather_speed: wk.gather_speed + gain,
                     speed_upgrades: wk.speed_upgrades + 1, upgrade_tokens: tokens - 1 }
                 : wk
             ),
@@ -947,11 +1028,12 @@ export const useGameStore = create<GameState>()(
           if (tokens < 1) return {};
           const cost = upgradeCost(w.size_upgrades, cfg.formulas);
           if (s.coins < cost) return {};
+          const gain = 0.5 * specMult(w.specialization ?? "none", "size");
           return {
             coins: s.coins - cost,
             workers: s.workers.map((wk, i) =>
               i === workerIndex
-                ? { ...wk, retrieval_size: wk.retrieval_size + 0.5,
+                ? { ...wk, retrieval_size: wk.retrieval_size + gain,
                     size_upgrades: wk.size_upgrades + 1, upgrade_tokens: tokens - 1 }
                 : wk
             ),
@@ -1054,7 +1136,7 @@ export const useGameStore = create<GameState>()(
             if (w.assigned_machine_id == null) continue;
             machineReductionPerSec[w.assigned_machine_id] =
               (machineReductionPerSec[w.assigned_machine_id] ?? 0) +
-              autoClickReductionPerSec(w.auto_click_speed, w.click_power_level);
+              autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0);
           }
 
           // ---- Worker trip simulation ----------------------------------------
@@ -1391,6 +1473,7 @@ export const useGameStore = create<GameState>()(
         tutorial_step: s.tutorial_step,
         has_completed_tutorial: s.has_completed_tutorial,
         unlocked_achievements: s.unlocked_achievements,
+        collected_achievements: s.collected_achievements,
         total_brews: s.total_brews,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
@@ -1408,6 +1491,8 @@ export const useGameStore = create<GameState>()(
             assigned_machine_id: wp.assigned_machine_id ?? null,
             auto_click_speed: wp.auto_click_speed ?? 1.0,
             click_power_level: wp.click_power_level ?? 0,
+            specialization: wp.specialization ?? "none",
+            click_power_mult: wp.click_power_mult ?? 1.0,
           };
         });
         // Migrate old single `machine` field to `machines` array

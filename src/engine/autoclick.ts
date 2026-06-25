@@ -33,6 +33,6 @@ export function autoClickXpPerSec(autoClickSpeed: number): number {
 }
 
 /** Total flat brew-seconds removed per real second by one worker. */
-export function autoClickReductionPerSec(autoClickSpeed: number, clickPowerLevel: number): number {
-  return autoClickSpeed * autoClickPower(clickPowerLevel);
+export function autoClickReductionPerSec(autoClickSpeed: number, clickPowerLevel: number, clickPowerMult = 1.0): number {
+  return autoClickSpeed * autoClickPower(clickPowerLevel) * clickPowerMult;
 }

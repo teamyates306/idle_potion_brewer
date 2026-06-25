@@ -15,7 +15,7 @@ import {
 } from "../engine/autoclick";
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt from "./art/WorkerArt";
-import type { Worker } from "../types";
+import type { Worker, WorkerSpecialization } from "../types";
 
 const HIRE_COST_BASE = 500;
 
@@ -49,7 +49,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
         <span className="shrink-0 text-cyan-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
       )}
       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-        <WorkerArt size={44} color={worker.color} />
+        <WorkerArt size={44} color={worker.color} specialization={worker.specialization} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
@@ -319,8 +319,12 @@ function WorkerDetailModal({
   const assignToLocation = useGameStore((s) => s.assignWorker);
   const buyClickSpeed = useGameStore((s) => s.buyClickSpeed);
   const buyClickPower = useGameStore((s) => s.buyClickPower);
+  const specializeWorker = useGameStore((s) => s.specializeWorker);
   const cfg = useConfigStore();
   const [pickBrewer, setPickBrewer] = useState(false);
+
+  const spec = worker.specialization ?? "none";
+  const awaitingSpec = worker.level >= 10 && spec === "none";
 
   const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
   const onMachine = worker.assigned_machine_id != null;
@@ -337,7 +341,7 @@ function WorkerDetailModal({
   const speedLevel = autoClickSpeedLevel(worker.auto_click_speed);
   const clickSpeedCost = upgradeCost(speedLevel, cfg.formulas);
   const clickPowerCost = upgradeCost(worker.click_power_level, cfg.formulas);
-  const reductionPerSec = autoClickReductionPerSec(worker.auto_click_speed, worker.click_power_level);
+  const reductionPerSec = autoClickReductionPerSec(worker.auto_click_speed, worker.click_power_level, worker.click_power_mult ?? 1.0);
 
   return (
     <div
@@ -352,11 +356,13 @@ function WorkerDetailModal({
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #22d3ee33" }}>
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-              <WorkerArt size={40} color={worker.color} />
+              <WorkerArt size={40} color={worker.color} specialization={spec} />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-cyan-300">{worker.name}</h2>
-              <p className="text-xs text-slate-400">Level {worker.level} Worker</p>
+              <p className="text-xs text-slate-400">
+                Level {worker.level} {spec !== "none" && spec !== "standard" ? `· ${spec.charAt(0).toUpperCase() + spec.slice(1)}` : "Worker"}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
@@ -428,7 +434,9 @@ function WorkerDetailModal({
 
         <p className="mb-4 text-xs italic text-slate-500">"{worker.flavor_status ?? "Awaiting orders"}"</p>
 
-        {tokens > 0 && (
+        {awaitingSpec ? (
+          <SpecializationPicker onPick={(choice) => { specializeWorker(workerIndex, choice); }} />
+        ) : tokens > 0 && (
           <div className="mb-4 space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
@@ -455,7 +463,7 @@ function WorkerDetailModal({
           </div>
         )}
 
-        {/* Assignment controls — two clean actions; Brewer opens a picker sub-modal */}
+        {/* Assignment controls — specialization restricts valid targets */}
         <div className="flex flex-col gap-2">
           {(onMachine || loc) && (
             <button
@@ -466,19 +474,23 @@ function WorkerDetailModal({
             </button>
           )}
           <div className="flex gap-2">
-            <button
-              data-tut="assign-location"
-              onClick={() => onOpenMap(workerIndex)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
-            >
-              <MapPin size={16} /> Assign to Location
-            </button>
-            <button
-              onClick={() => setPickBrewer(true)}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
-            >
-              <Hammer size={16} /> Assign to Brewer
-            </button>
+            {spec !== "pounder" && spec !== "manic" && (
+              <button
+                data-tut="assign-location"
+                onClick={() => onOpenMap(workerIndex)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+              >
+                <MapPin size={16} /> Assign to Location
+              </button>
+            )}
+            {spec !== "explorer" && spec !== "caravan" && (
+              <button
+                onClick={() => setPickBrewer(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
+              >
+                <Hammer size={16} /> Assign to Brewer
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -526,6 +538,112 @@ function BrewerPicker({ workerName, onPick, onClose }: { workerName: string; onP
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Specialization picker — shown when a worker reaches level 10 with no class ─
+const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string; desc: string; buffs: string; nerfs: string; restriction: string }[] = [
+  {
+    choice: "explorer",
+    label: "Explorer",
+    icon: "🏃",
+    desc: "Swift and light — built for speed over cargo.",
+    buffs: "2× gather speed · +20% speed upgrades",
+    nerfs: "½ carry size · −20% size upgrades",
+    restriction: "Location only — cannot work Brewers",
+  },
+  {
+    choice: "caravan",
+    label: "Caravan",
+    icon: "🎒",
+    desc: "Slow but carries a mountain each trip.",
+    buffs: "2× carry size · +20% size upgrades",
+    nerfs: "½ gather speed · −20% speed upgrades",
+    restriction: "Location only — cannot work Brewers",
+  },
+  {
+    choice: "pounder",
+    label: "Pounder",
+    icon: "⚒️",
+    desc: "Hits with tremendous force, once per strike.",
+    buffs: "2× click power · +20% power upgrades",
+    nerfs: "½ click speed · −20% speed upgrades",
+    restriction: "Brewer only — cannot gather at Locations",
+  },
+  {
+    choice: "manic",
+    label: "Manic",
+    icon: "⚡",
+    desc: "Frantic blur of activity — trades power for pace.",
+    buffs: "2× click speed · +20% speed upgrades",
+    nerfs: "½ click power · −20% power upgrades",
+    restriction: "Brewer only — cannot gather at Locations",
+  },
+  {
+    choice: "standard",
+    label: "Standard",
+    icon: "⚖️",
+    desc: "No change. Keeps all options open.",
+    buffs: "Jack-of-all-trades",
+    nerfs: "No specialization bonuses",
+    restriction: "Unrestricted",
+  },
+];
+
+function SpecializationPicker({ onPick }: { onPick: (choice: WorkerSpecialization) => void }) {
+  const [confirm, setConfirm] = useState<WorkerSpecialization | null>(null);
+  const choice = confirm ? SPEC_OPTIONS.find((o) => o.choice === confirm)! : null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-violet-500/40 bg-violet-950/30 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-base">✨</span>
+        <span className="font-semibold text-violet-300">Choose a Specialization</span>
+        <span className="ml-auto text-[10px] text-violet-500">Level 10 milestone · permanent</span>
+      </div>
+      {confirm ? (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">
+            Confirm <span className="font-bold text-violet-300">{choice!.label}</span>? This choice is <span className="text-rose-400 font-semibold">permanent</span>.
+          </p>
+          <p className="text-xs text-slate-400">{choice!.restriction}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onPick(confirm); setConfirm(null); }}
+              className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-500"
+            >
+              Confirm {choice!.icon} {choice!.label}
+            </button>
+            <button
+              onClick={() => setConfirm(null)}
+              className="rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {SPEC_OPTIONS.map((opt) => (
+            <button
+              key={opt.choice}
+              onClick={() => setConfirm(opt.choice)}
+              className="flex w-full items-start gap-3 rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-left transition hover:border-violet-500/60 hover:bg-violet-950/20 active:scale-[0.99]"
+            >
+              <span className="text-xl shrink-0">{opt.icon}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-slate-100 text-sm">{opt.label}</div>
+                <div className="text-[11px] text-slate-400 mt-0.5">{opt.desc}</div>
+                <div className="mt-1 flex gap-2 flex-wrap">
+                  <span className="text-[10px] text-emerald-400">▲ {opt.buffs}</span>
+                  <span className="text-[10px] text-rose-400">▼ {opt.nerfs}</span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
