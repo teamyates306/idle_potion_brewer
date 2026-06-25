@@ -335,6 +335,11 @@ function WorkerDetailModal({
   const xpPct = Math.min(100, (worker.xp / xpNeed) * 100);
   const tokens = worker.upgrade_tokens ?? 0;
 
+  // Tokens earned after level 10 must wait until after the spec choice.
+  const postSpecEarned = awaitingSpec ? Math.max(0, worker.level - 10) : 0;
+  const preSpecTokensRemaining = awaitingSpec ? Math.max(0, tokens - postSpecEarned) : 0;
+  const showSpecNow = awaitingSpec && preSpecTokensRemaining === 0;
+
   // Auto-click stats — upgrades are token-gated, costed exactly like gather upgrades
   const power = autoClickPower(worker.click_power_level);
   const nextPower = autoClickPower(worker.click_power_level + 1);
@@ -434,12 +439,14 @@ function WorkerDetailModal({
 
         <p className="mb-4 text-xs italic text-slate-500">"{worker.flavor_status ?? "Awaiting orders"}"</p>
 
-        {awaitingSpec ? (
+        {showSpecNow ? (
           <SpecializationPicker onPick={(choice) => { specializeWorker(workerIndex, choice); }} />
         ) : tokens > 0 && (
           <div className="mb-4 space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade token</p>
+              <p className="text-[10px] uppercase tracking-wider text-yellow-600">
+                {preSpecTokensRemaining > 0 ? "Spend token before choosing class" : "Spend upgrade token"}
+              </p>
               {reductionPerSec > 0 && (
                 <span className="text-[10px] text-amber-300/80">Cauldron −{reductionPerSec.toFixed(2)}s/s</span>
               )}
