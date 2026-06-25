@@ -10,7 +10,7 @@ import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
-import type { BrewingMachine } from "../types";
+import type { BrewingMachine, Ingredient } from "../types";
 
 // Per-machine hue-rotate for the cauldron tint in the tab indicator
 const MACHINE_ACCENT = ["#f59e0b", "#22c55e", "#38bdf8", "#a855f7", "#ef4444"];
@@ -304,7 +304,7 @@ function MachinePanelBody({
 
       {/* Gloves of Engineering — True Brew Rate analytics */}
       {hasGloves && preview && (
-        <BrewAnalytics machine={machine} bt={bt} workers={workers} />
+        <BrewAnalytics machine={machine} ingredients={ingredients} toxicity={toxicity} workers={workers} />
       )}
 
       {tokens > 0 ? (
@@ -481,47 +481,102 @@ function RecipePickerModal({ machine, onPick, onClose }: {
   );
 }
 
+// Local rarity weights — mirrors formulas.ts RARITY_WEIGHT (not exported)
+const RARITY_W: Record<string, number> = { common: 1, uncommon: 2, rare: 5, epic: 12, legendary: 30 };
+
+function fmtRate(perSec: number): string {
+  if (perSec >= 1 / 60) return `${(perSec * 60).toFixed(2)}/min`;
+  return `${(perSec * 3600).toFixed(1)}/hr`;
+}
+
 // Gloves of Engineering — show the True Brew Rate formula breakdown
 function BrewAnalytics({
-  machine, bt, workers,
+  machine, ingredients, toxicity, workers,
 }: {
   machine: BrewingMachine;
-  bt: number;
+  ingredients: Ingredient[];
+  toxicity: number;
   workers: { assigned_machine_id: number | null; auto_click_speed: number; click_power_level: number; click_power_mult?: number }[];
 }) {
   const cfg = useConfigStore();
+  const f = cfg.formulas;
+
+  // Step 1: base time
+  const baseBt = f.base_brew_time / Math.max(0.0001, machine.brew_speed);
+
+  // Step 2: ingredient complexity
+  const raritySum = ingredients.length
+    ? ingredients.reduce((a, ing) => a + (RARITY_W[ing.rarity] ?? 1), 0)
+    : 1;
+  const afterComplexity = baseBt * raritySum;
+
+  // Step 3: toxicity penalty
+  const toxMult = 1 + Math.max(0, toxicity) * f.toxicity_time_mult;
+  const afterToxicity = afterComplexity * toxMult;
+
+  // Step 4: worker click reduction
   const assigned = workers.filter((w) => w.assigned_machine_id === machine.id);
   const workerReduction = assigned.reduce(
     (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0),
     0
   );
-  const effectiveBt = Math.max(0.5, bt / (1 + workerReduction));
-  const brewsPerHour = 3600 / effectiveBt;
-  const baseBt = cfg.formulas.base_brew_time / machine.brew_speed;
+  const effectiveBt = Math.max(0.1, afterToxicity / (1 + workerReduction));
+
+  // Step 5: multi-brew
+  const volatility = ingredients.reduce((a, ing) => a + (ing.attributes.volatility ?? 0), 0);
+  const multiBrewChance = Math.max(0, machine.multi_brew_chance - volatility * f.volatility_multibrew_penalty);
+  const avgPotionsPerCycle = 1 + multiBrewChance;
+
+  const cyclesPerSec = 1 / effectiveBt;
+  const potionsPerSec = cyclesPerSec * avgPotionsPerCycle;
 
   return (
     <div className="mb-4 rounded-xl border border-teal-700/40 bg-teal-950/20 p-3">
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-teal-400">True Brew Rate</p>
-      <div className="space-y-1 text-[11px] text-slate-400 font-mono">
-        <div className="flex justify-between">
-          <span>base_brew_time / brew_speed</span>
-          <span className="text-slate-300">{baseBt.toFixed(2)}s</span>
-        </div>
-        <div className="flex justify-between">
-          <span>× complexity + toxicity</span>
-          <span className="text-slate-300">{bt.toFixed(2)}s</span>
-        </div>
-        {workerReduction > 0 && (
-          <div className="flex justify-between text-teal-300">
-            <span>÷ (1 + {workerReduction.toFixed(2)} worker s/s)</span>
-            <span>{effectiveBt.toFixed(2)}s effective</span>
-          </div>
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-teal-400">True Brew Rate · Gloves of Engineering</p>
+      <div className="space-y-1.5 text-[11px]">
+        <AnalyticsRow
+          label={`Brew Speed (${f.base_brew_time}s ÷ ${machine.brew_speed.toFixed(2)}×)`}
+          value={`${baseBt.toFixed(2)}s`}
+        />
+        <AnalyticsRow
+          label={`Ingredient Complexity (${ingredients.length} slot${ingredients.length !== 1 ? "s" : ""}, weight ${raritySum})`}
+          value={`${afterComplexity.toFixed(2)}s`}
+        />
+        {toxicity > 0 && (
+          <AnalyticsRow
+            label={`Toxicity Penalty (${toxicity.toFixed(0)} toxicity ×${toxMult.toFixed(3)})`}
+            value={`${afterToxicity.toFixed(2)}s`}
+          />
         )}
-        <div className="mt-1.5 flex justify-between border-t border-teal-800/40 pt-1.5 font-semibold text-teal-200">
-          <span>= True brew rate</span>
-          <span>{brewsPerHour.toFixed(1)} brews/hr</span>
+        {workerReduction > 0 && (
+          <AnalyticsRow
+            label={`${assigned.length} Worker${assigned.length !== 1 ? "s" : ""} Clicking (${workerReduction.toFixed(2)}s/s)`}
+            value={`${effectiveBt.toFixed(2)}s`}
+            highlight
+          />
+        )}
+        <div className="mt-2 border-t border-teal-800/40 pt-2 space-y-1">
+          <div className="flex justify-between font-semibold text-teal-200">
+            <span>Brew cycles</span>
+            <span>{fmtRate(cyclesPerSec)} · {cyclesPerSec.toFixed(3)}/s</span>
+          </div>
+          {multiBrewChance > 0 && (
+            <div className="flex justify-between text-violet-300">
+              <span>Potions out ({(multiBrewChance * 100).toFixed(0)}% multi-brew)</span>
+              <span>{fmtRate(potionsPerSec)} · {potionsPerSec.toFixed(3)}/s</span>
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AnalyticsRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className={`flex items-baseline justify-between gap-2 ${highlight ? "text-teal-300" : "text-slate-400"}`}>
+      <span className="min-w-0 flex-1 text-[10px] leading-tight">{label}</span>
+      <span className="shrink-0 font-semibold text-slate-200">{value}</span>
     </div>
   );
 }

@@ -68,10 +68,11 @@ export default function IngredientModal({
     ([key]) => discoveredAttributes.includes(key)
   ) as [string, number][];
 
-  // Sourced From: locations that have this ingredient in their drop table
+  // Sourced From: only locations where the ingredient has actually been discovered
   const sourcedFrom = hasCompass
     ? Object.values(cfg.locations).filter((loc) =>
-        loc.drops.some((d) => d.ingredientId === ingredientId)
+        loc.drops.some((d) => d.ingredientId === ingredientId) &&
+        (discovered_location_drops[loc.id] ?? []).includes(ingredientId)
       )
     : [];
 

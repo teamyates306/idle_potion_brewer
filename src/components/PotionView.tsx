@@ -10,13 +10,14 @@ import { useConfigStore } from "../store/configStore";
 import { describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
-import { gatherRoundTrip, brewTime } from "../engine/formulas";
+import { gatherRoundTrip, brewTime, effectiveMultiBrew } from "../engine/formulas";
+import { autoClickReductionPerSec } from "../engine/autoclick";
 
 type Tab = "sell" | "discovered" | "supply";
 type Detail = { hash: string } | { name: string } | null;
 type SortKey = "value" | "recipes" | "name";
 
-export default function PotionView({ onClose }: { onClose: () => void }) {
+export default function PotionView({ onClose, initialTab }: { onClose: () => void; initialTab?: Tab }) {
   const potionInv = useGameStore((s) => s.potionInv);
   const discoveredPotions = useGameStore((s) => [...new Set(s.discoveredPotions ?? [])]);
   const sellPotion = useGameStore((s) => s.sellPotion);
@@ -28,7 +29,7 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
   const hasAbacus = unlocked_globals.includes("merchants_abacus");
   const cfg = useConfigStore();
 
-  const [tab, setTab] = useState<Tab>("sell");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "sell");
   const [detail, setDetail] = useState<Detail>(null);
 
   // Discovered controls
@@ -291,11 +292,22 @@ export default function PotionView({ onClose }: { onClose: () => void }) {
 }
 
 // ── Merchant's Abacus — supply chain dashboard ──────────────────────────────
-function SupplyChainDashboard() {
+export function SupplyChainDashboard() {
   const workers = useGameStore((s) => s.workers);
   const machines = useGameStore((s) => s.machines);
   const ingredientInv = useGameStore((s) => s.ingredientInv);
   const cfg = useConfigStore();
+
+  // Worker click reduction per machine
+  const workerReductionByMachine = useMemo(() => {
+    const map: Record<number, number> = {};
+    for (const w of workers) {
+      if (w.assigned_machine_id == null) continue;
+      map[w.assigned_machine_id] = (map[w.assigned_machine_id] ?? 0) +
+        autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0);
+    }
+    return map;
+  }, [workers]);
 
   // Compute per-ingredient income rate (items/hr from gathering workers)
   const incomePerHr = useMemo(() => {
@@ -306,9 +318,7 @@ function SupplyChainDashboard() {
       if (!loc) continue;
       const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
       const tripsPerHr = 3600 / tripSecs;
-      // Expected yield per trip: floor(size) + frac chance for +1
       const expectedYield = w.retrieval_size;
-      // Spread evenly across drop table by weight
       const totalWeight = loc.drops.reduce((a, d) => a + d.weight, 0);
       for (const drop of loc.drops) {
         rates[drop.ingredientId] = (rates[drop.ingredientId] ?? 0) + (drop.weight / totalWeight) * expectedYield * tripsPerHr;
@@ -317,30 +327,41 @@ function SupplyChainDashboard() {
     return rates;
   }, [workers, cfg.locations]);
 
-  // Compute per-ingredient consumption rate from running brewers
-  const consumePerHr = useMemo(() => {
+  // Compute per-ingredient consumption rate from running brewers (accounting for worker clicks)
+  // and per-machine effective potion output rate (for summary)
+  const { consumePerHr, machineOutputs } = useMemo(() => {
     const rates: Record<string, number> = {};
+    const outputs: { id: number; name: string; potionsPerHr: number }[] = [];
     for (const m of machines) {
       if (!m.running) continue;
       const activeIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
       if (activeIds.length === 0) continue;
       const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
       const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
+      const volatility = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.volatility ?? 0), 0);
       const bt = brewTime(m, toxicity, cfg.formulas, ingredients);
-      const brewsPerHr = 3600 / Math.max(0.1, bt);
+      // Apply worker click reduction to effective brew time
+      const workerReduction = workerReductionByMachine[m.id] ?? 0;
+      const effectiveBt = Math.max(0.1, bt / (1 + workerReduction));
+      const brewsPerHr = 3600 / effectiveBt;
+      // Ingredient consumption: one of each per brew cycle (unaffected by multi-brew)
       for (const id of activeIds) {
         rates[id] = (rates[id] ?? 0) + brewsPerHr;
       }
+      // Potion output: brews × avg potions per cycle (multi-brew)
+      const multiBrewChance = effectiveMultiBrew(m, volatility, cfg.formulas);
+      const potionsPerHr = brewsPerHr * (1 + multiBrewChance);
+      outputs.push({ id: m.id, name: m.name, potionsPerHr });
     }
-    return rates;
-  }, [machines, cfg.ingredients, cfg.formulas]);
+    return { consumePerHr: rates, machineOutputs: outputs };
+  }, [machines, cfg.ingredients, cfg.formulas, workerReductionByMachine]);
 
-  // All tracked ingredient IDs
+  // All tracked ingredient IDs — sorted deficits first
   const allIds = useMemo(() => {
     return [...new Set([...Object.keys(incomePerHr), ...Object.keys(consumePerHr)])].sort((a, b) => {
       const netA = (incomePerHr[a] ?? 0) - (consumePerHr[a] ?? 0);
       const netB = (incomePerHr[b] ?? 0) - (consumePerHr[b] ?? 0);
-      return netA - netB; // deficits first
+      return netA - netB;
     });
   }, [incomePerHr, consumePerHr]);
 
@@ -353,8 +374,24 @@ function SupplyChainDashboard() {
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] text-slate-500">Live rates assume current worker assignments and active brewers. Red = deficit.</p>
+    <div className="space-y-3">
+      {/* Potion output summary per brewer */}
+      {machineOutputs.length > 0 && (
+        <div className="rounded-lg border border-violet-700/40 bg-violet-950/20 p-3">
+          <p className="mb-2 text-[10px] uppercase tracking-wider text-violet-400">Effective Potion Output</p>
+          <div className="space-y-1">
+            {machineOutputs.map((o) => (
+              <div key={o.id} className="flex justify-between text-xs">
+                <span className="text-slate-400">{o.name}</span>
+                <span className="text-violet-200 font-semibold">{o.potionsPerHr.toFixed(1)}/hr</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Per-ingredient supply/consumption */}
+      <p className="text-[10px] text-slate-500">Rates include worker click reduction. Consumption excludes multi-brew (same ingredients per cycle). Red = deficit.</p>
       {allIds.map((id) => {
         const ing = cfg.ingredients[id];
         const income = incomePerHr[id] ?? 0;

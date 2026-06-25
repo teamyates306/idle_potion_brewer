@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy } from "lucide-react";
+import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2 } from "lucide-react";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
@@ -11,7 +11,7 @@ import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
 import MachineView from "./components/MachineView";
-import PotionView from "./components/PotionView";
+import PotionView, { SupplyChainDashboard } from "./components/PotionView";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
 import Modal from "./components/ui/Modal";
@@ -22,7 +22,7 @@ import { useGameStore } from "./store/gameStore";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "dev" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "dev" | "supply" | null;
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -37,6 +37,8 @@ export default function App() {
   const refreshQuests = useGameStore((s) => s.refreshQuests);
   const reconcileAchievements = useGameStore((s) => s.reconcileAchievements);
   const questsUnlocked = useGameStore((s) => s.questsUnlocked);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const hasAbacus = unlocked_globals.includes("merchants_abacus");
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const [panel, setPanel] = useState<Panel>(null);
   const [machineTabId, setMachineTabId] = useState(1);
@@ -119,6 +121,16 @@ export default function App() {
           <Trophy size={18} className="text-amber-400" />
           <span>Achievements</span>
         </button>
+        {hasAbacus && (
+          <button
+            onClick={() => setPanel("supply")}
+            className="flex flex-col items-center gap-1 rounded-xl border border-emerald-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+            title="Supply Chain"
+          >
+            <BarChart2 size={18} className="text-emerald-400" />
+            <span>Supply</span>
+          </button>
+        )}
       </div>
 
       {/* Hidden dev toggle */}
@@ -136,6 +148,11 @@ export default function App() {
       {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setMapLockedWorker(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} initialMachineId={machineTabId} />}
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
+      {panel === "supply" && (
+        <Modal title="Supply Chain" onClose={() => setPanel(null)} accent="#22c55e">
+          <SupplyChainDashboard />
+        </Modal>
+      )}
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
       {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
