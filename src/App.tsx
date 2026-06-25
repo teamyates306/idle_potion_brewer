@@ -7,6 +7,7 @@ import AchievementsModal from "./components/AchievementsModal";
 import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
+import ContentPlanView from "./ContentPlanView";
 import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
@@ -30,6 +31,10 @@ export default function App() {
   // the lifetime of the load, so the early return is hook-order safe).
   if (typeof window !== "undefined" && window.location.pathname === "/balance-report") {
     return <BalanceReportView />;
+  }
+  // Standalone content & art planning surface (placeholder text/graphics tracker).
+  if (typeof window !== "undefined" && window.location.pathname === "/content-plan") {
+    return <ContentPlanView />;
   }
 
   const welcomeBack = useGameStore((s) => s.welcomeBack);

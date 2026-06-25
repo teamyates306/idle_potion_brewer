@@ -58,11 +58,11 @@ export interface PotionDescriptor {
   volatility: number;
 }
 
-const VALUE_PREFIXES = ["Lesser", "Common", "Greater", "Potent", "Grand", "Mythic"];
+export const VALUE_PREFIXES = ["Lesser", "Common", "Greater", "Potent", "Grand", "Mythic"];
 // Thresholds: Lesser<30, Common≥30, Greater≥80, Potent≥180, Grand≥350, Mythic≥700
-const VALUE_THRESHOLDS = [30, 80, 180, 350, 700];
+export const VALUE_THRESHOLDS = [30, 80, 180, 350, 700];
 
-const CATEGORY_TYPE: Record<string, string> = {
+export const CATEGORY_TYPE: Record<string, string> = {
   root: "Tonic",
   petal: "Elixir",
   fungus: "Brew",
