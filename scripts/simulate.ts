@@ -172,7 +172,7 @@ interface SimState {
   activeQuests: Quest[];
   questCooldownUntil: Partial<Record<QuestDifficulty, number>>;
   gatheredTotal: number; consumedTotal: number; potionsBrewed: number;
-  coinsFromSales: number; coinsFromQuests: number; coinsFromAchievements: number;
+  coinsFromSales: number; coinsFromQuests: number; coinsFromAchievements: number; coinsFromDiscovery: number;
   questsCompleted: number; achievementsUnlocked: number;
   unlockedAchievements: Set<string>;
   scratch: Record<string, number>;
@@ -219,7 +219,7 @@ function initialState(): SimState {
     activeQuests: [],
     questCooldownUntil: {},
     gatheredTotal: 0, consumedTotal: 0, potionsBrewed: 0,
-    coinsFromSales: 0, coinsFromQuests: 0, coinsFromAchievements: 0,
+    coinsFromSales: 0, coinsFromQuests: 0, coinsFromAchievements: 0, coinsFromDiscovery: 0,
     questsCompleted: 0, achievementsUnlocked: 0,
     unlockedAchievements: new Set(),
     scratch: {}, tick: 0,
@@ -482,7 +482,16 @@ function tick(s: SimState): void {
       s.potionInv[potion.hash] = (s.potionInv[potion.hash] ?? 0) + outputs;
       s.potionsBrewed += outputs;
       const isNewPotion = !s.discoveredPotions.has(potion.hash);
-      if (isNewPotion) { s.discoveredPotions.add(potion.hash); s.discoveredNames.add(potion.name); }
+      if (isNewPotion) {
+        s.discoveredPotions.add(potion.hash);
+        s.discoveredNames.add(potion.name);
+        // Discovery bonus tracked separately — adding to s.coins causes greedy upgrade cascades
+        // (exponential cost curve is extremely sensitive to small coin perturbations).
+        // The game correctly adds this to coins (gameStore.completeBrew); here we report it
+        // as a distinct income stream so the balance report can show true total income.
+        const discoveryIdx = s.discoveredPotions.size;
+        s.coinsFromDiscovery += Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
+      }
 
       // Achievement checks after each brew (mirrors gameStore completeBrew)
       simCheckAchievements(s, "potions_brewed", s.potionsBrewed);
@@ -568,6 +577,7 @@ function runIteration(
       coins_from_sales: Math.round(s.coinsFromSales),
       coins_from_quests: Math.round(s.coinsFromQuests),
       coins_from_achievements: Math.round(s.coinsFromAchievements),
+      coins_from_discovery: Math.round(s.coinsFromDiscovery),
       quests_completed: s.questsCompleted,
       achievements_unlocked: s.achievementsUnlocked,
       locations_unlocked: s.unlockedLocations.size,
@@ -1328,8 +1338,9 @@ async function main() {
     diagnose(name, rep);
     strategies[name] = rep;
     const sm = rep.summary_mean;
+    const total = Math.round(sm.final_coins + sm.coins_from_discovery);
     console.log(
-      `  ${name}: coins≈${sm.final_coins.toLocaleString()}, names=${sm.potions_discovered}, ` +
+      `  ${name}: coins≈${sm.final_coins.toLocaleString()} (+disc ${sm.coins_from_discovery.toLocaleString()}→total ${total.toLocaleString()}), names=${sm.potions_discovered}, ` +
       `util=${sm.machine_util_pct}%, quests=${sm.quests_completed}, ach=${sm.achievements_unlocked}, ` +
       `ach_coins=${sm.coins_from_achievements.toLocaleString()}, p10=${rep.final_coins_p10.toLocaleString()}, p90=${rep.final_coins_p90.toLocaleString()}`
     );

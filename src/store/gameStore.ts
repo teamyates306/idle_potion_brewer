@@ -850,7 +850,7 @@ export const useGameStore = create<GameState>()(
         if (!prevDiscovered.includes(potion.hash)) {
           // Discovery bonus: starts at 10 coins, grows with each new potion found.
           const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
-          const bonus = Math.round(10 * Math.pow(1.18, discoveryIdx - 1));
+          const bonus = Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
           set((cur) => ({ coins: cur.coins + bonus }));
           pushGameEvent("discovery", `✨ ${potion.name} discovered!`);
           pushGameEvent("pile", `+${bonus.toLocaleString()} 🪙 discovery bonus`);
