@@ -16,7 +16,7 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
   const affordable = coins >= cost;
 
   return (
-    <Modal title="Global Upgrades" onClose={onClose} accent="#a78bfa">
+    <Modal title="Global Upgrades" onClose={onClose} accent="#7d6a9c">
       {/* ── Section 1: Player Click Power ── */}
       <section className="mb-6">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">

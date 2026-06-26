@@ -169,7 +169,7 @@ function CollectRewardModal({ a, onClose }: { a: Achievement; onClose: () => voi
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-[#0f172a] p-5 shadow-2xl"
+        className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-slate-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-start justify-between">

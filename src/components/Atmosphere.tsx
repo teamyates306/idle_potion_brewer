@@ -36,9 +36,9 @@ function applyDayNightVars() {
   const warmAlpha = Math.max(sr, ss) * 0.07;
   root.setProperty("--dn-warm-tint", `rgba(215,145,55,${warmAlpha.toFixed(3)})`);
 
-  // Cool tint: night-blue, fades out at sunrise, fully gone by noon
-  const coolAlpha = (1 - dy) * 0.12;
-  root.setProperty("--dn-cool-tint", `rgba(8,15,50,${coolAlpha.toFixed(3)})`);
+  // Cool tint: a faint dusk wash, kept low so the cosy daytime never goes dark.
+  const coolAlpha = (1 - dy) * 0.04;
+  root.setProperty("--dn-cool-tint", `rgba(46,38,62,${coolAlpha.toFixed(3)})`);
 
   // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
   root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
@@ -78,7 +78,9 @@ export default function Atmosphere() {
         <div
           className="pointer-events-none fixed inset-0 z-[3]"
           style={{
-            background: "var(--dn-vignette, radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0,0,0,0.50) 100%))",
+            // Gentle warm vignette only — the heavy day/night darkening is dropped
+            // for the cosy parchment look.
+            background: "radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(74,48,20,0.16) 100%)",
             transition: "background 3.5s ease-in-out",
           }}
         />

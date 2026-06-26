@@ -70,7 +70,7 @@ export default function PotionDetailsModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[88dvh] w-full max-w-sm overflow-y-auto rounded-2xl border border-purple-700/50 bg-[#0f172a] p-5 shadow-2xl"
+        className="max-h-[88dvh] w-full max-w-sm overflow-y-auto rounded-2xl border border-purple-700/50 bg-slate-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

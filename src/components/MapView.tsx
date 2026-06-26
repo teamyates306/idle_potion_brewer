@@ -28,7 +28,8 @@ const MAP_LAYOUT: Record<string, LayoutSpec> = {
   abyss:   { col: 0.33, row: 3 },
 };
 
-const DANGER_COLOR = ["#4ade80", "#facc15", "#fb923c", "#f87171", "#c084fc"];
+// Muted, earthy danger ramp (safe moss → deep oxblood) — no neon.
+const DANGER_COLOR = ["#6f8a4a", "#b08a33", "#bf7b3a", "#a8472f", "#7d3b4a"];
 
 interface PlacedNode { loc: Location; x: number; y: number }
 
@@ -107,7 +108,7 @@ export default function MapView({
 
   return (
     <>
-      <Modal title="The Map" onClose={onClose} accent="#4ade80">
+      <Modal title="The Map" onClose={onClose} accent="#5e7a45">
         <p className="mb-3 text-xs text-slate-400">Drag to explore. Tap a location to send workers or learn more.</p>
 
         <div
@@ -125,12 +126,13 @@ export default function MapView({
             style={{
               width: CANVAS_W,
               height,
-              backgroundColor: "#0b1220",
+              // Aged-paper map: warm parchment base, soft sepia blotches, faint ink grid.
+              backgroundColor: "#e3cfa0",
               backgroundImage:
-                "radial-gradient(circle at 20% 25%, rgba(74,222,128,0.06), transparent 45%)," +
-                "radial-gradient(circle at 80% 70%, rgba(96,165,250,0.06), transparent 45%)," +
-                "radial-gradient(rgba(148,163,184,0.10) 1px, transparent 1px)",
-              backgroundSize: "auto, auto, 24px 24px",
+                "radial-gradient(circle at 22% 18%, rgba(120,88,48,0.12), transparent 52%)," +
+                "radial-gradient(circle at 82% 74%, rgba(150,120,70,0.12), transparent 55%)," +
+                "radial-gradient(rgba(120,90,50,0.08) 1px, transparent 1px)",
+              backgroundSize: "auto, auto, 26px 26px",
             }}
           >
             {nodes.map((n) => (
@@ -223,12 +225,12 @@ function MapNode({
         style={{
           width: R * 2,
           height: R * 2,
-          borderColor: dim ? "#475569" : dangerColor,
+          borderColor: dim ? "#b39b6f" : dangerColor,
           background: dim
-            ? "radial-gradient(circle at 35% 30%, #1e293b, #0f172a)"
-            : `radial-gradient(circle at 35% 30%, ${dangerColor}33, #0f172a)`,
-          boxShadow: dim ? "none" : `0 0 12px ${dangerColor}44`,
-          opacity: dim ? 0.82 : 1,
+            ? "radial-gradient(circle at 35% 30%, #ece0c0, #d6c096)"
+            : `radial-gradient(circle at 35% 30%, #fbf3dc, ${dangerColor}33)`,
+          boxShadow: dim ? "inset 0 1px 2px rgba(120,90,50,0.25)" : "0 2px 5px rgba(70,45,20,0.30)",
+          opacity: dim ? 0.9 : 1,
         }}
         title={node.loc.name}
       >
@@ -317,7 +319,7 @@ function LocationDetailModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-[#0f172a] p-4 shadow-2xl sm:rounded-2xl"
+        className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl sm:rounded-2xl"
         style={{ maxHeight: "85dvh" }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -66,7 +66,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0f1a] text-slate-200">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-[#0f172a] px-4 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900 px-4 py-3">
         <span className="font-mono text-sm font-bold text-rose-400">⚙ Dev Config</span>
         <div className="flex items-center gap-3">
           {tab !== "cheats" && tab !== "formulas" && (
@@ -88,7 +88,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Tab bar */}
-      <div className="flex shrink-0 border-b border-slate-800 bg-[#0f172a]">
+      <div className="flex shrink-0 border-b border-slate-800 bg-slate-900">
         {(["cheats","formulas","attributes","ingredients","locations"] as Tab[]).map((t) => (
           <button
             key={t}

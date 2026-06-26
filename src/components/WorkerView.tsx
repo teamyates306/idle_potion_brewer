@@ -186,7 +186,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
 
   return (
     <>
-      <Modal title="Worker Management" onClose={onClose} accent="#22d3ee">
+      <Modal title="Worker Management" onClose={onClose} accent="#3f7a78">
         {/* Controls */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
           {([["none", "Default"], ["level", "Level"], ["tokens", "Tokens"]] as ["none" | "level" | "tokens", string][]).map(([key, label]) => (
@@ -354,7 +354,7 @@ function WorkerDetailModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-[#0f172a] p-4 shadow-2xl sm:rounded-2xl"
+        className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl sm:rounded-2xl"
         style={{ maxHeight: "85dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -525,7 +525,7 @@ function BrewerPicker({ workerName, onPick, onClose }: { workerName: string; onP
   const workers = useGameStore((s) => s.workers);
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-[#0f172a] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-slate-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-base font-semibold text-amber-300">Assign {workerName} to…</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>

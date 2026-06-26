@@ -103,36 +103,36 @@ export default function App() {
         {questsUnlocked && (
           <button
             onClick={() => setPanel("quests")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+            className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
             title="Quest Board"
           >
-            <ScrollText size={18} className="text-amber-400" />
+            <ScrollText size={18} className="text-amber-700" />
             <span>Quests</span>
           </button>
         )}
         <button
           onClick={() => setPanel("upgrades")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
           title="Global Upgrades"
         >
-          <ArrowUpCircle size={18} className="text-amber-400" />
+          <ArrowUpCircle size={18} className="text-amber-700" />
           <span>Upgrades</span>
         </button>
         <button
           onClick={() => setPanel("achievements")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
           title="Achievements"
         >
-          <Trophy size={18} className="text-amber-400" />
+          <Trophy size={18} className="text-amber-700" />
           <span>Achievements</span>
         </button>
         {hasAbacus && (
           <button
             onClick={() => setPanel("supply")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-emerald-700/60 bg-stone-900/80 px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-300 shadow-lg backdrop-blur-sm transition hover:bg-stone-900 active:scale-95"
+            className="flex flex-col items-center gap-1 rounded-xl border border-emerald-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
             title="Supply Chain"
           >
-            <BarChart2 size={18} className="text-emerald-400" />
+            <BarChart2 size={18} className="text-emerald-700" />
             <span>Supply</span>
           </button>
         )}
