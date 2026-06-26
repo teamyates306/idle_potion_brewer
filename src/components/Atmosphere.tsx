@@ -29,8 +29,10 @@ function applyDayNightVars() {
   const root = document.documentElement.style;
   const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
 
-  // Vignette
-  root.setProperty("--dn-vignette", dn.vignetteStyle);
+  // Vignette opacity: a warm edge-darkening that is present by day and most
+  // visible at night. Driving element opacity (vs. recolouring the gradient)
+  // keeps it on the compositor and lets it transition smoothly.
+  root.setProperty("--dn-vig-op", (0.3 + (1 - dy) * 0.7).toFixed(3));
 
   // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.07
   const warmAlpha = Math.max(sr, ss) * 0.07;
@@ -78,10 +80,11 @@ export default function Atmosphere() {
         <div
           className="pointer-events-none fixed inset-0 z-[3]"
           style={{
-            // Gentle warm vignette only — the heavy day/night darkening is dropped
-            // for the cosy parchment look.
-            background: "radial-gradient(ellipse at 50% 42%, transparent 58%, rgba(74,48,20,0.16) 100%)",
-            transition: "background 3.5s ease-in-out",
+            // Fixed warm-sepia vignette at night strength; opacity (set per day
+            // phase) fades it to a gentle daytime edge and up to full at night.
+            background: "radial-gradient(ellipse at 50% 46%, transparent 50%, rgba(34,22,10,0.5) 100%)",
+            opacity: "var(--dn-vig-op, 0.5)",
+            transition: "opacity 3.5s ease-in-out",
           }}
         />
       )}
