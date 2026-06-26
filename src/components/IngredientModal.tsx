@@ -89,7 +89,7 @@ export default function IngredientModal({
         {/* Header */}
         <div className="mb-4 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <IngredientSvg category={ing.category} size={36} />
+            <IngredientSvg category={ing.category} rarity={ing.rarity} size={36} />
             <div>
               <h3 className="text-lg font-bold text-amber-300">{ing.name}</h3>
               <p className="text-xs capitalize" style={{ color: RARITY_COLOR[ing.rarity] }}>

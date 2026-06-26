@@ -94,7 +94,7 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
                           onClick={() => setModalId(id)}
                           className="relative flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 p-2 transition hover:border-slate-500 active:scale-95"
                         >
-                          <IngredientSvg category={ing.category} size={28} />
+                          <IngredientSvg category={ing.category} rarity={ing.rarity} size={28} />
                           <span className="text-center text-[10px] leading-tight text-slate-200">{ing.name}</span>
                           <span
                             className="absolute right-1.5 top-1 text-[10px] font-bold"

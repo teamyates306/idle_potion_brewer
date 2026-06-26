@@ -217,7 +217,7 @@ function MachinePanelBody({
                 <Lock size={16} />
               ) : ing ? (
                 <>
-                  <IngredientSvg category={ing.category} size={24} />
+                  <IngredientSvg category={ing.category} rarity={ing.rarity} size={24} />
                   <span
                     className="mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300"
                     style={{ fontSize: "7px" }}
@@ -464,7 +464,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
                           if (!ing) return null;
                           return (
                             <span key={`${i}-${id}`} className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-300">
-                              <IngredientSvg category={ing.category} size={12} /> {ing.name}
+                              <IngredientSvg category={ing.category} rarity={ing.rarity} size={12} /> {ing.name}
                             </span>
                           );
                         })}

@@ -130,7 +130,7 @@ export default function PotionDetailsModal({
                   key={`${i}-${id}`}
                   className="flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
                 >
-                  <IngredientSvg category={ing.category} size={12} />
+                  <IngredientSvg category={ing.category} rarity={ing.rarity} size={12} />
                   {ing.name}
                 </span>
               );

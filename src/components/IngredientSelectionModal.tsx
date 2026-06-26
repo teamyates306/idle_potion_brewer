@@ -94,7 +94,7 @@ export default function IngredientSelectionModal({
                 >
                   {locked ? <Lock size={14} /> : ing ? (
                     <>
-                      <IngredientSvg category={ing.category} size={20} />
+                      <IngredientSvg category={ing.category} rarity={ing.rarity} size={20} />
                       <span className="mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300" style={{ fontSize: "7px" }}>{ing.name}</span>
                     </>
                   ) : <span className="text-[10px] text-slate-500">{i + 1}</span>}
@@ -146,7 +146,7 @@ export default function IngredientSelectionModal({
                         {...(itemIdx === 0 ? { "data-tut": "ingredient-item" } : {})}
                         className="relative flex flex-col items-center justify-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 p-2 transition hover:border-amber-500/60 active:scale-95"
                       >
-                        <IngredientSvg category={ing.category} size={28} />
+                        <IngredientSvg category={ing.category} rarity={ing.rarity} size={28} />
                         <span className="text-center text-[10px] leading-tight text-slate-200">{ing.name}</span>
                         <span className="absolute right-1.5 top-1 text-[10px] font-bold" style={{ color: RARITY_COLOR[ing.rarity] }}>×{count}</span>
                       </button>

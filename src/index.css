@@ -180,6 +180,36 @@ body {
 .anim-throttle .conveyor-ingredient,
 .anim-throttle .conveyor-potion { display: none; }
 
+/* Ingredient sprite rarity flair. Glow is applied inline (scales with size);
+   particles + the legendary shimmer animate here. Sparkles twinkle in place. */
+.ing-sprite { position: relative; display: inline-block; line-height: 0; }
+.ing-img { display: block; }
+@keyframes ing-twinkle {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+  50%      { transform: translate(-50%, -50%) scale(1);    opacity: 0.95; }
+}
+.ing-particle {
+  position: absolute; border-radius: 9999px; pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: ing-twinkle 1.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@keyframes ing-shimmer-sweep {
+  0%   { transform: translateX(-130%) skewX(-18deg); opacity: 0; }
+  35%  { opacity: 0.55; }
+  60%  { opacity: 0; }
+  100% { transform: translateX(230%) skewX(-18deg);  opacity: 0; }
+}
+.ing-shimmer { position: absolute; inset: 0; overflow: hidden; border-radius: 4px; pointer-events: none; }
+.ing-shimmer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), transparent);
+  animation: ing-shimmer-sweep 2.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.anim-throttle .ing-particle { animation: none; opacity: 0.7; }
+.anim-throttle .ing-shimmer { display: none; }
+
 /* Tutorial spotlight — applied directly to the target element so it works inside
    any modal without z-index fights. border-radius:inherit follows the shape. */
 @keyframes tut-target-pulse {
