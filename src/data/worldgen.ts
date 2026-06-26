@@ -49,7 +49,7 @@ interface TierCfg {
 // instead of spreading evenly across 4-5, which dramatically widens the mathematical
 // footprint of the ingredient pool (more unique stat vectors → more unique potions).
 const TIERS: TierCfg[] = [
-  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 2, mag: [4, 10],  vol: [0, 2],   tox: [0, 2],   value: [3, 8],     count: 6 },
+  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 2, mag: [4, 10],  vol: [0, 2],   tox: [0, 2],   value: [1, 4],     count: 6 },
   { rarity: "uncommon",  pools: [DOM_BASIC, DOM_ELEM],  nAttr: 2, mag: [6, 14],  vol: [1, 4],   tox: [0, 4],   value: [10, 20],   count: 8 },
   { rarity: "rare",      pools: [DOM_ELEM, DOM_BASIC],  nAttr: 3, mag: [8, 18],  vol: [3, 8],   tox: [2, 8],   value: [22, 42],   count: 12 },
   { rarity: "epic",      pools: [DOM_ELEM, DOM_MENTAL], nAttr: 3, mag: [10, 20], vol: [5, 11],  tox: [4, 11],  value: [46, 78],   count: 14 },

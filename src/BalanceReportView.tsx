@@ -286,7 +286,7 @@ function StrategyProfile({ stratName, report, defs }: {
             <p className="mt-0.5 max-w-xl text-xs text-slate-400">{defs[stratName]}</p>
           )}
         </div>
-        <div className="ml-auto flex shrink-0 flex-wrap gap-2 text-right text-xs">
+        <div className="ml-auto flex min-w-0 flex-wrap gap-2 text-right text-xs">
           <span className="rounded bg-slate-800 px-2 py-1 text-slate-300">
             <span className="font-bold text-slate-100">{fmt(sm.final_coins)}</span> coins avg
           </span>

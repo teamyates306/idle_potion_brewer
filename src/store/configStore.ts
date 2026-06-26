@@ -558,7 +558,7 @@ export const useConfigStore = create<ConfigState>()(
       // redesign so stale persisted config (old locations/formulas) is dropped.
       // This store holds no player progress (that lives in gameStore), so a
       // fresh rehydrate from code defaults is safe.
-      name: "ipb-config-v2",
+      name: "ipb-config-v3",
       storage: safeStorage,
       // Merge saved formulas over defaults so new formula keys added in code still appear
       merge: (persisted: unknown, current: ConfigState): ConfigState => {
