@@ -27,7 +27,7 @@ const SCROLL_EXTRA = 140; // a little extra pan past the brewers, once scrolling
 // Scrolling stone floor — distinct (darker, horizontal courses) from the lit wall
 // bricks so its motion reads. Lives inside the scroll content, so it travels.
 const FLOOR_BG =
-  "#3a2a1a url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='32'><rect width='96' height='32' fill='%233a2a1a'/><rect x='1' y='1' width='46' height='13' rx='2' fill='%23473521'/><rect x='49' y='1' width='46' height='13' rx='2' fill='%23412f1d'/><rect x='-23' y='16' width='46' height='13' rx='2' fill='%23412f1d'/><rect x='25' y='16' width='46' height='13' rx='2' fill='%23473521'/><rect x='73' y='16' width='46' height='13' rx='2' fill='%23412f1d'/></svg>\")";
+  "#8a857c url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='32'><rect width='96' height='32' fill='%238a857c'/><rect x='1' y='1' width='46' height='13' rx='2' fill='%23aaa49a'/><rect x='49' y='1' width='46' height='13' rx='2' fill='%239c968c'/><rect x='-23' y='16' width='46' height='13' rx='2' fill='%239c968c'/><rect x='25' y='16' width='46' height='13' rx='2' fill='%23aaa49a'/><rect x='73' y='16' width='46' height='13' rx='2' fill='%239c968c'/></svg>\")";
 const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
@@ -599,7 +599,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Floor — part of the scroll content, so it travels with the cauldrons */}
           <div
             className="pointer-events-none absolute inset-x-0 z-0"
-            style={{ top: 92, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 14px 22px -10px rgba(0,0,0,0.6)" }}
+            style={{ top: 92, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 12px 20px -12px rgba(60,54,46,0.30)" }}
           />
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
@@ -752,16 +752,16 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
       <svg width={width} height="96" viewBox={`0 0 ${width} 96`} preserveAspectRatio="none" fill="none">
         <defs>
           <pattern id="wallBricks" width="104" height="40" patternUnits="userSpaceOnUse">
-            <rect width="104" height="40" fill="#5a4028" />
-            <rect x="1"   y="1"  width="50" height="18" rx="2" fill="#6b5035" />
-            <rect x="53"  y="1"  width="50" height="18" rx="2" fill="#5e4228" />
-            <rect x="-25" y="21" width="50" height="18" rx="2" fill="#5e4228" />
-            <rect x="27"  y="21" width="50" height="18" rx="2" fill="#6b5035" />
-            <rect x="79"  y="21" width="50" height="18" rx="2" fill="#5e4228" />
+            <rect width="104" height="40" fill="#9a958c" />
+            <rect x="1"   y="1"  width="50" height="18" rx="2" fill="#b4aea4" />
+            <rect x="53"  y="1"  width="50" height="18" rx="2" fill="#a6a098" />
+            <rect x="-25" y="21" width="50" height="18" rx="2" fill="#a6a098" />
+            <rect x="27"  y="21" width="50" height="18" rx="2" fill="#b4aea4" />
+            <rect x="79"  y="21" width="50" height="18" rx="2" fill="#a6a098" />
           </pattern>
           <linearGradient id="wallFade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0.74" stopColor="transparent" />
-            <stop offset="1" stopColor="#3d2a10" stopOpacity="0.45" />
+            <stop offset="1" stopColor="#6b665e" stopOpacity="0.28" />
           </linearGradient>
         </defs>
         <rect width={width} height="96" fill="url(#wallBricks)" />
