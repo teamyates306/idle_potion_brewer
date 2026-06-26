@@ -70,7 +70,7 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     name: "Rootmoss",
     category: "root",
     rarity: "common",
-    base_value: 4,
+    base_value: 3,
     attributes: {
       strength: 3, speed: -1, vitality: 4, density: 2, elasticity: 0,
       focus: 0, mana: 0, resonance: 0, insight: 0, luck: 0,
@@ -85,7 +85,7 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     name: "Firepetal",
     category: "petal",
     rarity: "common",
-    base_value: 5,
+    base_value: 4,
     attributes: {
       strength: 3, speed: 4, vitality: 0, density: 0, elasticity: 2,
       focus: 0, mana: 0, resonance: 0, insight: 0, luck: 1,
@@ -100,7 +100,7 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     name: "Dewcap",
     category: "fungus",
     rarity: "common",
-    base_value: 4,
+    base_value: 3,
     attributes: {
       strength: 1, speed: 5, vitality: 2, density: 0, elasticity: 0,
       focus: 4, mana: 0, resonance: 2, insight: 0, luck: 0,
