@@ -143,7 +143,7 @@ function QuestCard({
     <div className={`rounded-xl border p-3 ${style.bg}`}>
       <div className="mb-2 flex items-center justify-between">
         <span className={`text-xs font-bold uppercase tracking-wider ${style.text}`}>{quest.difficulty}</span>
-        <span className="flex items-center gap-1 text-sm font-semibold text-yellow-300">🪙 {fmt(quest.reward)}</span>
+        <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">🪙 {fmt(quest.reward)}</span>
       </div>
 
       <div className="space-y-2">
@@ -154,8 +154,8 @@ function QuestCard({
           return (
             <button key={req.name} onClick={() => onPickName(req.name)} className="block w-full text-left">
               <div className="mb-0.5 flex items-center justify-between text-xs">
-                <span className={`truncate ${done ? "text-green-300" : "text-slate-200"}`}>{req.name}</span>
-                <span className={`ml-2 shrink-0 tabular-nums ${done ? "text-green-400" : "text-slate-400"}`}>
+                <span className={`truncate ${done ? "text-green-700" : "text-slate-200"}`}>{req.name}</span>
+                <span className={`ml-2 shrink-0 tabular-nums ${done ? "text-green-700" : "text-slate-400"}`}>
                   {Math.min(owned, req.quantity)}/{req.quantity}
                 </span>
               </div>

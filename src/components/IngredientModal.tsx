@@ -91,7 +91,7 @@ export default function IngredientModal({
           <div className="flex items-center gap-3">
             <IngredientSvg category={ing.category} rarity={ing.rarity} size={36} />
             <div>
-              <h3 className="text-lg font-bold text-amber-300">{ing.name}</h3>
+              <h3 className="text-lg font-bold text-amber-800">{ing.name}</h3>
               <p className="text-xs capitalize" style={{ color: RARITY_COLOR[ing.rarity] }}>
                 {ing.rarity} · {ing.category}
               </p>
@@ -132,7 +132,7 @@ export default function IngredientModal({
                   </div>
                   <div
                     className={`mt-0.5 text-sm font-bold ${
-                      val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-600"
+                      val > 0 ? "text-green-700" : val < 0 ? "text-red-600" : "text-slate-600"
                     }`}
                   >
                     {val > 0 ? "+" : ""}{val}
@@ -143,7 +143,7 @@ export default function IngredientModal({
           </>
         ) : (
           <div className="rounded-lg border border-amber-800/30 bg-amber-950/20 p-3">
-            <p className="text-xs italic text-amber-200/70">{vagueImpression(ing.attributes)}</p>
+            <p className="text-xs italic text-amber-800/80">{vagueImpression(ing.attributes)}</p>
           </div>
         )}
 

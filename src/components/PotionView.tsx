@@ -128,7 +128,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                   return (
                     <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
                       {auto && selectMode && (
-                        <button onClick={() => toggleSel(hash)} className="shrink-0 text-amber-300">
+                        <button onClick={() => toggleSel(hash)} className="shrink-0 text-amber-700">
                           {checked ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
                       )}
@@ -139,7 +139,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                       >
                         <Sparkles size={14} className={`shrink-0 ${auto ? "text-amber-400" : "text-purple-400"}`} />
                         <div className="min-w-0">
-                          <div className={`truncate font-medium ${auto ? "text-amber-200" : "text-purple-200"}`}>{d.name}</div>
+                          <div className={`truncate font-medium ${auto ? "text-amber-800" : "text-purple-800"}`}>{d.name}</div>
                           <div className="text-xs text-slate-400">×{count} · 🪙 {fmt(d.value)} each</div>
                         </div>
                       </button>
@@ -266,7 +266,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                         className="flex flex-col rounded-lg border border-purple-900/40 bg-slate-800/60 p-3 text-left transition hover:border-purple-500/50 hover:bg-slate-700/60 active:scale-[0.98]"
                       >
                         <FlaskConical size={20} className="mb-1.5 text-purple-400" />
-                        <span className="text-xs font-semibold leading-tight text-purple-200">{g.name}</span>
+                        <span className="text-xs font-semibold leading-tight text-purple-800">{g.name}</span>
                         <span className="mt-1 text-[10px] text-slate-500">
                           🪙 {fmt(g.maxValue)} · {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""}
                         </span>
@@ -378,12 +378,12 @@ export function SupplyChainDashboard() {
       {/* Potion output summary per brewer */}
       {machineOutputs.length > 0 && (
         <div className="rounded-lg border border-violet-700/40 bg-violet-950/20 p-3">
-          <p className="mb-2 text-[10px] uppercase tracking-wider text-violet-400">Effective Potion Output</p>
+          <p className="mb-2 text-[10px] uppercase tracking-wider text-violet-700">Effective Potion Output</p>
           <div className="space-y-1">
             {machineOutputs.map((o) => (
               <div key={o.id} className="flex justify-between text-xs">
                 <span className="text-slate-400">{o.name}</span>
-                <span className="text-violet-200 font-semibold">{o.potionsPerHr.toFixed(1)}/hr</span>
+                <span className="text-violet-800 font-semibold">{o.potionsPerHr.toFixed(1)}/hr</span>
               </div>
             ))}
           </div>
@@ -415,7 +415,7 @@ export function SupplyChainDashboard() {
           >
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-slate-200">{ing?.name ?? id}</span>
-              <span className={`text-xs font-semibold ${isDeficit ? "text-red-400" : isSurplus ? "text-emerald-400" : "text-slate-400"}`}>
+              <span className={`text-xs font-semibold ${isDeficit ? "text-red-600" : isSurplus ? "text-emerald-700" : "text-slate-400"}`}>
                 {net > 0 ? "+" : ""}{net.toFixed(1)}/hr
               </span>
             </div>

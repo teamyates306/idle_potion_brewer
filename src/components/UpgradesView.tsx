@@ -30,8 +30,8 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
                 Each cauldron click shaves time off the current brew.
               </p>
               <p className="mt-2 text-xs text-slate-300">
-                Current: <span className="font-bold text-violet-300">-{currentPower.toFixed(2)}s</span>
-                {" "}→ Next: <span className="font-bold text-green-300">-{nextPower.toFixed(2)}s</span>
+                Current: <span className="font-bold text-violet-800">-{currentPower.toFixed(2)}s</span>
+                {" "}→ Next: <span className="font-bold text-green-700">-{nextPower.toFixed(2)}s</span>
               </p>
               <p className="mt-0.5 text-xs text-slate-400">Level {level}</p>
             </div>
@@ -113,7 +113,7 @@ function ClickPowerBtn({
       onClick={handle}
       className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition active:scale-95 ${
         spending
-          ? "border-violet-400/40 bg-violet-500/10 text-violet-300/60"
+          ? "border-violet-400/40 bg-violet-500/10 text-violet-800/70"
           : affordable
           ? "border-violet-500/60 bg-violet-600/20 text-violet-200 hover:bg-violet-600/30"
           : "border-slate-700 bg-slate-800/40 text-slate-500"

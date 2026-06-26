@@ -76,7 +76,7 @@ export default function PotionDetailsModal({
         {/* Header */}
         <div className="mb-4 flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold text-purple-300">{potion.name}</h3>
+            <h3 className="text-lg font-bold text-purple-800">{potion.name}</h3>
             <p className="text-xs text-slate-400">
               ×{count} in inventory · 🪙 {fmt(potion.value)} each
             </p>
@@ -149,7 +149,7 @@ export default function PotionDetailsModal({
                     <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
                     <div
                       className={`text-base font-bold ${
-                        val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"
+                        val > 0 ? "text-green-700" : val < 0 ? "text-red-600" : "text-slate-500"
                       }`}
                     >
                       {val > 0 ? "+" : ""}
@@ -163,8 +163,8 @@ export default function PotionDetailsModal({
             </div>
           </>
         ) : (
-          <div className="mb-4 rounded-lg border border-purple-800/30 bg-purple-950/20 p-3">
-            <p className="text-xs italic text-purple-200/60">
+          <div className="mb-4 rounded-lg border border-purple-300 bg-purple-100/50 p-3">
+            <p className="text-xs italic text-purple-800/80">
               The potion shimmers with unseen potential. Equip Alchemist's Spectacles to read its true properties and value.
             </p>
           </div>

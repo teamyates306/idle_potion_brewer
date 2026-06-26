@@ -69,7 +69,7 @@ export default function IngredientSelectionModal({
       <div className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-amber-700/50 bg-slate-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-          <h3 className="text-base font-bold text-amber-300">{machine.name} · Recipe</h3>
+          <h3 className="text-base font-bold text-amber-800">{machine.name} · Recipe</h3>
           <button onClick={onClose} data-tut="close-ingredient" className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
 
@@ -163,7 +163,7 @@ export default function IngredientSelectionModal({
           <div className="border-t border-slate-800 px-4 py-2.5 text-center text-xs">
             {discoveredPotions.includes(preview.hash) ? (
               <>
-                <span className="font-semibold text-amber-300">{preview.name}</span>
+                <span className="font-semibold text-amber-800">{preview.name}</span>
                 <span className="text-slate-500"> · 🪙 {fmt(preview.value)}</span>
               </>
             ) : (

@@ -265,7 +265,7 @@ function MapNode({
                 >
                   <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
                   {found ? ing.name : "???"}
-                  {pct && <span className="text-emerald-400 ml-0.5">{pct}</span>}
+                  {pct && <span className="text-emerald-700 ml-0.5">{pct}</span>}
                 </span>
               );
             })
@@ -326,7 +326,7 @@ function LocationDetailModal({
         {/* Header */}
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #4ade8033" }}>
           <div>
-            <h2 className="text-lg font-semibold text-green-300">{loc.name}</h2>
+            <h2 className="text-lg font-semibold text-green-800">{loc.name}</h2>
             <p className="flex items-center gap-1 text-xs text-slate-500"><Footprints size={11} /> Distance {loc.distance}</p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
@@ -360,7 +360,7 @@ function LocationDetailModal({
                 <span key={d.ingredientId} className="flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-1 text-xs text-slate-200">
                   <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
                   {found ? ing.name : "???"}
-                  {pct && <span className="text-emerald-400 font-semibold">{pct}</span>}
+                  {pct && <span className="text-emerald-700 font-semibold">{pct}</span>}
                 </span>
               );
             })}
@@ -429,7 +429,7 @@ function LocationDetailModal({
               <button
                 onClick={() => { setBulkMode((m) => !m); setBulkSel(new Set()); }}
                 className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
-                  bulkMode ? "bg-green-700 text-white" : "text-green-400 hover:bg-green-950/50"
+                  bulkMode ? "bg-green-700 text-white" : "text-green-700 hover:bg-green-100"
                 }`}
               >
                 {bulkMode ? "Cancel" : "Bulk select"}
@@ -452,7 +452,7 @@ function LocationDetailModal({
                     } ${!bulkMode && idx === preferredWorkerIndex ? "ring-1 ring-green-400/30" : ""}`}
                   >
                     {bulkMode && (
-                      <span className="shrink-0 text-green-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
+                      <span className="shrink-0 text-green-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
                     )}
                     <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
                       <WorkerArt size={36} color={worker.color} carrying={isHere && isActive} />

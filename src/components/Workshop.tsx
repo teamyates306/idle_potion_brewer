@@ -346,7 +346,7 @@ const MachineColumn = React.memo(function MachineColumn({
         if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-500">No recipe</span>;
         if (!machine.running) return <span className="mt-1 text-[10px] text-stone-500">Idle</span>;
         if (machine.brew_stalled) return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Need ingredients</span>;
-        return <span className="mt-1 text-[10px] text-amber-300/70">Brewing…</span>;
+        return <span className="mt-1 text-[10px] text-amber-700/80">Brewing…</span>;
       })()}
       <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
 
@@ -551,7 +551,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       {/* ── Right-rail badges — outside scroll, always fixed to the right ── */}
       <div className="pointer-events-none absolute inset-0 z-20">
         <RailBadge
-          icon={<User size={18} className={anyTokens ? "text-yellow-400" : "text-amber-400"} />}
+          icon={<User size={18} className={anyTokens ? "text-amber-600" : "text-amber-700"} />}
           label="Workers"
           onClick={() => onOpen("worker")}
           top={badgeY.workers}
@@ -560,13 +560,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           dataTut="workers"
         />
         <RailBadge
-          icon={<Package size={18} className="text-amber-400" />}
+          icon={<Package size={18} className="text-amber-700" />}
           label="Stash"
           onClick={() => onOpen("inventory")}
           top={badgeY.stash}
         />
         <RailBadge
-          icon={<Settings2 size={18} className={anyMachineTokens ? "text-yellow-400" : "text-amber-400"} />}
+          icon={<Settings2 size={18} className={anyMachineTokens ? "text-amber-600" : "text-amber-700"} />}
           label="Brewing"
           onClick={() => onOpen("machine")}
           top={badgeY.brewing}
@@ -575,7 +575,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           dataTut="brewing"
         />
         <RailBadge
-          icon={<ShoppingBag size={18} className="text-amber-400" />}
+          icon={<ShoppingBag size={18} className="text-amber-700" />}
           label="Market"
           onClick={() => onOpen("potion")}
           top={badgeY.market}

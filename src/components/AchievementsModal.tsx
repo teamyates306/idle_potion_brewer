@@ -46,7 +46,7 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
       <Modal title="Achievements" onClose={onClose} accent="#fbbf24">
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
           <Trophy size={14} className="text-amber-400" />
-          <span className="font-semibold text-amber-300">{unlocked.length}</span> / {ACHIEVEMENTS.length} unlocked
+          <span className="font-semibold text-amber-700">{unlocked.length}</span> / {ACHIEVEMENTS.length} unlocked
         </div>
 
         <div className="space-y-4">
@@ -63,7 +63,7 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
                   onClick={() => toggleGroup(group.name)}
                   className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-slate-800/40 transition"
                 >
-                  <span className="text-sm font-semibold text-amber-200">{group.name}</span>
+                  <span className="text-sm font-semibold text-amber-800">{group.name}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400">
                       {unlockedCount} / {groupAchievements.length}
@@ -88,13 +88,13 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
                         >
                           <span className="shrink-0">
                             {isUnlocked
-                              ? <Trophy size={18} className="text-amber-400" />
+                              ? <Trophy size={18} className="text-amber-600" />
                               : hiddenSecret
                               ? <HelpCircle size={18} className="text-slate-600" />
                               : <Lock size={16} className="text-slate-500" />}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className={`block text-sm font-semibold ${isUnlocked ? "text-amber-200" : hiddenSecret ? "text-slate-500" : "text-slate-300"}`}>
+                            <span className={`block text-sm font-semibold ${isUnlocked ? "text-amber-800" : hiddenSecret ? "text-slate-500" : "text-slate-300"}`}>
                               {hiddenSecret ? "??? Secret Achievement" : a.name}
                             </span>
                             <span className="block truncate text-[11px] text-slate-500">
@@ -108,7 +108,7 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
                           {isUnlocked && !isCollected && (
                             <button
                               onClick={() => setCollectTarget(a)}
-                              className="shrink-0 animate-pulse rounded-lg border border-amber-500/70 bg-amber-600/30 px-2.5 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-600/50 hover:animate-none"
+                              className="shrink-0 animate-pulse rounded-lg border border-amber-600 bg-amber-200 px-2.5 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-300 hover:animate-none"
                             >
                               Collect Reward
                             </button>
@@ -175,11 +175,11 @@ function CollectRewardModal({ a, onClose }: { a: Achievement; onClose: () => voi
         <div className="mb-3 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
-              <Trophy size={22} className="text-amber-400" />
+              <Trophy size={22} className="text-amber-600" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-amber-200">{a.name}</h3>
-              <p className="text-xs font-semibold uppercase tracking-wider text-green-400">Unlocked</p>
+              <h3 className="text-lg font-bold text-amber-800">{a.name}</h3>
+              <p className="text-xs font-semibold uppercase tracking-wider text-green-700">Unlocked</p>
             </div>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200">
@@ -193,7 +193,7 @@ function CollectRewardModal({ a, onClose }: { a: Achievement; onClose: () => voi
           <div className="mb-1.5 text-[10px] uppercase tracking-wider text-slate-500">Rewards</div>
           <div className="flex flex-wrap gap-2">
             {a.rewards.map((r, i) => (
-              <span key={i} className="rounded-full bg-amber-900/40 px-2.5 py-1 text-xs font-semibold text-amber-200">
+              <span key={i} className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-900">
                 {r.label}
               </span>
             ))}

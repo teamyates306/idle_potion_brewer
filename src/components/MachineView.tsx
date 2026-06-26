@@ -139,9 +139,9 @@ function MachinePanelBody({
 
       {tokens > 0 && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2 text-sm">
-          <span className="text-yellow-400">✦</span>
-          <span className="text-yellow-200 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
-          <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
+          <span className="text-amber-600">✦</span>
+          <span className="text-amber-800 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
+          <span className="ml-auto text-xs text-amber-700">earned from levelling up</span>
         </div>
       )}
 
@@ -254,7 +254,7 @@ function MachinePanelBody({
           <>
             <div className="flex items-center justify-between">
               {isKnownPotion ? (
-                <span className="font-semibold text-amber-300">{preview.name}</span>
+                <span className="font-semibold text-amber-800">{preview.name}</span>
               ) : (
                 <span className="font-semibold text-slate-500 italic tracking-wider">??? Undiscovered</span>
               )}
@@ -274,7 +274,7 @@ function MachinePanelBody({
                   .map(([attr, val]) => (
                     <div key={attr} className="rounded bg-slate-900/70 p-1.5 text-center">
                       <div className="text-[10px] uppercase text-slate-500">{attr.slice(0, 3)}</div>
-                      <div className={`text-sm font-semibold ${val > 0 ? "text-green-400" : val < 0 ? "text-red-400" : "text-slate-500"}`}>
+                      <div className={`text-sm font-semibold ${val > 0 ? "text-green-700" : val < 0 ? "text-red-600" : "text-slate-500"}`}>
                         {val > 0 ? "+" : ""}{val}
                       </div>
                     </div>
@@ -400,7 +400,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
           {selected && (
             <button onClick={() => setName(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><ChevronLeft size={18} /></button>
           )}
-          <h3 className="flex-1 text-base font-bold text-violet-300">
+          <h3 className="flex-1 text-base font-bold text-violet-800">
             {selected ? selected.name : "Select a Discovered Potion"}
           </h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
@@ -428,7 +428,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
                     className="flex w-full items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 p-2.5 text-left transition hover:border-violet-500/60 active:scale-[0.99]"
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-violet-200">{g.name}</span>
+                      <span className="block truncate text-sm font-medium text-violet-800">{g.name}</span>
                       <span className="block text-[11px] text-slate-400">{g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""} · best 🪙 {fmt(g.maxValue)}</span>
                     </span>
                     <ChevronLeft size={16} className="shrink-0 rotate-180 text-slate-500" />
@@ -456,7 +456,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
                     >
                       <div className="mb-1 flex items-center justify-between">
                         <span className="text-xs font-semibold text-slate-200">🪙 {fmt(d!.value)}</span>
-                        {!fits && <span className="text-[10px] text-rose-300">needs {ids.length} slots</span>}
+                        {!fits && <span className="text-[10px] text-rose-600">needs {ids.length} slots</span>}
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {ids.map((id, i) => {
@@ -556,12 +556,12 @@ function BrewAnalytics({
           />
         )}
         <div className="mt-2 border-t border-teal-800/40 pt-2 space-y-1">
-          <div className="flex justify-between font-semibold text-teal-200">
+          <div className="flex justify-between font-semibold text-teal-800">
             <span>Brew cycles</span>
             <span>{fmtRate(cyclesPerSec)} · {cyclesPerSec.toFixed(3)}/s</span>
           </div>
           {multiBrewChance > 0 && (
-            <div className="flex justify-between text-violet-300">
+            <div className="flex justify-between text-violet-800">
               <span>Potions out ({(multiBrewChance * 100).toFixed(0)}% multi-brew)</span>
               <span>{fmtRate(potionsPerSec)} · {potionsPerSec.toFixed(3)}/s</span>
             </div>
@@ -574,7 +574,7 @@ function BrewAnalytics({
 
 function AnalyticsRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className={`flex items-baseline justify-between gap-2 ${highlight ? "text-teal-300" : "text-slate-400"}`}>
+    <div className={`flex items-baseline justify-between gap-2 ${highlight ? "text-teal-700" : "text-slate-400"}`}>
       <span className="min-w-0 flex-1 text-[10px] leading-tight">{label}</span>
       <span className="shrink-0 font-semibold text-slate-200">{value}</span>
     </div>
@@ -619,12 +619,12 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
                 opt.affordable ? "bg-yellow-700/30 hover:bg-yellow-700/50" : "cursor-not-allowed bg-slate-800/60 opacity-60"
               } ${dim ? "!opacity-5" : ""} ${isSpending ? "token-vanish" : ""}`}
             >
-              <span className={opt.affordable ? "text-yellow-300" : "text-slate-500"}>{opt.icon}</span>
+              <span className={opt.affordable ? "text-amber-700" : "text-slate-500"}>{opt.icon}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
               </span>
-              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-yellow-200" : "text-slate-500"}`}>
+              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
                 🪙 {fmt(opt.cost)}
               </span>
               {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}

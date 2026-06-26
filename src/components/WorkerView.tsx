@@ -46,7 +46,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
       }`}
     >
       {selectMode && (
-        <span className="shrink-0 text-cyan-300">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
+        <span className="shrink-0 text-cyan-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
       )}
       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
         <WorkerArt size={44} color={worker.color} specialization={worker.specialization} />
@@ -236,7 +236,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         {/* Bulk-assign bar */}
         {selectMode && (
           <div className="sticky bottom-0 mt-3 rounded-xl border border-cyan-700/50 bg-slate-900/95 p-2.5 backdrop-blur">
-            <div className="mb-2 text-[11px] text-cyan-300">{selected.size} selected</div>
+            <div className="mb-2 text-[11px] text-cyan-700">{selected.size} selected</div>
             <div className="flex items-center gap-2">
               <select
                 value={bulkDest}
@@ -364,7 +364,7 @@ function WorkerDetailModal({
               <WorkerArt size={40} color={worker.color} specialization={spec} />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-cyan-300">{worker.name}</h2>
+              <h2 className="text-lg font-semibold text-cyan-800">{worker.name}</h2>
               <p className="text-xs text-slate-400">
                 Level {worker.level} {spec !== "none" && spec !== "standard" ? `· ${spec.charAt(0).toUpperCase() + spec.slice(1)}` : "Worker"}
               </p>
@@ -385,7 +385,7 @@ function WorkerDetailModal({
         {tokens > 0 && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2.5 text-sm">
             <span className="text-yellow-400">✦</span>
-            <span className="text-yellow-200 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
+            <span className="text-amber-800 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
             <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
           </div>
         )}
@@ -395,7 +395,7 @@ function WorkerDetailModal({
             <>
               <Hammer size={15} className="shrink-0 text-amber-400" />
               <span className="text-slate-100">Working the Cauldron</span>
-              <span className="ml-auto shrink-0 text-xs text-amber-300">−{reductionPerSec.toFixed(2)}s/s</span>
+              <span className="ml-auto shrink-0 text-xs text-amber-700">−{reductionPerSec.toFixed(2)}s/s</span>
             </>
           ) : loc ? (
             <>
@@ -448,7 +448,7 @@ function WorkerDetailModal({
                 {preSpecTokensRemaining > 0 ? "Spend token before choosing class" : "Spend upgrade token"}
               </p>
               {reductionPerSec > 0 && (
-                <span className="text-[10px] text-amber-300/80">Cauldron −{reductionPerSec.toFixed(2)}s/s</span>
+                <span className="text-[10px] text-amber-700/90">Cauldron −{reductionPerSec.toFixed(2)}s/s</span>
               )}
             </div>
             <TokenUpgrades
@@ -527,7 +527,7 @@ function BrewerPicker({ workerName, onPick, onClose }: { workerName: string; onP
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
       <div className="w-full max-w-sm rounded-2xl border border-amber-700/50 bg-slate-900 p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-base font-semibold text-amber-300">Assign {workerName} to…</h3>
+          <h3 className="text-base font-semibold text-amber-800">Assign {workerName} to…</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
         <div className="space-y-2">
@@ -612,13 +612,13 @@ function SpecializationPicker({ onPick }: { onPick: (choice: WorkerSpecializatio
     <div className="mb-4 rounded-xl border border-violet-500/40 bg-violet-950/30 p-4">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-base">✨</span>
-        <span className="font-semibold text-violet-300">Choose a Specialization</span>
+        <span className="font-semibold text-violet-800">Choose a Specialization</span>
         <span className="ml-auto text-[10px] text-violet-500">Level 10 milestone · permanent</span>
       </div>
       {confirm ? (
         <div className="space-y-3">
           <p className="text-sm text-slate-300">
-            Confirm <span className="font-bold text-violet-300">{choice!.label}</span>? This choice is <span className="text-rose-400 font-semibold">permanent</span>.
+            Confirm <span className="font-bold text-violet-800">{choice!.label}</span>? This choice is <span className="text-rose-600 font-semibold">permanent</span>.
           </p>
           <p className="text-xs text-slate-400">{choice!.restriction}</p>
           <div className="flex gap-2">
@@ -704,12 +704,12 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
                 opt.affordable ? "bg-yellow-700/30 hover:bg-yellow-700/50" : "cursor-not-allowed bg-slate-800/60 opacity-60"
               } ${dim ? "!opacity-5" : ""} ${isSpending ? "token-vanish" : ""}`}
             >
-              <span className={opt.affordable ? "text-yellow-300" : "text-slate-500"}>{opt.icon}</span>
+              <span className={opt.affordable ? "text-amber-700" : "text-slate-500"}>{opt.icon}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
               </span>
-              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-yellow-200" : "text-slate-500"}`}>
+              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
                 🪙 {fmt(opt.cost)}
               </span>
               {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}

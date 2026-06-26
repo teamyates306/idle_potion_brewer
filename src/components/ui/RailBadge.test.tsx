@@ -73,9 +73,9 @@ describe("RailBadge — glow effect for token upgrades", () => {
       <RailBadge icon={<Icon />} label="Workers" onClick={() => {}} top={100} glow={true} />
     );
     const btn = container.querySelector("button")!;
-    expect(btn.className).toContain("border-yellow-500");
-    expect(btn.className).toContain("text-yellow-300");
-    expect(btn.className).toContain("shadow-[0_0_10px_2px_rgba(234,179,8,0.25)]");
+    expect(btn.className).toContain("border-amber-500");
+    expect(btn.className).toContain("text-amber-900");
+    expect(btn.className).toContain("shadow-[0_0_10px_2px_rgba(202,138,4,0.30)]");
   });
 
   it("uses amber border (no glow) when glow=false", () => {
@@ -83,7 +83,7 @@ describe("RailBadge — glow effect for token upgrades", () => {
       <RailBadge icon={<Icon />} label="Workers" onClick={() => {}} top={100} glow={false} />
     );
     const btn = container.querySelector("button")!;
-    expect(btn.className).toContain("border-amber-700");
+    expect(btn.className).toContain("border-amber-800");
     expect(btn.className).not.toContain("border-yellow-500");
   });
 });
