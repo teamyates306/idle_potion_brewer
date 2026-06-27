@@ -26,8 +26,7 @@ const WORLD_W = MAX_MACHINES * COL_W + EDGE_BUFFER * 2;
 const SCROLL_EXTRA = 140; // a little extra pan past the brewers, once scrolling is unlocked
 // Scrolling stone floor — distinct (darker, horizontal courses) from the lit wall
 // bricks so its motion reads. Lives inside the scroll content, so it travels.
-const FLOOR_BG =
-  "#8a857c url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='32'><rect width='96' height='32' fill='%238a857c'/><rect x='1' y='1' width='46' height='13' rx='2' fill='%23aaa49a'/><rect x='49' y='1' width='46' height='13' rx='2' fill='%239c968c'/><rect x='-23' y='16' width='46' height='13' rx='2' fill='%239c968c'/><rect x='25' y='16' width='46' height='13' rx='2' fill='%23aaa49a'/><rect x='73' y='16' width='46' height='13' rx='2' fill='%239c968c'/></svg>\")";
+const FLOOR_BG = "#8a857c url('/sprites/floor-tile.svg')";
 const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
