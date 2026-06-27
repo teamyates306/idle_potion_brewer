@@ -19,6 +19,15 @@ import type { Worker, WorkerSpecialization } from "../types";
 
 const HIRE_COST_BASE = 500;
 
+// Mirrors gameStore's specMult — used for accurate upgrade previews in the detail modal.
+function specMult(spec: WorkerSpecialization, type: "speed" | "size" | "clkspd" | "clkpow"): number {
+  if (spec === "explorer") return type === "speed" ? 1.2 : type === "size" ? 0.8 : 1.0;
+  if (spec === "caravan")  return type === "size"  ? 1.2 : type === "speed" ? 0.8 : 1.0;
+  if (spec === "pounder")  return type === "clkpow" ? 1.2 : type === "clkspd" ? 0.8 : 1.0;
+  if (spec === "manic")    return type === "clkspd" ? 1.2 : type === "clkpow" ? 0.8 : 1.0;
+  return 1.0;
+}
+
 // ── Worker grouping for bulk-select compatibility ─────────────────────────────
 type WorkerGroup = "unclassed" | "gatherer" | "brewer" | "standard";
 
@@ -629,23 +638,30 @@ function WorkerDetailModal({
             <TokenUpgrades
               options={[
                 // Gatherer upgrades — hidden for brewer-only specs (pounder/manic)
-                ...(spec !== "pounder" && spec !== "manic" ? [
-                  { key: "gspeed", icon: <Gauge size={14} />, label: "+0.25 Gather Speed",
-                    detail: `${worker.gather_speed.toFixed(2)} → ${(worker.gather_speed + 0.25).toFixed(2)}`,
-                    cost: speedCost, affordable: coins >= speedCost, onBuy: () => buySpeed(workerIndex) },
-                  { key: "gsize", icon: <Package size={14} />, label: "+0.5 Carry Size",
-                    detail: `${worker.retrieval_size.toFixed(1)} → ${(worker.retrieval_size + 0.5).toFixed(1)} · ${carryHint(worker.retrieval_size + 0.5)}`,
-                    cost: sizeCost, affordable: coins >= sizeCost, onBuy: () => buySize(workerIndex) },
-                ] : []),
+                ...(spec !== "pounder" && spec !== "manic" ? (() => {
+                  const speedGain = +(0.25 * specMult(spec, "speed")).toFixed(2);
+                  const sizeGain  = +(0.5  * specMult(spec, "size")).toFixed(2);
+                  return [
+                    { key: "gspeed", icon: <Gauge size={14} />, label: `+${speedGain} Gather Speed`,
+                      detail: `${worker.gather_speed.toFixed(2)} → ${(worker.gather_speed + speedGain).toFixed(2)}`,
+                      cost: speedCost, affordable: coins >= speedCost, onBuy: () => buySpeed(workerIndex) },
+                    { key: "gsize", icon: <Package size={14} />, label: `+${sizeGain} Carry Size`,
+                      detail: `${worker.retrieval_size.toFixed(1)} → ${(worker.retrieval_size + sizeGain).toFixed(1)} · ${carryHint(worker.retrieval_size + sizeGain)}`,
+                      cost: sizeCost, affordable: coins >= sizeCost, onBuy: () => buySize(workerIndex) },
+                  ];
+                })() : []),
                 // Clicker upgrades — hidden for location-only specs (explorer/caravan)
-                ...(spec !== "explorer" && spec !== "caravan" ? [
-                  { key: "cspeed", icon: <Timer size={14} />, label: "+0.2× Click Speed",
-                    detail: `${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + 0.2).toFixed(1)}×`,
-                    cost: clickSpeedCost, affordable: coins >= clickSpeedCost, onBuy: () => buyClickSpeed(workerIndex) },
-                  { key: "cpower", icon: <Zap size={14} />, label: "Click Power",
-                    detail: `−${power.toFixed(2)}s → −${nextPower.toFixed(2)}s per hit`,
-                    cost: clickPowerCost, affordable: coins >= clickPowerCost, onBuy: () => buyClickPower(workerIndex) },
-                ] : []),
+                ...(spec !== "explorer" && spec !== "caravan" ? (() => {
+                  const csGain = +(0.2 * specMult(spec, "clkspd")).toFixed(2);
+                  return [
+                    { key: "cspeed", icon: <Timer size={14} />, label: `+${csGain}× Click Speed`,
+                      detail: `${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + csGain).toFixed(1)}×`,
+                      cost: clickSpeedCost, affordable: coins >= clickSpeedCost, onBuy: () => buyClickSpeed(workerIndex) },
+                    { key: "cpower", icon: <Zap size={14} />, label: "Click Power",
+                      detail: `−${power.toFixed(2)}s → −${nextPower.toFixed(2)}s per hit`,
+                      cost: clickPowerCost, affordable: coins >= clickPowerCost, onBuy: () => buyClickPower(workerIndex) },
+                  ];
+                })() : []),
               ]}
             />
           </div>
