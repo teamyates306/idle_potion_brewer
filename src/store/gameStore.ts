@@ -257,6 +257,7 @@ interface GameState {
   assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
   specializeWorker: (workerIndex: number, choice: WorkerSpecialization) => void;
   bulkAssign: (workerIndices: number[], locationId: string | null, machineId: number | null) => void;
+  bulkSpendTokens: (workerIndices: number[], upgradeType: "speed" | "size" | "clkspd" | "clkpow", count: number) => void;
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
   hireWorker: () => void;
@@ -481,6 +482,47 @@ export const useGameStore = create<GameState>()(
         });
         if (locationId) get().advanceTutorial(3); // tutorial: sent workers to the map
       },
+
+      bulkSpendTokens: (workerIndices, upgradeType, count) =>
+        set((s) => {
+          if (count < 1 || workerIndices.length === 0) return {};
+          const cfg = useConfigStore.getState();
+          // Calculate total coin cost and verify every worker can afford `count` upgrades.
+          let totalCoinCost = 0;
+          for (const idx of workerIndices) {
+            const w = s.workers[idx];
+            if (!w) return {};
+            if ((w.upgrade_tokens ?? 0) < count) return {}; // safety: never overspend tokens
+            let level =
+              upgradeType === "speed" ? w.speed_upgrades :
+              upgradeType === "size"  ? w.size_upgrades :
+              upgradeType === "clkspd" ? autoClickSpeedLevel(w.auto_click_speed) :
+              w.click_power_level;
+            for (let i = 0; i < count; i++) {
+              totalCoinCost += upgradeCost(level + i, cfg.formulas);
+            }
+          }
+          if (s.coins < totalCoinCost) return {};
+          const workers = s.workers.map((w, idx) => {
+            if (!workerIndices.includes(idx)) return w;
+            const spec = w.specialization ?? "none";
+            let patch: Partial<Worker> = { upgrade_tokens: (w.upgrade_tokens ?? 0) - count };
+            if (upgradeType === "speed") {
+              const gain = 0.25 * specMult(spec, "speed") * count;
+              patch = { ...patch, gather_speed: w.gather_speed + gain, speed_upgrades: w.speed_upgrades + count };
+            } else if (upgradeType === "size") {
+              const gain = 0.5 * specMult(spec, "size") * count;
+              patch = { ...patch, retrieval_size: w.retrieval_size + gain, size_upgrades: w.size_upgrades + count };
+            } else if (upgradeType === "clkspd") {
+              const gain = CLICK_SPEED_STEP * specMult(spec, "clkspd") * count;
+              patch = { ...patch, auto_click_speed: w.auto_click_speed + gain };
+            } else {
+              patch = { ...patch, click_power_level: w.click_power_level + count };
+            }
+            return { ...w, ...patch };
+          });
+          return { coins: s.coins - totalCoinCost, workers };
+        }),
 
       buyClickSpeed: (workerIndex) => {
         set((s) => {

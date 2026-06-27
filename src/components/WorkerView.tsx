@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
-  CheckSquare, Square, X,
+  CheckSquare, Square, X, Minus, Plus,
 } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
@@ -19,26 +19,81 @@ import type { Worker, WorkerSpecialization } from "../types";
 
 const HIRE_COST_BASE = 500;
 
+// ── Worker grouping for bulk-select compatibility ─────────────────────────────
+type WorkerGroup = "unclassed" | "gatherer" | "brewer" | "standard";
+
+function getWorkerGroup(w: Worker): WorkerGroup {
+  const spec = w.specialization ?? "none";
+  if (spec === "none") return "unclassed";
+  if (spec === "explorer" || spec === "caravan") return "gatherer";
+  if (spec === "pounder" || spec === "manic") return "brewer";
+  return "standard";
+}
+
+const UPGRADES_FOR_GROUP: Record<WorkerGroup, { key: "speed" | "size" | "clkspd" | "clkpow"; label: string }[]> = {
+  unclassed: [
+    { key: "speed",  label: "Gather Speed" },
+    { key: "size",   label: "Carry Size" },
+    { key: "clkspd", label: "Click Speed" },
+    { key: "clkpow", label: "Click Power" },
+  ],
+  gatherer: [
+    { key: "speed", label: "Gather Speed" },
+    { key: "size",  label: "Carry Size" },
+  ],
+  brewer: [
+    { key: "clkspd", label: "Click Speed" },
+    { key: "clkpow", label: "Click Power" },
+  ],
+  standard: [
+    { key: "speed",  label: "Gather Speed" },
+    { key: "size",   label: "Carry Size" },
+    { key: "clkspd", label: "Click Speed" },
+    { key: "clkpow", label: "Click Power" },
+  ],
+};
+
+/** For unclassed workers, cap tokens at the pre-class limit to prevent stat-stacking before specialization. */
+function preClassTokenCap(w: Worker): number {
+  // tokens earned before level 10 threshold = max(0, 10 - tokensAlreadySpent)
+  // tokensSpent = (level - 1) - upgrade_tokens (tokens earned minus unspent)
+  const tokensSpent = Math.max(0, (w.level - 1) - (w.upgrade_tokens ?? 0));
+  return Math.max(0, 10 - tokensSpent);
+}
+
+function maxBulkCount(workers: Worker[], selectedIndices: Set<number>, group: WorkerGroup): number {
+  const selected = [...selectedIndices].map((i) => workers[i]).filter(Boolean);
+  if (selected.length === 0) return 0;
+  return selected.reduce((min, w) => {
+    const available = w.upgrade_tokens ?? 0;
+    const cap = group === "unclassed" ? Math.min(available, preClassTokenCap(w)) : available;
+    return Math.min(min, cap);
+  }, Infinity) as number;
+}
+
 // ── Single worker row ─────────────────────────────────────────────────────────
 interface WorkerRowProps {
   worker: Worker;
   idx: number;
   selectMode: boolean;
   checked: boolean;
+  dimmed: boolean;
   tripPct: number;
   tripColor: string;
   onSelect: (idx: number) => void;
   onDetail: (idx: number) => void;
   dataTut?: string;
 }
-const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, tripPct, tripColor, onSelect, onDetail, dataTut }: WorkerRowProps) {
+const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, dimmed, tripPct, tripColor, onSelect, onDetail, dataTut }: WorkerRowProps) {
   const tokens = worker.upgrade_tokens ?? 0;
   return (
     <button
       {...(dataTut ? { "data-tut": dataTut } : {})}
-      onClick={() => (selectMode ? onSelect(idx) : onDetail(idx))}
+      onClick={() => (selectMode && dimmed ? undefined : selectMode ? onSelect(idx) : onDetail(idx))}
       className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition active:scale-[0.99] ${
-        selectMode && checked
+        dimmed
+          ? "cursor-not-allowed border-slate-700/40 bg-slate-800/30 opacity-40"
+          : selectMode && checked
           ? "border-cyan-400/80 bg-cyan-950/30"
           : tokens > 0
           ? "border-yellow-500/60 bg-yellow-950/20 hover:border-yellow-400/80 shadow-[0_0_12px_2px_rgba(234,179,8,0.18)]"
@@ -81,6 +136,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const hireWorker = useGameStore((s) => s.hireWorker);
   const unlockedLocations = useGameStore((s) => s.unlockedLocations);
   const bulkAssign = useGameStore((s) => s.bulkAssign);
+  const bulkSpendTokens = useGameStore((s) => s.bulkSpendTokens);
   const cfg = useConfigStore();
   const loopProgress = useGameLoop();
   void loopProgress; // 12fps re-render tick; progress computed from timestamps
@@ -90,7 +146,10 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const [sortBy, setSortBy] = useState<"none" | "level" | "tokens">("none");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [activeGroup, setActiveGroup] = useState<WorkerGroup | null>(null);
   const [bulkDest, setBulkDest] = useState("");
+  const [bulkUpgrade, setBulkUpgrade] = useState<"speed" | "size" | "clkspd" | "clkpow" | "">("");
+  const [bulkCount, setBulkCount] = useState(1);
 
   const hireCost = HIRE_COST_BASE * Math.pow(workers.length, 2);
   const canAffordHire = coins >= hireCost;
@@ -141,14 +200,26 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     return out;
   }, [ordered, cfg.locations, machines]);
 
-  const toggleSel = (idx: number) =>
+  const toggleSel = (idx: number) => {
+    const group = getWorkerGroup(workers[idx]);
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(idx) ? next.delete(idx) : next.add(idx);
+      if (next.has(idx)) {
+        next.delete(idx);
+        if (next.size === 0) setActiveGroup(null);
+      } else {
+        // Only allow adding if compatible with current active group
+        if (activeGroup === null || activeGroup === group) {
+          next.add(idx);
+          setActiveGroup(group);
+        }
+        // Incompatible group — do nothing (row is dimmed/disabled)
+      }
       return next;
     });
+  };
 
-  const applyBulk = () => {
+  const applyBulkAssign = () => {
     if (selected.size === 0 || !bulkDest) return;
     const indices = [...selected];
     if (bulkDest === "recall") bulkAssign(indices, null, null);
@@ -157,7 +228,22 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     setSelected(new Set());
     setSelectMode(false);
     setBulkDest("");
+    setActiveGroup(null);
   };
+
+  const applyBulkTokens = () => {
+    if (selected.size === 0 || !bulkUpgrade || bulkCount < 1) return;
+    bulkSpendTokens([...selected], bulkUpgrade, bulkCount);
+    setSelected(new Set());
+    setSelectMode(false);
+    setBulkUpgrade("");
+    setBulkCount(1);
+    setActiveGroup(null);
+  };
+
+  // Max tokens spendable without exceeding any selected worker's cap
+  const maxCount = activeGroup ? maxBulkCount(workers, selected, activeGroup) : 0;
+  const upgradeOptions = activeGroup ? UPGRADES_FOR_GROUP[activeGroup] : UPGRADES_FOR_GROUP.unclassed;
 
   const renderRow = ({ w: worker, i: idx, isTutTarget }: { w: Worker; i: number; isTutTarget?: boolean }) => {
     const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
@@ -167,6 +253,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     const workerPhase = worker.trip_phase ?? "idle";
     const tripColor = workerPhase === "inbound" ? "#22d3ee" : "#6ee7b7";
     const checked = selected.has(idx);
+    const dimmed = selectMode && activeGroup !== null && getWorkerGroup(worker) !== activeGroup;
 
     return (
       <WorkerRow
@@ -175,6 +262,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         idx={idx}
         selectMode={selectMode}
         checked={checked}
+        dimmed={dimmed}
         tripPct={tripPct}
         tripColor={tripColor}
         onSelect={toggleSel}
@@ -201,7 +289,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             </button>
           ))}
           <button
-            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); }}
+            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); setActiveGroup(null); setBulkUpgrade(""); setBulkCount(1); }}
             className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
               selectMode ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
             }`}
@@ -233,10 +321,15 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
           ))}
         </div>
 
-        {/* Bulk-assign bar */}
+        {/* Bulk-action bar */}
         {selectMode && (
-          <div className="sticky bottom-0 mt-3 rounded-xl border border-cyan-700/50 bg-slate-900/95 p-2.5 backdrop-blur">
-            <div className="mb-2 text-[11px] text-cyan-700">{selected.size} selected</div>
+          <div className="sticky bottom-0 mt-3 rounded-xl border border-cyan-700/50 bg-slate-900/95 p-2.5 backdrop-blur space-y-2">
+            <div className="text-[11px] text-cyan-700">
+              {selected.size} selected
+              {activeGroup && <span className="ml-1 text-slate-500">· {activeGroup}</span>}
+            </div>
+
+            {/* Row 1: Move to location */}
             <div className="flex items-center gap-2">
               <select
                 value={bulkDest}
@@ -253,7 +346,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                 ))}
               </select>
               <button
-                onClick={applyBulk}
+                onClick={applyBulkAssign}
                 disabled={selected.size === 0 || !bulkDest}
                 className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
                   selected.size > 0 && bulkDest ? "bg-cyan-600 text-white hover:bg-cyan-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
@@ -262,6 +355,56 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                 Assign
               </button>
             </div>
+
+            {/* Row 2: Bulk token spend — only when workers with tokens are selected */}
+            {selected.size > 0 && maxCount > 0 && (
+              <div className="rounded-lg border border-yellow-700/40 bg-yellow-950/20 p-2 space-y-2">
+                <div className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade tokens</div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={bulkUpgrade}
+                    onChange={(e) => { setBulkUpgrade(e.target.value as typeof bulkUpgrade); setBulkCount(1); }}
+                    className="min-w-0 flex-1 rounded-lg bg-slate-800 px-2.5 py-2 text-sm text-slate-200 focus:outline-none"
+                  >
+                    <option value="">Choose upgrade…</option>
+                    {upgradeOptions.map((o) => (
+                      <option key={o.key} value={o.key}>{o.label}</option>
+                    ))}
+                  </select>
+                  {/* Counter */}
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => setBulkCount((c) => Math.max(1, c - 1))}
+                      disabled={bulkCount <= 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition"
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <span className="w-8 text-center text-sm font-semibold text-slate-100">{bulkCount}</span>
+                    <button
+                      onClick={() => setBulkCount((c) => Math.min(maxCount, c + 1))}
+                      disabled={bulkCount >= maxCount}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <button
+                    onClick={applyBulkTokens}
+                    disabled={!bulkUpgrade || bulkCount < 1}
+                    className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                      bulkUpgrade && bulkCount >= 1 ? "bg-yellow-600 text-white hover:bg-yellow-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                    }`}
+                  >
+                    Spend
+                  </button>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Max {maxCount} token{maxCount !== 1 ? "s" : ""} per worker
+                  {activeGroup === "unclassed" && <span className="ml-1 text-yellow-700/80">· capped before class selection</span>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
