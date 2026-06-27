@@ -416,7 +416,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         const ratio = sw / WORLD_W;                       // scroll px per world layout px (handles vertical zoom)
         const centerScroll = Math.max(0, (sw - vw) / 2);
         const brewersVis = machines.length * COL_W * ratio;
-        const base = (brewersVis - vw) / 2;               // >0 only when brewers exceed the viewport
+        const overflowBase = (brewersVis - vw) / 2;       // >0 only when brewers exceed the viewport
+        // With 2+ machines always give at least 60px of scroll room so the wider sprite is reachable.
+        const base = machines.length >= 2 ? Math.max(60 * ratio, overflowBase) : overflowBase;
         const half = base > 0 ? base + SCROLL_EXTRA * ratio : 0;
         scrollRange.current = { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
         sc.scrollLeft = recenter
