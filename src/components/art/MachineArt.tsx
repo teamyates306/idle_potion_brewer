@@ -2,53 +2,51 @@ interface Props {
   size?: number;
   brewing?: boolean;
   progress?: number; // 0..1 fills the cauldron glow
-  uid?: string;      // unique suffix to avoid SVG gradient id conflicts when multiple cauldrons render
+  uid?: string;      // unused — kept for API compatibility
 }
 
-/** The Bubbler — a cauldron-on-contraption brewing machine. */
-export default function MachineArt({ size = 110, brewing = false, progress = 0, uid = "0" }: Props) {
+/** The Bubbler — sprite-based cauldron rig.
+ *  Layer order (bottom → top):
+ *    1. liquid ellipse  — visible through transparent hole in sprite
+ *    2. machine.svg     — full sprite with cutout over the liquid area
+ *    3. needle          — spins around the clock face centre at (54.5, 13.5)
+ *    4. bubbles         — rise through the cauldron opening
+ */
+export default function MachineArt({ size = 110, brewing = false, progress = 0 }: Props) {
   const glow = 0.3 + Math.min(1, progress) * 0.7;
-  const gradId = `cauldronShade-${uid}`;
+
+  // Needle: pivots at the clock-face centre (54.5, 13.5), length 5px.
+  // Sweeps left (empty) → right (full) across the bottom half of the dial.
+  const needleAngle = (progress * 2 - 0.5) * Math.PI;
+  const needleLen = 5;
+  const nx = 54.5 + needleLen * Math.cos(needleAngle);
+  const ny = 13.5 + needleLen * Math.sin(needleAngle);
+
   return (
     <svg width={size} height={size} viewBox="0 0 110 110" fill="none">
-      <ellipse cx="55" cy="100" rx="34" ry="5" fill="#000" opacity="0.25" />
-      {/* legs / frame */}
-      <rect x="22" y="66" width="6" height="30" rx="2" fill="#334155" />
-      <rect x="82" y="66" width="6" height="30" rx="2" fill="#334155" />
-      {/* cauldron body */}
-      <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill="#1f2937" />
-      <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill={`url(#${gradId})`} opacity="0.4" />
-      <ellipse cx="55" cy="50" rx="35" ry="9" fill="#111827" />
-      {/* liquid */}
+      {/* 1 — liquid: sits behind the sprite, glows brighter as brew progresses */}
       <ellipse cx="55" cy="50" rx="30" ry="7" fill="#6f9b8e" opacity={glow} />
-      {/* rim */}
-      <ellipse cx="55" cy="50" rx="35" ry="9" fill="none" stroke="#475569" strokeWidth="3" />
-      {/* gauge */}
-      <circle cx="55" cy="26" r="9" fill="#0f172a" stroke="#475569" strokeWidth="2" />
+
+      {/* 2 — machine sprite (transparent cutout exposes liquid above) */}
+      <image href="/sprites/machine.svg" x="0" y="0" width="110" height="110" />
+
+      {/* 3 — clock needle, pivoting at the sprite's clock-face centre */}
       <line
-        x1="55"
-        y1="26"
-        x2={55 + 6 * Math.cos((progress * 2 - 0.5) * Math.PI)}
-        y2={26 + 6 * Math.sin((progress * 2 - 0.5) * Math.PI)}
+        x1="54.5" y1="13.5"
+        x2={nx} y2={ny}
         stroke="#f59e0b"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
       />
-      <rect x="53" y="34" width="4" height="12" fill="#475569" />
-      {/* bubbles */}
+
+      {/* 4 — bubbles rise through the cauldron opening */}
       {brewing && (
         <g>
           <circle cx="44" cy="48" r="2.4" fill="#bcd9cf" className="animate-bubble" />
-          <circle cx="58" cy="49" r="3" fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
-          <circle cx="68" cy="47" r="2" fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
+          <circle cx="58" cy="49" r="3"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
+          <circle cx="68" cy="47" r="2"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
         </g>
       )}
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#000" />
-          <stop offset="1" stopColor="#fff" />
-        </linearGradient>
-      </defs>
     </svg>
   );
 }
