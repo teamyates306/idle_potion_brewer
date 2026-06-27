@@ -71,6 +71,27 @@ function maxBulkCount(workers: Worker[], selectedIndices: Set<number>, group: Wo
   }, Infinity) as number;
 }
 
+function computeBulkCost(
+  workers: Worker[],
+  selectedIndices: Set<number>,
+  upgradeType: "speed" | "size" | "clkspd" | "clkpow",
+  count: number,
+  formulas: ReturnType<typeof import("../store/configStore").useConfigStore.getState>["formulas"],
+): number {
+  let total = 0;
+  for (const idx of selectedIndices) {
+    const w = workers[idx];
+    if (!w) continue;
+    const level =
+      upgradeType === "speed"  ? w.speed_upgrades :
+      upgradeType === "size"   ? w.size_upgrades :
+      upgradeType === "clkspd" ? autoClickSpeedLevel(w.auto_click_speed) :
+      w.click_power_level;
+    for (let i = 0; i < count; i++) total += upgradeCost(level + i, formulas);
+  }
+  return total;
+}
+
 // ── Single worker row ─────────────────────────────────────────────────────────
 interface WorkerRowProps {
   worker: Worker;
@@ -244,6 +265,10 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   // Max tokens spendable without exceeding any selected worker's cap
   const maxCount = activeGroup ? maxBulkCount(workers, selected, activeGroup) : 0;
   const upgradeOptions = activeGroup ? UPGRADES_FOR_GROUP[activeGroup] : UPGRADES_FOR_GROUP.unclassed;
+  const bulkCost = bulkUpgrade && bulkCount > 0
+    ? computeBulkCost(workers, selected, bulkUpgrade, bulkCount, cfg.formulas)
+    : 0;
+  const canAffordBulk = coins >= bulkCost;
 
   const renderRow = ({ w: worker, i: idx, isTutTarget }: { w: Worker; i: number; isTutTarget?: boolean }) => {
     const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
@@ -329,7 +354,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
               {activeGroup && <span className="ml-1 text-slate-500">· {activeGroup}</span>}
             </div>
 
-            {/* Row 1: Move to location */}
+            {/* Row 1: Move to location — filtered by class */}
             <div className="flex items-center gap-2">
               <select
                 value={bulkDest}
@@ -337,11 +362,11 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                 className="min-w-0 flex-1 rounded-lg bg-slate-800 px-2.5 py-2 text-sm text-slate-200 focus:outline-none"
               >
                 <option value="">Move selected to…</option>
-                {machines.map((m) => (
+                {activeGroup !== "gatherer" && machines.map((m) => (
                   <option key={m.id} value={`machine:${m.id}`}>⚒ {m.name} (brew)</option>
                 ))}
                 <option value="recall">Recall (unassign)</option>
-                {unlockedLocations.map((id) => (
+                {activeGroup !== "brewer" && unlockedLocations.map((id) => (
                   <option key={id} value={id}>{cfg.locations[id]?.name ?? id}</option>
                 ))}
               </select>
@@ -391,17 +416,24 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                   </div>
                   <button
                     onClick={applyBulkTokens}
-                    disabled={!bulkUpgrade || bulkCount < 1}
+                    disabled={!bulkUpgrade || bulkCount < 1 || !canAffordBulk}
                     className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                      bulkUpgrade && bulkCount >= 1 ? "bg-yellow-600 text-white hover:bg-yellow-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                      bulkUpgrade && bulkCount >= 1 && canAffordBulk ? "bg-yellow-600 text-white hover:bg-yellow-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
                     }`}
                   >
                     Spend
                   </button>
                 </div>
-                <div className="text-[10px] text-slate-500">
-                  Max {maxCount} token{maxCount !== 1 ? "s" : ""} per worker
-                  {activeGroup === "unclassed" && <span className="ml-1 text-yellow-700/80">· capped before class selection</span>}
+                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                  <span>
+                    Max {maxCount} token{maxCount !== 1 ? "s" : ""} per worker
+                    {activeGroup === "unclassed" && <span className="ml-1 text-yellow-700/80">· capped pre-class</span>}
+                  </span>
+                  {bulkUpgrade && (
+                    <span className={canAffordBulk ? "text-amber-700 font-medium" : "text-rose-500 font-medium"}>
+                      🪙 {fmt(bulkCost)}{!canAffordBulk && " — can't afford"}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
