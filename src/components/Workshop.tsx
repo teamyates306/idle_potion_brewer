@@ -753,13 +753,9 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
     >
       <svg width={width} height="96" viewBox={`0 0 ${width} 96`} preserveAspectRatio="none" fill="none">
         <defs>
-          <pattern id="wallBricks" width="104" height="40" patternUnits="userSpaceOnUse">
-            <rect width="104" height="40" fill="#9a958c" />
-            <rect x="1"   y="1"  width="50" height="18" rx="2" fill="#b4aea4" />
-            <rect x="53"  y="1"  width="50" height="18" rx="2" fill="#a6a098" />
-            <rect x="-25" y="21" width="50" height="18" rx="2" fill="#a6a098" />
-            <rect x="27"  y="21" width="50" height="18" rx="2" fill="#b4aea4" />
-            <rect x="79"  y="21" width="50" height="18" rx="2" fill="#a6a098" />
+          <pattern id="wallBricks" width="96" height="48" patternUnits="userSpaceOnUse">
+            {/* wall-tile.svg: 96×48 pixel-art tile — swap path when file is updated */}
+            <image href="/sprites/wall-tile.svg" x="0" y="0" width="96" height="48" />
           </pattern>
           <linearGradient id="wallFade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0.74" stopColor="transparent" />
