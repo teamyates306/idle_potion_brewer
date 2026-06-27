@@ -75,14 +75,14 @@ export function computeDayNight(phase: number): DayNightState {
   let wr: number, wg: number, wb: number;
   if (sunriseness > 0) {
     [wr, wg, wb] = lerpColor(9, 24, 40, 168, 208, 240, dayness);
-  } else if (sunsetness > 0) {
-    if (sunsetness > 0.5) {
-      // First half: blue → orange (sunsetness 0.5→1→0.5 mapped to 0→1)
-      const t = (sunsetness - 0.5) * 2; // 0 at ss=0.5, 1 at ss=1.0
+  } else if (phase >= 0.65 && phase < 0.90) {
+    // Sunset window: split at midpoint (0.775) so the sequence is always blue→orange→night.
+    const mid = 0.775;
+    if (phase < mid) {
+      const t = (phase - 0.65) / (mid - 0.65); // 0→1 across first half
       [wr, wg, wb] = lerpColor(168, 208, 240, 208, 104, 40, t);
     } else {
-      // Second half: orange → night (sunsetness 0.5→0 mapped to 0→1)
-      const t = 1 - sunsetness * 2; // 0 at ss=0.5, 1 at ss=0
+      const t = (phase - mid) / (0.90 - mid); // 0→1 across second half
       [wr, wg, wb] = lerpColor(208, 104, 40, 9, 24, 40, t);
     }
   } else if (dayness > 0) {
