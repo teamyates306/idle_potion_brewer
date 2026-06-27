@@ -69,16 +69,27 @@ export function computeDayNight(phase: number): DayNightState {
       ? Math.sin(Math.PI * smoothStep(phase, 0.65, 0.90))
       : 0;
 
-  // Window colour: night=#091828, sunrise=#e07030, day=#a8d0f0, sunset=#d06828
+  // Window colour: night=#091828, sunrise: night→day, day=#a8d0f0, sunset: day→orange→night
+  // Sunset uses two-phase lerp so the sequence is blue→orange (first half) then orange→night (second half).
   let windowColor: string;
-  const [wr, wg, wb] =
-    sunriseness > 0
-      ? lerpColor(9, 24, 40, 168, 208, 240, dayness) // night→day blended by dayness during sunrise
-      : sunsetness > 0
-      ? lerpColor(168, 208, 240, 208, 104, 40, sunsetness) // day→sunset orange
-      : dayness > 0
-      ? [168, 208, 240] as [number,number,number]  // full day: sky blue
-      : [9, 24, 40] as [number,number,number];     // night: near-black blue
+  let wr: number, wg: number, wb: number;
+  if (sunriseness > 0) {
+    [wr, wg, wb] = lerpColor(9, 24, 40, 168, 208, 240, dayness);
+  } else if (sunsetness > 0) {
+    if (sunsetness > 0.5) {
+      // First half: blue → orange (sunsetness 0.5→1→0.5 mapped to 0→1)
+      const t = (sunsetness - 0.5) * 2; // 0 at ss=0.5, 1 at ss=1.0
+      [wr, wg, wb] = lerpColor(168, 208, 240, 208, 104, 40, t);
+    } else {
+      // Second half: orange → night (sunsetness 0.5→0 mapped to 0→1)
+      const t = 1 - sunsetness * 2; // 0 at ss=0.5, 1 at ss=0
+      [wr, wg, wb] = lerpColor(208, 104, 40, 9, 24, 40, t);
+    }
+  } else if (dayness > 0) {
+    [wr, wg, wb] = [168, 208, 240];
+  } else {
+    [wr, wg, wb] = [9, 24, 40];
+  }
   windowColor = `rgb(${wr},${wg},${wb})`;
 
   // Vignette: +20% more prominent at all times. Day: 0.35 (was 0.15), Night: 0.85 (was 0.70)
