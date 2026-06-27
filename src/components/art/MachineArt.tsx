@@ -32,7 +32,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
   return (
     <svg width={size} height={size} viewBox="0 0 110 110" fill="none">
       {/* 1 — liquid: fully opaque, colour saturates with progress */}
-      <ellipse cx="54" cy="53.5" rx="35" ry="9.5" fill={liquidColor} />
+      <ellipse cx="54" cy="54.5" rx="35" ry="9.5" fill={liquidColor} />
 
       {/* 2 — machine sprite (transparent cutout exposes liquid above) */}
       <image href="/sprites/machine.svg" x="0" y="0" width="110" height="110" />
