@@ -32,10 +32,10 @@ function applyDayNightVars() {
   // Vignette opacity: a warm edge-darkening that is present by day and most
   // visible at night. Driving element opacity (vs. recolouring the gradient)
   // keeps it on the compositor and lets it transition smoothly.
-  root.setProperty("--dn-vig-op", (0.3 + (1 - dy) * 0.7).toFixed(3));
+  root.setProperty("--dn-vig-op", (0.55 + (1 - dy) * 0.45).toFixed(3));
 
-  // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.07
-  const warmAlpha = Math.max(sr, ss) * 0.07;
+  // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.10
+  const warmAlpha = Math.max(sr, ss) * 0.10;
   root.setProperty("--dn-warm-tint", `rgba(215,145,55,${warmAlpha.toFixed(3)})`);
 
   // Cool tint: a faint dusk wash, kept low so the cosy daytime never goes dark.
@@ -82,7 +82,7 @@ export default function Atmosphere() {
           style={{
             // Fixed warm-sepia vignette at night strength; opacity (set per day
             // phase) fades it to a gentle daytime edge and up to full at night.
-            background: "radial-gradient(ellipse at 50% 46%, transparent 50%, rgba(34,22,10,0.5) 100%)",
+            background: "radial-gradient(ellipse at 50% 46%, transparent 45%, rgba(34,22,10,0.65) 100%)",
             opacity: "var(--dn-vig-op, 0.5)",
             transition: "opacity 3.5s ease-in-out",
           }}

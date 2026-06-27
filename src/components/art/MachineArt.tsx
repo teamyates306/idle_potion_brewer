@@ -20,7 +20,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
       <path d="M20 50 Q20 88 55 90 Q90 88 90 50 Z" fill={`url(#${gradId})`} opacity="0.4" />
       <ellipse cx="55" cy="50" rx="35" ry="9" fill="#111827" />
       {/* liquid */}
-      <ellipse cx="55" cy="50" rx="30" ry="7" fill="#22d3ee" opacity={glow} />
+      <ellipse cx="55" cy="50" rx="30" ry="7" fill="#6f9b8e" opacity={glow} />
       {/* rim */}
       <ellipse cx="55" cy="50" rx="35" ry="9" fill="none" stroke="#475569" strokeWidth="3" />
       {/* gauge */}
@@ -38,9 +38,9 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
       {/* bubbles */}
       {brewing && (
         <g>
-          <circle cx="44" cy="48" r="2.4" fill="#a5f3fc" className="animate-bubble" />
-          <circle cx="58" cy="49" r="3" fill="#a5f3fc" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
-          <circle cx="68" cy="47" r="2" fill="#a5f3fc" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
+          <circle cx="44" cy="48" r="2.4" fill="#bcd9cf" className="animate-bubble" />
+          <circle cx="58" cy="49" r="3" fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
+          <circle cx="68" cy="47" r="2" fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
         </g>
       )}
       <defs>

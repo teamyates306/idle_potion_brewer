@@ -33,13 +33,14 @@ const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
 
 const MACHINE_HUE    = [0, 120, 200, 270, 330];
-const MACHINE_ACCENT = ["#f59e0b", "#22c55e", "#38bdf8", "#a855f7", "#ef4444"];
+const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
+// Muted, warm "ember" spark palettes (one per machine) — cozy, not neon.
 const MACHINE_SPARK_COLORS = [
-  ["#ff9a30","#ffcc00","#ff6600","#fff0a0","#ffdd80"],
-  ["#86efac","#4ade80","#22c55e","#d9f99d","#bbf7d0"],
-  ["#7dd3fc","#38bdf8","#0ea5e9","#e0f2fe","#bae6fd"],
-  ["#d8b4fe","#a855f7","#9333ea","#f3e8ff","#e9d5ff"],
-  ["#fca5a5","#ef4444","#dc2626","#fee2e2","#fecaca"],
+  ["#d9a441","#e8c45e","#c2802f","#f0dd9a","#d9b266"], // antique gold
+  ["#a8a64a","#c2b85e","#8a9a3c","#dcd89a","#b6b066"], // moss-gold
+  ["#6fa39a","#8ab8ad","#5b8a80","#bcd6cf","#9ac0b6"], // muted teal
+  ["#b07a72","#c89a8e","#8c5a52","#e0c4ba","#bf9a8e"], // rose ember
+  ["#c2703a","#d9924e","#a8542f","#e8c09a","#cf8a5e"], // brick ember
 ];
 
 interface Spark {

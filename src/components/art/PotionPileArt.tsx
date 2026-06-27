@@ -3,7 +3,8 @@ interface Props {
   size?: number;
 }
 
-const COLORS = ["#a855f7", "#22d3ee", "#f43f5e", "#4ade80", "#fbbf24", "#38bdf8"];
+// Muted jewel/glass tones — varied but cosy, to fit the parchment & stone scene.
+const COLORS = ["#8a6fa3", "#5f9e9a", "#b06a72", "#7fa05e", "#c2a14e", "#6f8aa8"];
 
 function Bottle({ x, y, c, s = 1 }: { x: number; y: number; c: string; s?: number }) {
   return (
