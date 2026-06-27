@@ -1,0 +1,2595 @@
+{
+  "meta": {
+    "generated_at": "2026-06-25T07:39:09.675Z",
+    "sim_hours": 1,
+    "tick_seconds": 1,
+    "iterations": 2,
+    "total_simulations": 12,
+    "content": {
+      "ingredients": 105,
+      "locations": 32
+    },
+    "key_levers": {
+      "cost_base": 25,
+      "cost_growth": 1.65,
+      "xp_base": 100,
+      "xp_growth": 1.6,
+      "base_brew_time": 5,
+      "toxicity_time_mult": 0.03,
+      "value_mult_toxicity": 0.04,
+      "machine_costs": [
+        0,
+        5000,
+        75000,
+        600000,
+        3000000
+      ],
+      "hire_cost_base": 500
+    },
+    "runtime_ms": 889
+  },
+  "strategy_definitions": {
+    "A_Sprinter": "Minimal-location play: locks to hollow, brews starter ingredient continuously, buys machine #2 first, hires all workers. Zero exploration; pure throughput.",
+    "B_Completionist": "Unlocks locations cheapest-first, spreads all workers across the full map, rotates machines onto unseen recipes. Token spend prioritises slots for wider recipe access.",
+    "C_Industrialist": "Builds all 5 machines as fast as possible. Assigns 40% of workers as auto-clickers. Ignores quests. Token spend: clicker power then brew speed.",
+    "D_QuestHunter": "Bootstraps discovery (Completionist) until quests unlock, then pivots every machine/worker toward the cheapest-by-quantity active quest. Sells only non-quest potions.",
+    "E_AchievementHunter": "Chases mach_5 (250k coins), work_8 (100k), loc_30 (5 tokens). Aggressively rotates recipes for disc_* rewards. Watches for volatile ingredients to attempt the secret voidsoup brew. Token spend: slots first (variety) then auto-clicker speed (secret_clickspeed).",
+    "F_Everyman": "Every 10 in-game minutes, rolls for a mode using the game's own seeded RNG: ~40% gold-max (Sprinter), ~25% explorer (Completionist), ~20% quester (if quests active), ~15% achiever (if within 20% of a threshold). The same RNG drives ingredient drops, so mode switches correlate with current supply — creating emergent, unique-per-run playstyles within a consistent framework."
+  },
+  "strategies": {
+    "A_Sprinter": {
+      "summary_mean": {
+        "final_coins": 1183,
+        "potions_discovered": 1,
+        "recipes_discovered": 1,
+        "machines_built": 1,
+        "workers": 3,
+        "machine_util_pct": 100,
+        "graveyard_units": 7585,
+        "gathered_total": 9747,
+        "consumed_total": 2172,
+        "potions_brewed": 2172,
+        "coins_from_sales": 10810,
+        "coins_from_quests": 0,
+        "coins_from_achievements": 3000,
+        "quests_completed": 0,
+        "achievements_unlocked": 1,
+        "locations_unlocked": 1,
+        "max_worker_level": 10,
+        "max_machine_level": 11,
+        "max_brew_speed": 3.55,
+        "max_gather_speed": 3.7,
+        "upgrades_total": 34,
+        "up_w_speed": 24,
+        "up_w_size": 1,
+        "up_w_clk": 0,
+        "up_m_speed": 9,
+        "up_m_multi": 0,
+        "up_m_slot": 0,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 0,
+        "t_loc5_min": 0,
+        "t_loc10_min": 0,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 0,
+        "ev_mode1_pct": 0,
+        "ev_mode2_pct": 0,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 1183,
+      "final_coins_p90": 1183,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          100,
+          277,
+          353,
+          278,
+          408,
+          803,
+          631,
+          1532,
+          1024,
+          235,
+          985,
+          1541
+        ],
+        "coins_p10": [
+          100,
+          277,
+          353,
+          278,
+          408,
+          803,
+          631,
+          1532,
+          1024,
+          235,
+          985,
+          1541
+        ],
+        "coins_p25": [
+          100,
+          277,
+          353,
+          278,
+          408,
+          803,
+          631,
+          1532,
+          1024,
+          235,
+          985,
+          1541
+        ],
+        "coins_p75": [
+          100,
+          277,
+          353,
+          278,
+          408,
+          803,
+          631,
+          1532,
+          1024,
+          235,
+          985,
+          1541
+        ],
+        "coins_p90": [
+          100,
+          277,
+          353,
+          278,
+          408,
+          803,
+          631,
+          1532,
+          1024,
+          235,
+          985,
+          1541
+        ],
+        "potions_discovered_mean": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "potions_discovered_p10": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "potions_discovered_p90": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingredients_unused_mean": [
+          10,
+          93,
+          215,
+          411,
+          815,
+          1332,
+          1877,
+          2568,
+          3422,
+          4366,
+          5417,
+          6481
+        ],
+        "machine_util_pct_mean": [
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100,
+          100
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "Machine #2 at 0m. Simple-recipe throughput compounded quickly, reaching 1k — specialised depth beating exploration breadth here.",
+          "coins_series": [
+            100,
+            277,
+            353,
+            278,
+            408,
+            803,
+            631,
+            1532,
+            1024,
+            235,
+            985,
+            1541
+          ],
+          "potions_series": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1183,
+          "potions_discovered": 1,
+          "quests_completed": 0
+        },
+        {
+          "label": "Tough run",
+          "story": "Machine #2 delayed to 0m due to early coin pressure. Single-location focus left no ingredient variance; 100% machine utilisation with no quest income brought in only 1k.",
+          "coins_series": [
+            100,
+            277,
+            353,
+            278,
+            408,
+            803,
+            631,
+            1532,
+            1024,
+            235,
+            985,
+            1541
+          ],
+          "potions_series": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1183,
+          "potions_discovered": 1,
+          "quests_completed": 0
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 4666
+        },
+        {
+          "ingredient": "firepetal",
+          "unused_mean": 1773
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 1147
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "COIN_STARVED",
+          "INGREDIENT_GRAVEYARD",
+          "SHALLOW_DISCOVERY"
+        ],
+        "notes": [
+          "A_Sprinter ended with only 1,183 coins.",
+          "7,585 ingredients never brewed (worst: rootmoss ×4666).",
+          "Only 1 unique potion names discovered."
+        ]
+      }
+    },
+    "F_Everyman": {
+      "summary_mean": {
+        "final_coins": 1619.5,
+        "potions_discovered": 14,
+        "recipes_discovered": 14.5,
+        "machines_built": 1,
+        "workers": 3,
+        "machine_util_pct": 99.55,
+        "graveyard_units": 6799.5,
+        "gathered_total": 8461,
+        "consumed_total": 1671.5,
+        "potions_brewed": 1658,
+        "coins_from_sales": 6362,
+        "coins_from_quests": 900,
+        "coins_from_achievements": 3500,
+        "quests_completed": 1.5,
+        "achievements_unlocked": 2,
+        "locations_unlocked": 9,
+        "max_worker_level": 9.5,
+        "max_machine_level": 10,
+        "max_brew_speed": 2.77,
+        "max_gather_speed": 2.55,
+        "upgrades_total": 30,
+        "up_w_speed": 11.5,
+        "up_w_size": 9.5,
+        "up_w_clk": 0,
+        "up_m_speed": 6,
+        "up_m_multi": 0,
+        "up_m_slot": 3,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 23.5,
+        "t_loc5_min": 9.5,
+        "t_loc10_min": 20,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 16.5,
+        "ev_mode1_pct": 58,
+        "ev_mode2_pct": 25,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 1488,
+      "final_coins_p90": 1751,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          70,
+          170,
+          219,
+          201,
+          206,
+          164,
+          397,
+          926,
+          1339,
+          1806,
+          1926,
+          1892
+        ],
+        "coins_p10": [
+          40,
+          62,
+          144,
+          164,
+          154,
+          145,
+          303,
+          911,
+          123,
+          251,
+          1179,
+          1529
+        ],
+        "coins_p25": [
+          40,
+          62,
+          144,
+          164,
+          154,
+          145,
+          303,
+          911,
+          123,
+          251,
+          1179,
+          1529
+        ],
+        "coins_p75": [
+          100,
+          277,
+          293,
+          237,
+          258,
+          182,
+          491,
+          941,
+          2555,
+          3361,
+          2672,
+          2255
+        ],
+        "coins_p90": [
+          100,
+          277,
+          293,
+          237,
+          258,
+          182,
+          491,
+          941,
+          2555,
+          3361,
+          2672,
+          2255
+        ],
+        "potions_discovered_mean": [
+          0,
+          2,
+          2,
+          3,
+          3,
+          10.5,
+          13,
+          13,
+          13,
+          14,
+          14,
+          14
+        ],
+        "potions_discovered_p10": [
+          0,
+          1,
+          1,
+          3,
+          3,
+          10,
+          13,
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "potions_discovered_p90": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          11,
+          13,
+          13,
+          13,
+          15,
+          15,
+          15
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1.5
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          2,
+          2,
+          2
+        ],
+        "ingredients_unused_mean": [
+          10,
+          92,
+          230,
+          417,
+          656,
+          1024,
+          1502,
+          2086,
+          2759,
+          3620,
+          4612,
+          5686
+        ],
+        "machine_util_pct_mean": [
+          100,
+          100,
+          100,
+          100,
+          100,
+          99.6,
+          99.7,
+          99.7,
+          99.8,
+          99.7,
+          99.5,
+          99.6
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "Predominantly gold-maximiser (33% of mode rolls). This run outperformed the strategy median by 0% — a clear demonstration that RNG mode selection creates distinct emergent trajectories within the same player archetype.",
+          "coins_series": [
+            100,
+            277,
+            293,
+            164,
+            258,
+            182,
+            491,
+            911,
+            2555,
+            3361,
+            2672,
+            2255
+          ],
+          "potions_series": [
+            0,
+            1,
+            1,
+            3,
+            3,
+            11,
+            13,
+            13,
+            13,
+            13,
+            13,
+            13
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2,
+            2,
+            2
+          ],
+          "final_coins": 1751,
+          "potions_discovered": 13,
+          "quests_completed": 2
+        },
+        {
+          "label": "Tough run",
+          "story": "Mode scatter with no dominant playstyle: 0% gold / 83% explore / 17% quests / 0% achieve. Without a committed focus, this run earned only 1k — 15% below the strategy median.",
+          "coins_series": [
+            40,
+            62,
+            144,
+            237,
+            154,
+            145,
+            303,
+            941,
+            123,
+            251,
+            1179,
+            1529
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            10,
+            13,
+            13,
+            13,
+            15,
+            15,
+            15
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "final_coins": 1488,
+          "potions_discovered": 15,
+          "quests_completed": 1
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 3761
+        },
+        {
+          "ingredient": "firepetal",
+          "unused_mean": 1013
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 810
+        },
+        {
+          "ingredient": "plainrib",
+          "unused_mean": 238
+        },
+        {
+          "ingredient": "muddystone",
+          "unused_mean": 219
+        },
+        {
+          "ingredient": "coppercreeper",
+          "unused_mean": 204
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "COIN_STARVED",
+          "INGREDIENT_GRAVEYARD"
+        ],
+        "notes": [
+          "F_Everyman ended with only 1,619.5 coins.",
+          "6,799.5 ingredients never brewed (worst: rootmoss ×3761)."
+        ]
+      }
+    },
+    "C_Industrialist": {
+      "summary_mean": {
+        "final_coins": 3745,
+        "potions_discovered": 1,
+        "recipes_discovered": 1,
+        "machines_built": 1,
+        "workers": 4,
+        "machine_util_pct": 99.3,
+        "graveyard_units": 1193,
+        "gathered_total": 3607,
+        "consumed_total": 2424,
+        "potions_brewed": 2702.5,
+        "coins_from_sales": 13430,
+        "coins_from_quests": 0,
+        "coins_from_achievements": 3000,
+        "quests_completed": 0,
+        "achievements_unlocked": 1,
+        "locations_unlocked": 1,
+        "max_worker_level": 8,
+        "max_machine_level": 11,
+        "max_brew_speed": 3.3,
+        "max_gather_speed": 1.35,
+        "upgrades_total": 35,
+        "up_w_speed": 0,
+        "up_w_size": 0,
+        "up_w_clk": 25,
+        "up_m_speed": 8,
+        "up_m_multi": 2,
+        "up_m_slot": 0,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 0,
+        "t_loc5_min": 0,
+        "t_loc10_min": 0,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 0,
+        "ev_mode1_pct": 0,
+        "ev_mode2_pct": 0,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 3720,
+      "final_coins_p90": 3770,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          100,
+          345,
+          373,
+          272,
+          722,
+          1212,
+          1498,
+          3278,
+          3817,
+          239,
+          1017,
+          2610
+        ],
+        "coins_p10": [
+          100,
+          345,
+          363,
+          262,
+          714,
+          1197,
+          1463,
+          3228,
+          3782,
+          236,
+          1002,
+          2595
+        ],
+        "coins_p25": [
+          100,
+          345,
+          363,
+          262,
+          714,
+          1197,
+          1463,
+          3228,
+          3782,
+          236,
+          1002,
+          2595
+        ],
+        "coins_p75": [
+          100,
+          345,
+          383,
+          282,
+          729,
+          1227,
+          1533,
+          3328,
+          3852,
+          241,
+          1032,
+          2625
+        ],
+        "coins_p90": [
+          100,
+          345,
+          383,
+          282,
+          729,
+          1227,
+          1533,
+          3328,
+          3852,
+          241,
+          1032,
+          2625
+        ],
+        "potions_discovered_mean": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "potions_discovered_p10": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "potions_discovered_p90": [
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingredients_unused_mean": [
+          10,
+          47,
+          85,
+          178,
+          313,
+          449,
+          577,
+          661,
+          680,
+          708,
+          854,
+          1019
+        ],
+        "machine_util_pct_mean": [
+          100,
+          100,
+          97.1,
+          97.4,
+          98.1,
+          98.5,
+          98.7,
+          98.9,
+          99,
+          99.1,
+          99.2,
+          99.3
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "All 5 machines online at 99% average utilisation — maximum factory throughput, earning 4k.",
+          "coins_series": [
+            100,
+            345,
+            383,
+            282,
+            714,
+            1197,
+            1463,
+            3228,
+            3782,
+            241,
+            1002,
+            2625
+          ],
+          "potions_series": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 3770,
+          "potions_discovered": 1,
+          "quests_completed": 0
+        },
+        {
+          "label": "Tough run",
+          "story": "Machine utilisation a low 99% — ingredient supply couldn't keep cauldrons fed. Factory-first approach left throughput potential unrealised, capping output at 4k.",
+          "coins_series": [
+            100,
+            345,
+            363,
+            262,
+            729,
+            1227,
+            1533,
+            3328,
+            3852,
+            236,
+            1032,
+            2595
+          ],
+          "potions_series": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 3720,
+          "potions_discovered": 1,
+          "quests_completed": 0
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "firepetal",
+          "unused_mean": 638
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 453
+        },
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 103
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "SHALLOW_DISCOVERY"
+        ],
+        "notes": [
+          "Only 1 unique potion names discovered."
+        ]
+      }
+    },
+    "B_Completionist": {
+      "summary_mean": {
+        "final_coins": 1336,
+        "potions_discovered": 15,
+        "recipes_discovered": 15.5,
+        "machines_built": 1,
+        "workers": 3,
+        "machine_util_pct": 97.5,
+        "graveyard_units": 5766.5,
+        "gathered_total": 7203.5,
+        "consumed_total": 1447,
+        "potions_brewed": 1432.5,
+        "coins_from_sales": 7733.5,
+        "coins_from_quests": 0,
+        "coins_from_achievements": 3500,
+        "quests_completed": 0,
+        "achievements_unlocked": 2,
+        "locations_unlocked": 10,
+        "max_worker_level": 9,
+        "max_machine_level": 10,
+        "max_brew_speed": 2.77,
+        "max_gather_speed": 2.03,
+        "upgrades_total": 27,
+        "up_w_speed": 2.5,
+        "up_w_size": 15.5,
+        "up_w_clk": 0,
+        "up_m_speed": 6,
+        "up_m_multi": 0,
+        "up_m_slot": 3,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 27.5,
+        "t_loc5_min": 10.5,
+        "t_loc10_min": 43.5,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 0,
+        "ev_mode1_pct": 0,
+        "ev_mode2_pct": 0,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 1071,
+      "final_coins_p90": 1601,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          40,
+          110,
+          128,
+          206,
+          184,
+          236,
+          199,
+          714,
+          491,
+          294,
+          597,
+          924
+        ],
+        "coins_p10": [
+          40,
+          86,
+          88,
+          203,
+          115,
+          204,
+          140,
+          532,
+          77,
+          71,
+          514,
+          910
+        ],
+        "coins_p25": [
+          40,
+          86,
+          88,
+          203,
+          115,
+          204,
+          140,
+          532,
+          77,
+          71,
+          514,
+          910
+        ],
+        "coins_p75": [
+          40,
+          133,
+          167,
+          208,
+          253,
+          267,
+          257,
+          895,
+          904,
+          517,
+          679,
+          937
+        ],
+        "coins_p90": [
+          40,
+          133,
+          167,
+          208,
+          253,
+          267,
+          257,
+          895,
+          904,
+          517,
+          679,
+          937
+        ],
+        "potions_discovered_mean": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          6,
+          8.5,
+          13,
+          13,
+          14,
+          15,
+          15
+        ],
+        "potions_discovered_p10": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          3,
+          4,
+          13,
+          13,
+          13,
+          15,
+          15
+        ],
+        "potions_discovered_p90": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          9,
+          13,
+          13,
+          13,
+          15,
+          15,
+          15
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingredients_unused_mean": [
+          10,
+          107,
+          275,
+          499,
+          752,
+          1071,
+          1458,
+          1968,
+          2526,
+          3187,
+          3969,
+          4844
+        ],
+        "machine_util_pct_mean": [
+          100,
+          96.2,
+          96,
+          96.2,
+          96.5,
+          96.9,
+          97.1,
+          97.3,
+          97.6,
+          97.9,
+          97.8,
+          97.7
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "15 potions discovered with 10 locations unlocked; the variety pipeline drove consistent quest generation and 2 achievements en route to 2k.",
+          "coins_series": [
+            40,
+            133,
+            88,
+            208,
+            115,
+            267,
+            257,
+            895,
+            77,
+            71,
+            679,
+            937
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            9,
+            13,
+            13,
+            13,
+            15,
+            15,
+            15
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1601,
+          "potions_discovered": 15,
+          "quests_completed": 0
+        },
+        {
+          "label": "Tough run",
+          "story": "Bottom-10% run: 1k coins. Machine utilisation 97%, 0 quests. RNG adversity compounded through 24 hours.",
+          "coins_series": [
+            40,
+            86,
+            167,
+            203,
+            253,
+            204,
+            140,
+            532,
+            904,
+            517,
+            514,
+            910
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            3,
+            4,
+            13,
+            13,
+            13,
+            15,
+            15
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1071,
+          "potions_discovered": 15,
+          "quests_completed": 0
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 2853
+        },
+        {
+          "ingredient": "firepetal",
+          "unused_mean": 1067
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 520
+        },
+        {
+          "ingredient": "sunbark",
+          "unused_mean": 265
+        },
+        {
+          "ingredient": "emberseed",
+          "unused_mean": 258
+        },
+        {
+          "ingredient": "plainrib",
+          "unused_mean": 256
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "COIN_STARVED",
+          "INGREDIENT_GRAVEYARD"
+        ],
+        "notes": [
+          "B_Completionist ended with only 1,336 coins.",
+          "5,766.5 ingredients never brewed (worst: rootmoss ×2853)."
+        ]
+      }
+    },
+    "D_QuestHunter": {
+      "summary_mean": {
+        "final_coins": 57,
+        "potions_discovered": 5,
+        "recipes_discovered": 5,
+        "machines_built": 1,
+        "workers": 3,
+        "machine_util_pct": 99,
+        "graveyard_units": 6554.5,
+        "gathered_total": 8177,
+        "consumed_total": 1632.5,
+        "potions_brewed": 1632.5,
+        "coins_from_sales": 2877,
+        "coins_from_quests": 1400,
+        "coins_from_achievements": 3000,
+        "quests_completed": 1.5,
+        "achievements_unlocked": 1,
+        "locations_unlocked": 7,
+        "max_worker_level": 9,
+        "max_machine_level": 10.5,
+        "max_brew_speed": 3.04,
+        "max_gather_speed": 2.9,
+        "upgrades_total": 29,
+        "up_w_speed": 14.5,
+        "up_w_size": 5.5,
+        "up_w_clk": 0,
+        "up_m_speed": 7,
+        "up_m_multi": 0,
+        "up_m_slot": 2,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 24,
+        "t_loc5_min": 8,
+        "t_loc10_min": 0,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 0,
+        "ev_mode1_pct": 0,
+        "ev_mode2_pct": 0,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 31,
+      "final_coins_p90": 83,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          40,
+          62,
+          144,
+          237,
+          154,
+          224,
+          1014,
+          901,
+          928,
+          1193,
+          622,
+          473
+        ],
+        "coins_p10": [
+          40,
+          62,
+          144,
+          237,
+          154,
+          133,
+          71,
+          30,
+          389,
+          56,
+          31,
+          31
+        ],
+        "coins_p25": [
+          40,
+          62,
+          144,
+          237,
+          154,
+          133,
+          71,
+          30,
+          389,
+          56,
+          31,
+          31
+        ],
+        "coins_p75": [
+          40,
+          62,
+          144,
+          237,
+          154,
+          315,
+          1956,
+          1771,
+          1466,
+          2329,
+          1212,
+          915
+        ],
+        "coins_p90": [
+          40,
+          62,
+          144,
+          237,
+          154,
+          315,
+          1956,
+          1771,
+          1466,
+          2329,
+          1212,
+          915
+        ],
+        "potions_discovered_mean": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "potions_discovered_p10": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "potions_discovered_p90": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0.5,
+          1.5,
+          1.5,
+          1.5,
+          1.5,
+          1.5,
+          1.5
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "ingredients_unused_mean": [
+          10,
+          87,
+          242,
+          454,
+          709,
+          1045,
+          1550,
+          2140,
+          2799,
+          3600,
+          4544,
+          5535
+        ],
+        "machine_util_pct_mean": [
+          100,
+          100,
+          100,
+          100,
+          100,
+          99.7,
+          99.7,
+          99.3,
+          99.1,
+          98.9,
+          98.9,
+          98.9
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "Top performer: 83 coins, 5 potions, 2 quests, 1 achievements.",
+          "coins_series": [
+            40,
+            62,
+            144,
+            237,
+            154,
+            315,
+            1956,
+            1771,
+            1466,
+            2329,
+            1212,
+            915
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2
+          ],
+          "final_coins": 83,
+          "potions_discovered": 5,
+          "quests_completed": 2
+        },
+        {
+          "label": "Tough run",
+          "story": "Bottom-10% run: 31 coins. Machine utilisation 100%, 1 quests. RNG adversity compounded through 24 hours.",
+          "coins_series": [
+            40,
+            62,
+            144,
+            237,
+            154,
+            133,
+            71,
+            30,
+            389,
+            56,
+            31,
+            31
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5,
+            5
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "final_coins": 31,
+          "potions_discovered": 5,
+          "quests_completed": 1
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 3415
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 639
+        },
+        {
+          "ingredient": "sunbark",
+          "unused_mean": 450
+        },
+        {
+          "ingredient": "plainrib",
+          "unused_mean": 447
+        },
+        {
+          "ingredient": "muddystone",
+          "unused_mean": 442
+        },
+        {
+          "ingredient": "emberseed",
+          "unused_mean": 421
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "COIN_STARVED",
+          "INGREDIENT_GRAVEYARD",
+          "SHALLOW_DISCOVERY"
+        ],
+        "notes": [
+          "D_QuestHunter ended with only 57 coins.",
+          "6,554.5 ingredients never brewed (worst: rootmoss ×3415).",
+          "Only 5 unique potion names discovered."
+        ]
+      }
+    },
+    "E_AchievementHunter": {
+      "summary_mean": {
+        "final_coins": 1223,
+        "potions_discovered": 15,
+        "recipes_discovered": 16.5,
+        "machines_built": 1,
+        "workers": 3,
+        "machine_util_pct": 99.65,
+        "graveyard_units": 5810,
+        "gathered_total": 7243.5,
+        "consumed_total": 1443.5,
+        "potions_brewed": 1544.5,
+        "coins_from_sales": 9310,
+        "coins_from_quests": 0,
+        "coins_from_achievements": 3500,
+        "quests_completed": 0,
+        "achievements_unlocked": 2,
+        "locations_unlocked": 10,
+        "max_worker_level": 10,
+        "max_machine_level": 10,
+        "max_brew_speed": 2.52,
+        "max_gather_speed": 3.4,
+        "upgrades_total": 32,
+        "up_w_speed": 20,
+        "up_w_size": 2,
+        "up_w_clk": 1,
+        "up_m_speed": 5,
+        "up_m_multi": 1,
+        "up_m_slot": 3,
+        "t_machine2_min": 0,
+        "t_machine3_min": 0,
+        "t_machine4_min": 0,
+        "t_machine5_min": 0,
+        "t_quests_min": 22.5,
+        "t_loc5_min": 8.5,
+        "t_loc10_min": 42.5,
+        "t_loc20_min": 0,
+        "ev_mode0_pct": 0,
+        "ev_mode1_pct": 0,
+        "ev_mode2_pct": 0,
+        "ev_mode3_pct": 0
+      },
+      "final_coins_p10": 1186,
+      "final_coins_p90": 1260,
+      "timeseries": {
+        "t_minutes": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55
+        ],
+        "coins_mean": [
+          40,
+          90,
+          135,
+          315,
+          335,
+          182,
+          433,
+          895,
+          768,
+          473,
+          854,
+          1400
+        ],
+        "coins_p10": [
+          40,
+          50,
+          34,
+          198,
+          260,
+          157,
+          428,
+          793,
+          208,
+          375,
+          767,
+          1298
+        ],
+        "coins_p25": [
+          40,
+          50,
+          34,
+          198,
+          260,
+          157,
+          428,
+          793,
+          208,
+          375,
+          767,
+          1298
+        ],
+        "coins_p75": [
+          40,
+          129,
+          236,
+          432,
+          409,
+          206,
+          437,
+          997,
+          1328,
+          570,
+          940,
+          1501
+        ],
+        "coins_p90": [
+          40,
+          129,
+          236,
+          432,
+          409,
+          206,
+          437,
+          997,
+          1328,
+          570,
+          940,
+          1501
+        ],
+        "potions_discovered_mean": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          12.5,
+          13,
+          13,
+          14,
+          15,
+          15,
+          15
+        ],
+        "potions_discovered_p10": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          12,
+          13,
+          13,
+          13,
+          15,
+          15,
+          15
+        ],
+        "potions_discovered_p90": [
+          0,
+          3,
+          3,
+          3,
+          3,
+          13,
+          13,
+          13,
+          15,
+          15,
+          15,
+          15
+        ],
+        "quests_completed_mean": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "quests_completed_p90": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "ingredients_unused_mean": [
+          10,
+          101,
+          237,
+          410,
+          607,
+          942,
+          1394,
+          1893,
+          2490,
+          3208,
+          4013,
+          4888
+        ],
+        "machine_util_pct_mean": [
+          100,
+          99.7,
+          99.9,
+          99.9,
+          99.9,
+          99.4,
+          99.4,
+          99.4,
+          99.6,
+          99.6,
+          99.6,
+          99.7
+        ]
+      },
+      "featured_runs": [
+        {
+          "label": "Standout run",
+          "story": "Achievement blitz — 2 milestones unlocked, first at 23m, earning 4k bonus coins (278% of total income from achievement rewards alone).",
+          "coins_series": [
+            40,
+            50,
+            236,
+            432,
+            409,
+            157,
+            437,
+            997,
+            1328,
+            570,
+            940,
+            1501
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            13,
+            13,
+            13,
+            15,
+            15,
+            15,
+            15
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1260,
+          "potions_discovered": 15,
+          "quests_completed": 0
+        },
+        {
+          "label": "Tough run",
+          "story": "Slow discovery stalled high-value rewards: only 15 potions found, blocking the disc_50 (8k) and disc_150 (80k) payouts. Achievement total: 2 — well below average. Ingredient variety limited breakthrough timing.",
+          "coins_series": [
+            40,
+            129,
+            34,
+            198,
+            260,
+            206,
+            428,
+            793,
+            208,
+            375,
+            767,
+            1298
+          ],
+          "potions_series": [
+            0,
+            3,
+            3,
+            3,
+            3,
+            12,
+            13,
+            13,
+            13,
+            15,
+            15,
+            15
+          ],
+          "quests_series": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "final_coins": 1186,
+          "potions_discovered": 15,
+          "quests_completed": 0
+        }
+      ],
+      "graveyard_top": [
+        {
+          "ingredient": "rootmoss",
+          "unused_mean": 2546
+        },
+        {
+          "ingredient": "firepetal",
+          "unused_mean": 994
+        },
+        {
+          "ingredient": "dewcap",
+          "unused_mean": 569
+        },
+        {
+          "ingredient": "plainrib",
+          "unused_mean": 358
+        },
+        {
+          "ingredient": "bogvine",
+          "unused_mean": 312
+        },
+        {
+          "ingredient": "coppercreeper",
+          "unused_mean": 296
+        }
+      ],
+      "bottleneck_diagnosis": {
+        "flags": [
+          "COIN_STARVED",
+          "INGREDIENT_GRAVEYARD"
+        ],
+        "notes": [
+          "E_AchievementHunter ended with only 1,223 coins.",
+          "5,810 ingredients never brewed (worst: rootmoss ×2546)."
+        ]
+      }
+    }
+  },
+  "global_diagnosis": {
+    "ranking": [
+      {
+        "n": "C_Industrialist",
+        "c": 3745
+      },
+      {
+        "n": "F_Everyman",
+        "c": 1619.5
+      },
+      {
+        "n": "B_Completionist",
+        "c": 1336
+      },
+      {
+        "n": "E_AchievementHunter",
+        "c": 1223
+      },
+      {
+        "n": "A_Sprinter",
+        "c": 1183
+      },
+      {
+        "n": "D_QuestHunter",
+        "c": 57
+      }
+    ],
+    "spread_multiple": 65.7,
+    "notes": [
+      "Richest: C_Industrialist (3,745). Poorest: D_QuestHunter (57). Spread ×65.7.",
+      "Wide ×65.7 spread — one playstyle dominates."
+    ]
+  },
+  "recipe_analysis": {
+    "note": "Achievable potions from real ingredient combinations. Enumerates all distinct 1-3 ingredient recipes, single-ingredient repeats 2-5x, and distinct 4-ingredient recipes among the 30 highest-value ingredients.",
+    "total_recipes_enumerated": 220850,
+    "total_unique_potions": 723,
+    "by_size": [
+      {
+        "slots": 1,
+        "recipes": 105,
+        "unique_potions": 95,
+        "value_min": 3,
+        "value_median": 65,
+        "value_max": 1784
+      },
+      {
+        "slots": 2,
+        "recipes": 5460,
+        "unique_potions": 475,
+        "value_min": 9,
+        "value_median": 373,
+        "value_max": 16702
+      },
+      {
+        "slots": 3,
+        "recipes": 187460,
+        "unique_potions": 693,
+        "value_min": 16,
+        "value_median": 1105,
+        "value_max": 87709
+      }
+    ],
+    "value_min": 3,
+    "value_median": 1371,
+    "value_max": 836152,
+    "price_bands": [
+      {
+        "label": "Lesser",
+        "min_value": 0,
+        "unique_potions": 49
+      },
+      {
+        "label": "Common",
+        "min_value": 30,
+        "unique_potions": 90
+      },
+      {
+        "label": "Greater",
+        "min_value": 80,
+        "unique_potions": 115
+      },
+      {
+        "label": "Potent",
+        "min_value": 180,
+        "unique_potions": 139
+      },
+      {
+        "label": "Grand",
+        "min_value": 350,
+        "unique_potions": 157
+      },
+      {
+        "label": "Mythic",
+        "min_value": 700,
+        "unique_potions": 173
+      }
+    ],
+    "top_potions": [
+      {
+        "name": "Mythic Elixir of Gravity",
+        "value": 836152,
+        "recipe": [
+          "Doom Nettle",
+          "Doom Nettle",
+          "Doom Nettle",
+          "Doom Nettle",
+          "Doom Nettle"
+        ]
+      },
+      {
+        "name": "Mythic Draught of the Abyss",
+        "value": 630029,
+        "recipe": [
+          "Celestial Fume",
+          "Celestial Fume",
+          "Celestial Fume",
+          "Celestial Fume",
+          "Celestial Fume"
+        ]
+      },
+      {
+        "name": "Mythic Decoction of Ruin",
+        "value": 471937,
+        "recipe": [
+          "Abyssal Fang",
+          "Abyssal Fang",
+          "Abyssal Fang",
+          "Abyssal Fang",
+          "Abyssal Fang"
+        ]
+      },
+      {
+        "name": "Mythic Tonic of Time",
+        "value": 438067,
+        "recipe": [
+          "Eldritch Mandrake",
+          "Eldritch Mandrake",
+          "Eldritch Mandrake",
+          "Eldritch Mandrake",
+          "Eldritch Mandrake"
+        ]
+      },
+      {
+        "name": "Mythic Philter of the Soul",
+        "value": 404648,
+        "recipe": [
+          "Primordial Facet",
+          "Primordial Facet",
+          "Primordial Facet",
+          "Primordial Facet",
+          "Primordial Facet"
+        ]
+      },
+      {
+        "name": "Mythic Decoction of the Abyss",
+        "value": 384481,
+        "recipe": [
+          "Primordial Vertebra",
+          "Primordial Vertebra",
+          "Primordial Vertebra",
+          "Primordial Vertebra",
+          "Primordial Vertebra"
+        ]
+      },
+      {
+        "name": "Mythic Brew of the Soul",
+        "value": 374617,
+        "recipe": [
+          "Primordial Lichen",
+          "Primordial Lichen",
+          "Primordial Lichen",
+          "Primordial Lichen",
+          "Primordial Lichen"
+        ]
+      },
+      {
+        "name": "Mythic Draught of Ruin",
+        "value": 369427,
+        "recipe": [
+          "Sovereign Tincture",
+          "Sovereign Tincture",
+          "Sovereign Tincture",
+          "Sovereign Tincture",
+          "Sovereign Tincture"
+        ]
+      },
+      {
+        "name": "Mythic Decoction of the Soul",
+        "value": 319561,
+        "recipe": [
+          "Abyssal Fang",
+          "Primordial Lichen",
+          "Celestial Fume",
+          "Doom Nettle"
+        ]
+      },
+      {
+        "name": "Mythic Philter of Ruin",
+        "value": 306787,
+        "recipe": [
+          "Primordial Facet",
+          "Celestial Fume",
+          "Doom Nettle",
+          "Eldritch Mandrake"
+        ]
+      },
+      {
+        "name": "Mythic Brew of Ruin",
+        "value": 292288,
+        "recipe": [
+          "Primordial Lichen",
+          "Doom Nettle",
+          "Eldritch Mandrake",
+          "Sovereign Tincture"
+        ]
+      },
+      {
+        "name": "Mythic Elixir of Ruin",
+        "value": 273846,
+        "recipe": [
+          "Doom Nettle",
+          "Eldritch Mandrake",
+          "Primordial Vertebra",
+          "Sovereign Tincture"
+        ]
+      }
+    ],
+    "cheapest_potions": [
+      {
+        "name": "Lesser Draught of the Tide",
+        "value": 14,
+        "recipe": [
+          "Pondreed",
+          "Dull Tincture"
+        ]
+      },
+      {
+        "name": "Lesser Elixir of Acid",
+        "value": 19,
+        "recipe": [
+          "Pondreed",
+          "Bog Vine",
+          "Bog Bracket"
+        ]
+      },
+      {
+        "name": "Lesser Tonic of Acid",
+        "value": 20,
+        "recipe": [
+          "Chalkroot",
+          "Bog Vine",
+          "Bog Bracket"
+        ]
+      },
+      {
+        "name": "Lesser Brew of Purity",
+        "value": 22,
+        "recipe": [
+          "Pondreed",
+          "Grubcap",
+          "Muddy Stone"
+        ]
+      },
+      {
+        "name": "Common Tonic of Life",
+        "value": 23,
+        "recipe": [
+          "Rootmoss",
+          "Pondreed",
+          "Thistledown"
+        ]
+      },
+      {
+        "name": "Lesser Decoction of the Earth",
+        "value": 23,
+        "recipe": [
+          "Pondreed",
+          "Mossbone",
+          "Muddy Stone"
+        ]
+      },
+      {
+        "name": "Lesser Tonic of the Earth",
+        "value": 23,
+        "recipe": [
+          "Rootmoss",
+          "Chalkroot",
+          "Mossbone"
+        ]
+      },
+      {
+        "name": "Lesser Tonic of Balance",
+        "value": 23,
+        "recipe": [
+          "Pondreed",
+          "Chalkroot",
+          "Dull Tincture"
+        ]
+      }
+    ]
+  }
+}
