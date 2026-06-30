@@ -131,3 +131,8 @@ export type PotionInventory = Record<string, number>;
 
 /** Raw ingredient inventory id -> count */
 export type IngredientInventory = Record<string, number>;
+
+export interface PotionMasteryEntry {
+  xp: number;
+  tokenAwarded: boolean;
+}

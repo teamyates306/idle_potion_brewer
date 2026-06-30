@@ -5,9 +5,16 @@ import type {
   Ingredient,
   IngredientInventory,
   PotionInventory,
+  PotionMasteryEntry,
   Worker,
   WorkerSpecialization,
 } from "../types";
+import {
+  MASTERY_BASE_XP_PER_BREW,
+  MASTERY_TREES,
+  computeMasteryEffects,
+  masteryLevel,
+} from "../data/masteryTrees";
 import { useConfigStore } from "./configStore";
 import {
   applyLevels,
@@ -319,6 +326,13 @@ interface GameState {
   hardReset: () => void;
   downgradeGraphics: () => void;
   setGraphics: (patch: Partial<GraphicsSettings>) => void;
+
+  // mastery
+  potionMastery: Record<string, PotionMasteryEntry>;
+  masteryTokens: number;
+  masteryUnlocks: string[];
+  awardPotionBrewXP: (potionName: string, baseXp: number) => void;
+  unlockMasteryNode: (nodeId: string) => void;
 }
 
 const now = () => Date.now();
@@ -398,6 +412,9 @@ export const useGameStore = create<GameState>()(
       player_click_power_level: 0,
       unlocked_globals: [],
       graphics: { ...DEFAULT_GRAPHICS },
+      potionMastery: {},
+      masteryTokens: 0,
+      masteryUnlocks: [],
 
       // ---- Workers ----------------------------------------------------------
 
@@ -654,7 +671,8 @@ export const useGameStore = create<GameState>()(
         const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
         if (!loc) return;
 
-        const size = w.retrieval_size;
+        const fx = computeMasteryEffects(s.masteryUnlocks);
+        const size = w.retrieval_size * (1 + fx.caravan_size_pct / 100);
         let count = Math.floor(size);
         if (Math.random() < size - count) count += 1;
 
@@ -836,12 +854,16 @@ export const useGameStore = create<GameState>()(
 
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
         const potion = describePotion(ingredients, cfg.formulas);
-        const outputs = rollMultiBrew(effectiveMultiBrew(machine, potion.volatility, cfg.formulas));
+        const masteryFx = computeMasteryEffects(s.masteryUnlocks);
+        const multiBonus = masteryFx.multi_brew_pct / 100;
+        const outputs = rollMultiBrew(effectiveMultiBrew(machine, potion.volatility, cfg.formulas) + multiBonus);
+        const valueMult = 1 + masteryFx.potion_value_pct / 100;
+        const sellMult = 1 + masteryFx.sell_price_pct / 100;
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
         if ((s.autoSellHashes ?? []).includes(potion.hash)) {
-          coins += potion.value * outputs;
+          coins += Math.round(potion.value * valueMult * sellMult) * outputs;
         } else {
           potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
         }
@@ -875,6 +897,9 @@ export const useGameStore = create<GameState>()(
           total_brews: totalBrews,
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
+
+        // Award mastery XP for the brewed potion (per output)
+        get().awardPotionBrewXP(potion.name, MASTERY_BASE_XP_PER_BREW * outputs);
 
         // Auto-advance tutorial: step 1 is "click to speed up" — close it when first brew completes
         const tutState = get();
@@ -967,7 +992,9 @@ export const useGameStore = create<GameState>()(
         if (ingredients.length === 0) return;
         const potion = describePotion(ingredients, cfg.formulas);
         const n = Math.min(count, have);
-        const earned = potion.value * n;
+        const fx = computeMasteryEffects(s.masteryUnlocks);
+        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
+        const earned = Math.round(potion.value * sellMult) * n;
         const potionInv = { ...s.potionInv };
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
@@ -979,12 +1006,14 @@ export const useGameStore = create<GameState>()(
       sellAll: () => {
         const s = get();
         const cfg = useConfigStore.getState();
+        const fx = computeMasteryEffects(s.masteryUnlocks);
+        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
         let coins = s.coins;
         let totalEarned = 0;
         for (const [hash, count] of Object.entries(s.potionInv)) {
           const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
           if (ingredients.length === 0) continue;
-          const earned = describePotion(ingredients, cfg.formulas).value * count;
+          const earned = Math.round(describePotion(ingredients, cfg.formulas).value * sellMult) * count;
           coins += earned;
           totalEarned += earned;
         }
@@ -1403,6 +1432,46 @@ export const useGameStore = create<GameState>()(
 
       setGraphics: (patch) => set((s) => ({ graphics: { ...s.graphics, ...patch } })),
 
+      awardPotionBrewXP: (potionName, baseXp) => {
+        const s = get();
+        const fx = computeMasteryEffects(s.masteryUnlocks);
+        const xpGained = Math.round(baseXp * (1 + fx.mastery_xp_pct / 100));
+        const entry = s.potionMastery[potionName] ?? { xp: 0, tokenAwarded: false };
+        const prevLevel = masteryLevel(entry.xp);
+        const newXp = entry.xp + xpGained;
+        const newLevel = masteryLevel(newXp);
+        const justMastered = newLevel >= 10 && !entry.tokenAwarded;
+        set({
+          potionMastery: {
+            ...s.potionMastery,
+            [potionName]: { xp: newXp, tokenAwarded: entry.tokenAwarded || justMastered },
+          },
+          masteryTokens: s.masteryTokens + (justMastered ? 1 : 0),
+        });
+        if (justMastered) {
+          pushToast(`✨ ${potionName} mastered! +1 Mastery Token`, "amber");
+        } else if (newLevel > prevLevel && newLevel > 0) {
+          pushToast(`📚 ${potionName} — mastery level ${newLevel}`, "purple");
+        }
+      },
+
+      unlockMasteryNode: (nodeId) => {
+        const s = get();
+        if (s.masteryUnlocks.includes(nodeId)) return;
+        let node = null as import("../data/masteryTrees").MasteryNodeDef | null;
+        for (const tree of MASTERY_TREES) {
+          node = tree.nodes.find((n) => n.id === nodeId) ?? null;
+          if (node) break;
+        }
+        if (!node) return;
+        if (s.masteryTokens < node.cost) return;
+        if (node.parentId && !s.masteryUnlocks.includes(node.parentId)) return;
+        set({
+          masteryTokens: s.masteryTokens - node.cost,
+          masteryUnlocks: [...s.masteryUnlocks, nodeId],
+        });
+      },
+
       hardReset: () =>
         set({
           coins: 100,
@@ -1428,6 +1497,9 @@ export const useGameStore = create<GameState>()(
           questCooldowns: {},
           player_click_power_level: 0,
           unlocked_globals: [],
+          potionMastery: {},
+          masteryTokens: 0,
+          masteryUnlocks: [],
         }),
 
       buyPlayerClickPower: () =>
@@ -1545,6 +1617,9 @@ export const useGameStore = create<GameState>()(
         player_click_power_level: s.player_click_power_level,
         unlocked_globals: s.unlocked_globals,
         lastSeen: s.lastSeen,
+        potionMastery: s.potionMastery,
+        masteryTokens: s.masteryTokens,
+        masteryUnlocks: s.masteryUnlocks,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<GameState> & { machine?: BrewingMachine };
@@ -1583,6 +1658,9 @@ export const useGameStore = create<GameState>()(
           total_brews: p.total_brews ?? 0,
           player_click_power_level: p.player_click_power_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
+          potionMastery: p.potionMastery ?? {},
+          masteryTokens: p.masteryTokens ?? 0,
+          masteryUnlocks: p.masteryUnlocks ?? [],
         };
       },
     }

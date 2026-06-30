@@ -3,6 +3,7 @@ import {
   Coins, Sparkles, FlaskConical, Search, ChevronDown, ChevronRight,
   Trash2, CheckSquare, Square, X,
 } from "lucide-react";
+import { masteryLevel, masteryXpProgress } from "../data/masteryTrees";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import { useGameStore } from "../store/gameStore";
@@ -23,6 +24,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const sellPotion = useGameStore((s) => s.sellPotion);
   const sellAll = useGameStore((s) => s.sellAll);
   const autoSellHashes = useGameStore((s) => s.autoSellHashes);
+  const potionMastery = useGameStore((s) => s.potionMastery);
   const clearAutoSell = useGameStore((s) => s.clearAutoSell);
   const removeAutoSell = useGameStore((s) => s.removeAutoSell);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
@@ -259,18 +261,40 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                 <div className="grid grid-cols-2 gap-2">
                   {filteredGroups.map((g) => {
                     const inStock = g.hashes.reduce((a, h) => a + (potionInv[h] ?? 0), 0);
+                    const masteryEntry = potionMastery[g.name];
+                    const mLevel = masteryEntry ? masteryLevel(masteryEntry.xp) : 0;
+                    const mProgress = masteryEntry ? masteryXpProgress(masteryEntry.xp) : null;
                     return (
                       <button
                         key={g.name}
                         onClick={() => setDetail({ name: g.name })}
                         className="flex flex-col rounded-lg border border-purple-900/40 bg-slate-800/60 p-3 text-left transition hover:border-purple-500/50 hover:bg-slate-700/60 active:scale-[0.98]"
                       >
-                        <FlaskConical size={20} className="mb-1.5 text-purple-400" />
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <FlaskConical size={20} className="text-purple-400" />
+                          {mLevel > 0 && (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                              mLevel >= 10
+                                ? "bg-amber-500 text-amber-950"
+                                : "bg-slate-700 text-amber-300"
+                            }`}>
+                              {mLevel >= 10 ? "✨ MASTERED" : `Lv ${mLevel}`}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs font-semibold leading-tight text-purple-800">{g.name}</span>
                         <span className="mt-1 text-[10px] text-slate-500">
                           🪙 {fmt(g.maxValue)} · {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""}
                         </span>
                         <span className="text-[10px] text-slate-500">{inStock > 0 ? `×${inStock} in stock` : "sold out"}</span>
+                        {mProgress && mLevel < 10 && (
+                          <div className="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-slate-700">
+                            <div
+                              className="h-full rounded-full bg-amber-500"
+                              style={{ width: `${(mProgress.current / mProgress.needed) * 100}%` }}
+                            />
+                          </div>
+                        )}
                       </button>
                     );
                   })}

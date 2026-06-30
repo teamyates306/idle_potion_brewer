@@ -10,7 +10,7 @@ function Bottle({ x, y, c, s = 1 }: { x: number; y: number; c: string; s?: numbe
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`}>
       {/* Colour tint behind sprite — shows through transparent liquid area */}
-      <rect x="-8" y="-16" width="16" height="16" fill={c} opacity="0.6" />
+      <polygon points="2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0" fill={c} opacity="0.6" />
       {/* potion-bottle.svg: 16×16 pixel-art sprite */}
       <image href="/sprites/potion-bottle.svg" x="-8" y="-16" width="16" height="16" />
     </g>

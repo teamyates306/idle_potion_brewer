@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
+import { computeMasteryEffects } from "../data/masteryTrees";
 import type { BrewingMachine, Worker } from "../types";
 
 export interface WorkerLoopState {
@@ -25,7 +26,10 @@ function workerTripSecondsFor(w: Worker): number {
   const cfg = useConfigStore.getState();
   const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
   if (!loc) return 0;
-  return gatherRoundTrip(loc.distance, w.gather_speed);
+  const fx = computeMasteryEffects(useGameStore.getState().masteryUnlocks);
+  const isGatherer = w.specialization === "explorer" || w.specialization === "caravan" || w.specialization === "none";
+  const speedMult = (1 + fx.worker_speed_pct / 100) * (isGatherer ? 1 + fx.gatherer_speed_pct / 100 : 1);
+  return gatherRoundTrip(loc.distance, w.gather_speed * speedMult);
 }
 
 export function machineBrewSecondsFor(machine: BrewingMachine): number {
@@ -35,7 +39,9 @@ export function machineBrewSecondsFor(machine: BrewingMachine): number {
     .filter((x): x is string => !!x);
   const ingredients = ids.map((id) => cfg.ingredients[id]).filter(Boolean);
   const toxicity = ingredients.reduce((a, ing) => a + ing.attributes.toxicity, 0);
-  return brewTime(machine, toxicity, cfg.formulas, ingredients);
+  const base = brewTime(machine, toxicity, cfg.formulas, ingredients);
+  const fx = computeMasteryEffects(useGameStore.getState().masteryUnlocks);
+  return base / (1 + fx.brew_speed_pct / 100);
 }
 
 function workerPhaseFor(w: Worker, now: number): WorkerLoopState {

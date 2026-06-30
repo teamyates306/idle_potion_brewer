@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2 } from "lucide-react";
+import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles } from "lucide-react";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
@@ -15,15 +15,17 @@ import MachineView from "./components/MachineView";
 import PotionView, { SupplyChainDashboard } from "./components/PotionView";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
+import MasteryView from "./components/MasteryView";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
 import Atmosphere from "./components/Atmosphere";
 import SettingsModal from "./components/SettingsModal";
 import { useGameStore } from "./store/gameStore";
+import { masteryLevel } from "./data/masteryTrees";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "dev" | "supply" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | null;
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -44,6 +46,13 @@ export default function App() {
   const questsUnlocked = useGameStore((s) => s.questsUnlocked);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
   const hasAbacus = unlocked_globals.includes("merchants_abacus");
+  const masteryTokens = useGameStore((s) => s.masteryTokens);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
+  const potionMastery = useGameStore((s) => s.potionMastery);
+  const hasMastery =
+    masteryTokens > 0 ||
+    masteryUnlocks.length > 0 ||
+    Object.values(potionMastery).some((e) => masteryLevel(e.xp) >= 10);
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const [panel, setPanel] = useState<Panel>(null);
   const [machineTabId, setMachineTabId] = useState(1);
@@ -126,6 +135,21 @@ export default function App() {
           <Trophy size={18} className="text-amber-700" />
           <span>Achievements</span>
         </button>
+        {hasMastery && (
+          <button
+            onClick={() => setPanel("mastery")}
+            className="relative flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+            title="Mastery"
+          >
+            <Sparkles size={18} className="text-amber-600" />
+            <span>Mastery</span>
+            {masteryTokens > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950">
+                {masteryTokens}
+              </span>
+            )}
+          </button>
+        )}
         {hasAbacus && (
           <button
             onClick={() => setPanel("supply")}
@@ -161,6 +185,7 @@ export default function App() {
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
       {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
+      {panel === "mastery"  && <MasteryView  onClose={() => setPanel(null)} />}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
 
       {/* Onboarding + achievement surfacing */}
