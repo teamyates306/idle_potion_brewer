@@ -332,6 +332,9 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
           </button>
         </div>
 
+        {/* Pending tokens quick-spend */}
+        <PendingTokensPanel workers={workers} coins={coins} formulas={cfg.formulas} onSpend={bulkSpendTokens} />
+
         {/* Roster — auto-grouped by status */}
         <div className="space-y-1.5">
           {sections.map((sec) => (
@@ -482,6 +485,73 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         />
       )}
     </>
+  );
+}
+
+const PENDING_TYPES = [
+  { key: "speed"  as const, label: "Gather Speed", Icon: Gauge,   blocked: new Set(["pounder", "manic"]) },
+  { key: "size"   as const, label: "Carry Size",   Icon: Package, blocked: new Set(["pounder", "manic"]) },
+  { key: "clkspd" as const, label: "Click Speed",  Icon: Timer,   blocked: new Set(["explorer", "caravan"]) },
+  { key: "clkpow" as const, label: "Click Power",  Icon: Zap,     blocked: new Set(["explorer", "caravan"]) },
+];
+
+function PendingTokensPanel({
+  workers, coins, formulas, onSpend,
+}: {
+  workers: Worker[];
+  coins: number;
+  formulas: ReturnType<typeof import("../store/configStore").useConfigStore.getState>["formulas"];
+  onSpend: (indices: number[], type: "speed" | "size" | "clkspd" | "clkpow", count: number) => void;
+}) {
+  const totalTokens = workers.reduce((s, w) => s + (w.upgrade_tokens ?? 0), 0);
+  if (totalTokens === 0) return null;
+
+  return (
+    <div className="mb-3 rounded-xl border border-yellow-700/40 bg-yellow-950/20 p-3 space-y-2">
+      <div className="text-xs font-bold text-yellow-500">
+        ✦ {totalTokens} upgrade token{totalTokens !== 1 ? "s" : ""} ready
+        <span className="ml-2 text-[10px] font-normal text-slate-500">spend by type across all workers</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {PENDING_TYPES.map(({ key, label, Icon, blocked }) => {
+          const eligibleIdx: number[] = [];
+          let uniformMax = Infinity;
+          for (let i = 0; i < workers.length; i++) {
+            const w = workers[i];
+            const spec = w.specialization ?? "none";
+            if ((w.upgrade_tokens ?? 0) === 0 || blocked.has(spec)) continue;
+            eligibleIdx.push(i);
+            const avail = w.upgrade_tokens ?? 0;
+            uniformMax = Math.min(uniformMax, spec === "none" ? Math.min(avail, preClassTokenCap(w)) : avail);
+          }
+          const count = isFinite(uniformMax) ? uniformMax : 0;
+          if (eligibleIdx.length === 0 || count === 0) return null;
+          const cost = computeBulkCost(workers, new Set(eligibleIdx), key, count, formulas);
+          const canAfford = coins >= cost;
+          return (
+            <button
+              key={key}
+              onClick={() => onSpend(eligibleIdx, key, count)}
+              disabled={!canAfford}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition active:scale-95 ${
+                canAfford
+                  ? "bg-yellow-700/40 text-yellow-200 hover:bg-yellow-700/60"
+                  : "cursor-not-allowed bg-slate-800/60 text-slate-500"
+              }`}
+            >
+              <Icon size={12} />
+              <span>{label}</span>
+              <span className={`rounded px-1 text-[10px] font-semibold ${canAfford ? "bg-yellow-600/30 text-yellow-400" : "bg-slate-700 text-slate-500"}`}>
+                ×{eligibleIdx.length}
+              </span>
+              <span className={`text-[10px] ${canAfford ? "text-amber-700" : "text-slate-600"}`}>
+                🪙{fmt(cost)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
