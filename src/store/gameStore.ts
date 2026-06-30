@@ -42,6 +42,8 @@ import {
 } from "../engine/quests";
 import { pushGameEvent } from "../util/gameEvents";
 import { pushToast } from "../util/toast";
+import { emitHint } from "../util/hintBus";
+import type { HintId } from "../data/hints";
 import { MACHINE_COSTS, HIRE_COST_BASE } from "../engine/economyConstants";
 import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type AchievementTrigger } from "../data/achievements";
 import { pushAchievementToast } from "../util/achievementToast";
@@ -332,6 +334,10 @@ interface GameState {
   masteryTokens: number;
   masteryUnlocks: string[];
   awardPotionBrewXP: (potionName: string, baseXp: number) => void;
+
+  // one-time contextual hints
+  seenHints: string[];
+  pushHint: (id: HintId) => void;
   unlockMasteryNode: (nodeId: string) => void;
 }
 
@@ -415,6 +421,7 @@ export const useGameStore = create<GameState>()(
       potionMastery: {},
       masteryTokens: 0,
       masteryUnlocks: [],
+      seenHints: [],
 
       // ---- Workers ----------------------------------------------------------
 
@@ -734,6 +741,11 @@ export const useGameStore = create<GameState>()(
           const name = cfg.ingredients[id]?.name ?? id;
           pushGameEvent("trough", `+${n} ${name}`);
         }
+
+        get().pushHint("first_gather_complete");
+        if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) {
+          get().pushHint("worker_first_token");
+        }
       },
 
       hireWorker: () => {
@@ -907,6 +919,10 @@ export const useGameStore = create<GameState>()(
           get().advanceTutorial(1);
         }
 
+        if (machineLevelsGained > 0 && (machine.upgrade_tokens ?? 0) === 0) {
+          get().pushHint("machine_first_token");
+        }
+
         const autoSell = (s.autoSellHashes ?? []).includes(potion.hash);
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
         pushGameEvent("cauldron", label, machineId);
@@ -937,7 +953,8 @@ export const useGameStore = create<GameState>()(
       // Proactive guard: a running machine with insufficient ingredients is
       // marked stalled (waiting_for_ingredients) so it stops animating, can't be
       // clicked, and auto-clickers don't touch it — until ingredients arrive.
-      updateBrewReadiness: () =>
+      updateBrewReadiness: () => {
+        let anyBecameStalled = false;
         set((s) => {
           let changed = false;
           const machines = s.machines.map((m) => {
@@ -947,12 +964,14 @@ export const useGameStore = create<GameState>()(
             const need: Record<string, number> = {};
             for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
             const hasAll = Object.entries(need).every(([id, n]) => (s.ingredientInv[id] ?? 0) >= n);
-            if (!hasAll && !m.brew_stalled) { changed = true; return { ...m, brew_stalled: true, brew_started_at: now() }; }
+            if (!hasAll && !m.brew_stalled) { changed = true; anyBecameStalled = true; return { ...m, brew_stalled: true, brew_started_at: now() }; }
             if (hasAll && m.brew_stalled) { changed = true; return { ...m, brew_stalled: false, brew_started_at: now() }; }
             return m;
           });
           return changed ? { machines } : {};
-        }),
+        });
+        if (anyBecameStalled) get().pushHint("brewer_stalled");
+      },
 
       toggleAutoSellPotion: (hash) => {
         const s = get();
@@ -998,9 +1017,13 @@ export const useGameStore = create<GameState>()(
         const potionInv = { ...s.potionInv };
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
-        set({ coins: s.coins + earned, potionInv });
+        const newCoins = s.coins + earned;
+        set({ coins: newCoins, potionInv });
         pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
-        get().checkAchievements("coins", s.coins + earned);
+        get().checkAchievements("coins", newCoins);
+        if (newCoins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
+        const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
+        if (nextMachineCost !== null && newCoins >= nextMachineCost) get().pushHint("can_afford_machine");
       },
 
       sellAll: () => {
@@ -1020,6 +1043,11 @@ export const useGameStore = create<GameState>()(
         set({ coins, potionInv: {} });
         if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
         if (totalEarned > 0) get().checkAchievements("coins", coins);
+        if (totalEarned > 0) {
+          if (coins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
+          const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
+          if (nextMachineCost !== null && coins >= nextMachineCost) get().pushHint("can_afford_machine");
+        }
       },
 
       clickBrew: (machineId) => {
@@ -1069,7 +1097,11 @@ export const useGameStore = create<GameState>()(
           changed = true;
         }
 
-        if (changed) set({ questsUnlocked: true, activeQuests, questCooldowns: cooldowns });
+        if (changed) {
+          const firstUnlock = !s.questsUnlocked;
+          set({ questsUnlocked: true, activeQuests, questCooldowns: cooldowns });
+          if (firstUnlock) get().pushHint("quests_unlocked");
+        }
       },
 
       completeQuest: (questId) => {
@@ -1450,6 +1482,7 @@ export const useGameStore = create<GameState>()(
         });
         if (justMastered) {
           pushToast(`✨ ${potionName} mastered! +1 Mastery Token`, "amber");
+          get().pushHint("first_mastery_token");
         } else if (newLevel > prevLevel && newLevel > 0) {
           pushToast(`📚 ${potionName} — mastery level ${newLevel}`, "purple");
         }
@@ -1470,6 +1503,13 @@ export const useGameStore = create<GameState>()(
           masteryTokens: s.masteryTokens - node.cost,
           masteryUnlocks: [...s.masteryUnlocks, nodeId],
         });
+      },
+
+      pushHint: (id) => {
+        const s = get();
+        if (s.seenHints.includes(id)) return;
+        set({ seenHints: [...s.seenHints, id] });
+        emitHint(id);
       },
 
       hardReset: () =>
@@ -1500,6 +1540,7 @@ export const useGameStore = create<GameState>()(
           potionMastery: {},
           masteryTokens: 0,
           masteryUnlocks: [],
+          seenHints: [],
         }),
 
       buyPlayerClickPower: () =>
@@ -1620,6 +1661,7 @@ export const useGameStore = create<GameState>()(
         potionMastery: s.potionMastery,
         masteryTokens: s.masteryTokens,
         masteryUnlocks: s.masteryUnlocks,
+        seenHints: s.seenHints,
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<GameState> & { machine?: BrewingMachine };
@@ -1661,6 +1703,7 @@ export const useGameStore = create<GameState>()(
           potionMastery: p.potionMastery ?? {},
           masteryTokens: p.masteryTokens ?? 0,
           masteryUnlocks: p.masteryUnlocks ?? [],
+          seenHints: p.seenHints ?? [],
         };
       },
     }

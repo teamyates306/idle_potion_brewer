@@ -243,6 +243,14 @@ body {
 }
 .ach-pop { animation: ach-pop 0.4s ease-out both; }
 
+/* Hint banner entrance (slides up from below) */
+@keyframes hint-pop {
+  0%   { transform: translateY(14px) scale(0.96); opacity: 0; }
+  60%  { transform: translateY(-3px) scale(1.01); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.hint-pop { animation: hint-pop 0.36s ease-out both; }
+
 /* Machine bubbles */
 @keyframes bubble-rise {
   0%   { transform: translateY(0) scale(1); opacity: 0.8; }

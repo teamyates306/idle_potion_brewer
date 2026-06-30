@@ -16,6 +16,7 @@ import PotionView, { SupplyChainDashboard } from "./components/PotionView";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
 import MasteryView from "./components/MasteryView";
+import HintBanner from "./components/ui/HintBanner";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
 import Atmosphere from "./components/Atmosphere";
@@ -191,6 +192,7 @@ export default function App() {
       {/* Onboarding + achievement surfacing */}
       <TutorialOverlay />
       <AchievementToasts />
+      <HintBanner />
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 

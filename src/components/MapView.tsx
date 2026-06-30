@@ -67,6 +67,7 @@ export default function MapView({
   lockedWorkerIndex?: number | null;
 }) {
   const unlocked = useGameStore((s) => s.unlockedLocations);
+  const pushHint = useGameStore((s) => s.pushHint);
   const explored = useGameStore((s) => s.exploredLocations);
   const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
   const workers = useGameStore((s) => s.workers);
@@ -147,7 +148,7 @@ export default function MapView({
                 discoveredDrops={discoveredDrops[n.loc.id] ?? []}
                 hasCompass={hasCompass}
                 dataTut={n.loc.id === firstUnlockedId ? "map-location" : undefined}
-                onClick={() => setSelected(n.loc)}
+                onClick={() => { if (!unlocked.includes(n.loc.id)) pushHint("map_locked_location"); setSelected(n.loc); }}
               />
             ))}
           </div>
