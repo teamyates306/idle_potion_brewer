@@ -118,6 +118,7 @@ export default function WorkerArt({ size = 64, carrying = false, color = "#7c3ae
           <path d="M40 32 L48 40" stroke={robeDark} strokeWidth="4" strokeLinecap="round" />
         )
       )}
+
     </svg>
   );
 }

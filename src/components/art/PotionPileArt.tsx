@@ -9,9 +9,10 @@ const COLORS = ["#8a6fa3", "#5f9e9a", "#b06a72", "#7fa05e", "#c2a14e", "#6f8aa8"
 function Bottle({ x, y, c, s = 1 }: { x: number; y: number; c: string; s?: number }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`}>
-      <rect x="-3" y="-16" width="6" height="4" rx="1" fill="#cbd5e1" />
-      <path d="M-3 -12 h6 l3 7 a6 6 0 0 1 -12 0 Z" fill={c} />
-      <path d="M-4 -5 a6 6 0 0 0 8 0 Z" fill="#fff" opacity="0.25" />
+      {/* Colour tint behind sprite — shows through transparent liquid area */}
+      <rect x="-8" y="-16" width="16" height="16" fill={c} opacity="0.6" />
+      {/* potion-bottle.svg: 16×16 pixel-art sprite */}
+      <image href="/sprites/potion-bottle.svg" x="-8" y="-16" width="16" height="16" />
     </g>
   );
 }
