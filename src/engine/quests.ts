@@ -95,13 +95,24 @@ export function difficultyForScore(score: number): QuestDifficulty {
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
-function pickN<T>(arr: T[], n: number): T[] {
-  const pool = [...arr];
+
+/** Weighted random pick without replacement. Weight floor is 1 so every group stays pickable. */
+function weightedPickN<T>(arr: T[], n: number, weights: number[]): T[] {
+  const pool = arr.map((item, i) => ({ item, weight: Math.max(1, weights[i]) }));
   const out: T[] = [];
   while (out.length < n && pool.length) {
-    out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    const total = pool.reduce((s, e) => s + e.weight, 0);
+    let r = Math.random() * total;
+    let idx = pool.length - 1;
+    for (let i = 0; i < pool.length; i++) { r -= pool[i].weight; if (r <= 0) { idx = i; break; } }
+    out.push(pool.splice(idx, 1)[0].item);
   }
   return out;
+}
+
+/** Score a name-group by how many of its best recipe's ingredients the player has stocked. */
+function inventoryWeight(group: NameGroup, ingredientInv: Record<string, number>): number {
+  return 1 + group.bestHash.split("+").reduce((s, id) => s + (ingredientInv[id] ?? 0), 0);
 }
 
 let questCounter = 0;
@@ -118,10 +129,12 @@ export function generateQuest(
   difficulty: QuestDifficulty,
   groups: NameGroup[],
   ingredients: Record<string, Ingredient>,
+  ingredientInv: Record<string, number> = {},
 ): Quest {
   const [minN, maxN] = TIER_NAME_COUNT[difficulty];
   const count = Math.min(groups.length, Math.floor(rand(minN, maxN + 1)));
-  const chosen = pickN(groups, Math.max(1, count));
+  const weights = groups.map(g => inventoryWeight(g, ingredientInv));
+  const chosen = weightedPickN(groups, Math.max(1, count), weights);
 
   const avgComplexity =
     chosen.reduce((a, g) => a + recipeComplexity(g.bestHash, ingredients), 0) / chosen.length;

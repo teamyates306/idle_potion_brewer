@@ -1035,7 +1035,7 @@ export const useGameStore = create<GameState>()(
           if (present.has(d)) continue;
           const readyAt = cooldowns[d];
           if (readyAt && nowT < readyAt) continue;
-          activeQuests.push(generateQuest(d, groups, cfg.ingredients));
+          activeQuests.push(generateQuest(d, groups, cfg.ingredients, s.ingredientInv));
           delete cooldowns[d];
           changed = true;
         }

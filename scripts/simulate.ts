@@ -390,7 +390,7 @@ function maybeGenerateQuests(s: SimState, tick: number): void {
   if (need.length === 0) return;
   const groups = groupHashesByName([...s.discoveredPotions], INGREDIENTS, F);
   if (groups.length === 0) return;
-  for (const d of need) { s.activeQuests.push(generateQuest(d, groups, INGREDIENTS)); delete s.questCooldownUntil[d]; }
+  for (const d of need) { s.activeQuests.push(generateQuest(d, groups, INGREDIENTS, s.ingredientInv)); delete s.questCooldownUntil[d]; }
 }
 function tryCompleteQuest(s: SimState, quest: Quest, tick: number): boolean {
   const { complete } = questProgress(quest, s.potionInv, INGREDIENTS, F);
