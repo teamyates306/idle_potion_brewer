@@ -3,6 +3,7 @@ import { fmt } from "../../util/format";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
+import { masteryLevel, masteryXpProgress } from "../../data/masteryTrees";
 import IngredientSvg from "../art/IngredientSvg";
 
 /**
@@ -27,6 +28,7 @@ export default function PotionDetailsModal({
   const sellPotion = useGameStore((s) => s.sellPotion);
   const toggleAutoSellPotion = useGameStore((s) => s.toggleAutoSellPotion);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
+  const potionMastery = useGameStore((s) => s.potionMastery);
   const hasSpectacles = unlocked_globals.includes("alchemist_spectacles");
   const cfg = useConfigStore();
 
@@ -117,6 +119,46 @@ export default function PotionDetailsModal({
             </div>
           </div>
         )}
+
+        {/* Mastery info */}
+        {(() => {
+          const entry = name ? potionMastery[name] : undefined;
+          if (!entry) return null;
+          const level = masteryLevel(entry.xp);
+          const progress = entry ? masteryXpProgress(entry.xp) : null;
+          const speedBuff = level * 10;
+          return (
+            <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-950/20 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-wider text-amber-600">Mastery</p>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  level >= 10 ? "bg-amber-500 text-amber-950" : "bg-slate-700 text-amber-300"
+                }`}>
+                  {level >= 10 ? "✨ MASTERED" : `Level ${level} / 10`}
+                </span>
+              </div>
+              {level < 10 && progress && (
+                <>
+                  <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                    <span>{entry.xp} XP total</span>
+                    <span>{progress.current} / {progress.needed} to next level</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
+                    <div
+                      className="h-full rounded-full bg-amber-500 transition-all"
+                      style={{ width: `${(progress.current / progress.needed) * 100}%` }}
+                    />
+                  </div>
+                </>
+              )}
+              {speedBuff > 0 && (
+                <p className="mt-2 text-[11px] text-emerald-400">
+                  Brew speed bonus: <span className="font-semibold">+{speedBuff}%</span> for this potion
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Ingredients of the selected recipe */}
         <div className="mb-4">

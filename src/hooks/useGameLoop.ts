@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
-import { computeMasteryEffects } from "../data/masteryTrees";
+import { computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
+import { describePotion } from "../engine/potions";
 import type { BrewingMachine, Worker } from "../types";
 
 export interface WorkerLoopState {
@@ -40,8 +41,15 @@ export function machineBrewSecondsFor(machine: BrewingMachine): number {
   const ingredients = ids.map((id) => cfg.ingredients[id]).filter(Boolean);
   const toxicity = ingredients.reduce((a, ing) => a + ing.attributes.toxicity, 0);
   const base = brewTime(machine, toxicity, cfg.formulas, ingredients);
-  const fx = computeMasteryEffects(useGameStore.getState().masteryUnlocks);
-  return base / (1 + fx.brew_speed_pct / 100);
+  const state = useGameStore.getState();
+  const fx = computeMasteryEffects(state.masteryUnlocks);
+  let potionMasteryLvl = 0;
+  if (ingredients.length > 0) {
+    const potion = describePotion(ingredients, cfg.formulas);
+    const entry = state.potionMastery[potion.name];
+    if (entry) potionMasteryLvl = masteryLevel(entry.xp);
+  }
+  return base / ((1 + fx.brew_speed_pct / 100) * (1 + potionMasteryLvl * 0.1));
 }
 
 function workerPhaseFor(w: Worker, now: number): WorkerLoopState {

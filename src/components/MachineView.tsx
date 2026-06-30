@@ -7,6 +7,7 @@ import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
+import { computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
@@ -499,6 +500,8 @@ function BrewAnalytics({
   workers: { assigned_machine_id: number | null; auto_click_speed: number; click_power_level: number; click_power_mult?: number }[];
 }) {
   const cfg = useConfigStore();
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
+  const potionMastery = useGameStore((s) => s.potionMastery);
   const f = cfg.formulas;
 
   // Step 1: base time
@@ -520,9 +523,21 @@ function BrewAnalytics({
     (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0),
     0
   );
-  const effectiveBt = Math.max(0.1, afterToxicity / (1 + workerReduction));
+  const afterWorkers = Math.max(0.1, afterToxicity / (1 + workerReduction));
 
-  // Step 5: multi-brew
+  // Step 5: global mastery brew speed bonus (Alchemy skill tree)
+  const masteryFx = computeMasteryEffects(masteryUnlocks);
+  const globalBrewSpeedPct = masteryFx.brew_speed_pct;
+  const afterGlobalMastery = afterWorkers / (1 + globalBrewSpeedPct / 100);
+
+  // Step 6: per-potion mastery brew speed bonus (+10% per level)
+  const potionName = ingredients.length > 0 ? describePotion(ingredients, cfg.formulas).name : null;
+  const potionEntry = potionName ? potionMastery[potionName] : undefined;
+  const potionMasteryLvl = potionEntry ? masteryLevel(potionEntry.xp) : 0;
+  const potionBrewSpeedPct = potionMasteryLvl * 10;
+  const effectiveBt = afterGlobalMastery / (1 + potionBrewSpeedPct / 100);
+
+  // Step 7: multi-brew
   const volatility = ingredients.reduce((a, ing) => a + (ing.attributes.volatility ?? 0), 0);
   const multiBrewChance = Math.max(0, machine.multi_brew_chance - volatility * f.volatility_multibrew_penalty);
   const avgPotionsPerCycle = 1 + multiBrewChance;
@@ -551,6 +566,20 @@ function BrewAnalytics({
         {workerReduction > 0 && (
           <AnalyticsRow
             label={`${assigned.length} Worker${assigned.length !== 1 ? "s" : ""} Clicking (${workerReduction.toFixed(2)}s/s)`}
+            value={`${afterWorkers.toFixed(2)}s`}
+            highlight
+          />
+        )}
+        {globalBrewSpeedPct > 0 && (
+          <AnalyticsRow
+            label={`Mastery Tree Brew Speed (+${globalBrewSpeedPct}%)`}
+            value={`${afterGlobalMastery.toFixed(2)}s`}
+            highlight
+          />
+        )}
+        {potionMasteryLvl > 0 && (
+          <AnalyticsRow
+            label={`${potionName} Mastery Lv${potionMasteryLvl} (+${potionBrewSpeedPct}%)`}
             value={`${effectiveBt.toFixed(2)}s`}
             highlight
           />

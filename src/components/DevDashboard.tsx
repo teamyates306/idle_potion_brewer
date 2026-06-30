@@ -3,6 +3,8 @@ import { Search, Plus, Trash2, ChevronDown, ChevronRight, X } from "lucide-react
 import { useConfigStore, type BaseFormulas } from "../store/configStore";
 import { useGameStore } from "../store/gameStore";
 import { ACHIEVEMENTS } from "../data/achievements";
+import { masteryLevel, MASTERY_XP_THRESHOLDS } from "../data/masteryTrees";
+import { describeFromHash } from "../engine/potions";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
 type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations";
@@ -119,6 +121,39 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 function CheatsTab() {
   const game = useGameStore();
   const cfg = useConfigStore();
+
+  const discoveredNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const hash of game.discoveredPotions ?? []) {
+      const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
+      if (d) names.add(d.name);
+    }
+    return [...names];
+  }, [game.discoveredPotions, cfg.ingredients, cfg.formulas]);
+
+  const levelUpAllPotions = () => {
+    const updates = { ...(game.potionMastery ?? {}) };
+    for (const name of discoveredNames) {
+      const entry = updates[name] ?? { xp: 0, tokenAwarded: false };
+      const level = masteryLevel(entry.xp);
+      if (level < 10) {
+        updates[name] = { ...entry, xp: MASTERY_XP_THRESHOLDS[level] };
+      }
+    }
+    useGameStore.setState({ potionMastery: updates });
+  };
+
+  const masterAllPotions = () => {
+    const updates = { ...(game.potionMastery ?? {}) };
+    let extraTokens = 0;
+    for (const name of discoveredNames) {
+      const entry = updates[name] ?? { xp: 0, tokenAwarded: false };
+      if (!entry.tokenAwarded) extraTokens++;
+      updates[name] = { xp: 2750, tokenAwarded: true };
+    }
+    useGameStore.setState({ potionMastery: updates, masteryTokens: (game.masteryTokens ?? 0) + extraTokens });
+  };
+
   return (
     <div className="space-y-6 max-w-lg">
       <Section title="Economy">
@@ -139,6 +174,14 @@ function CheatsTab() {
         <div className="flex flex-wrap gap-2">
           <Btn onClick={() => useGameStore.setState((s) => ({ workers: s.workers.map((w) => ({ ...w, xp: w.xp + 500 })) }))}>+500 XP all workers</Btn>
           <Btn onClick={() => useGameStore.setState((s) => ({ workers: s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + 1 })) }))}>+1 Token all workers</Btn>
+        </div>
+      </Section>
+      <Section title="Mastery">
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={() => useGameStore.setState({ masteryTokens: (game.masteryTokens ?? 0) + 1 })}>+1 Mastery Token</Btn>
+          <Btn onClick={() => useGameStore.setState({ masteryTokens: (game.masteryTokens ?? 0) + 5 })}>+5 Mastery Tokens</Btn>
+          <Btn onClick={levelUpAllPotions}>Level Up All ({discoveredNames.length})</Btn>
+          <Btn onClick={masterAllPotions}>Master All ({discoveredNames.length})</Btn>
         </div>
       </Section>
       <Section title="Onboarding">
