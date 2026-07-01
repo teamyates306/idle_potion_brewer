@@ -210,18 +210,25 @@ function newMachine(index = 0): BrewingMachine {
 }
 
 export interface GraphicsSettings {
+  quality: 0 | 1 | 2 | 3;   // 0=Basic … 3=Very High
   motes: boolean;
   vignette: boolean;
   dayNight: boolean;
   throttle_animations: boolean;
+  wallShadow: boolean;
+  lampGlow: boolean;
+  windowBeams: boolean;
 }
 
-const DEFAULT_GRAPHICS: GraphicsSettings = {
-  motes: true,
-  vignette: true,
-  dayNight: true,
-  throttle_animations: false,
-};
+// Canonical presets — each quality level turns on a superset of the one below
+export const QUALITY_PRESETS: GraphicsSettings[] = [
+  { quality: 0, dayNight: true,  vignette: true,  motes: false, throttle_animations: true,  wallShadow: false, lampGlow: false, windowBeams: false },
+  { quality: 1, dayNight: true,  vignette: true,  motes: false, throttle_animations: false, wallShadow: true,  lampGlow: false, windowBeams: false },
+  { quality: 2, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: false },
+  { quality: 3, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: true  },
+];
+
+const DEFAULT_GRAPHICS: GraphicsSettings = QUALITY_PRESETS[3];
 
 export interface WelcomeBack {
   seconds: number;
@@ -329,6 +336,7 @@ interface GameState {
   hardReset: () => void;
   downgradeGraphics: () => void;
   setGraphics: (patch: Partial<GraphicsSettings>) => void;
+  setQuality: (q: 0 | 1 | 2 | 3) => void;
 
   // mastery
   potionMastery: Record<string, PotionMasteryEntry>;
@@ -1475,21 +1483,19 @@ export const useGameStore = create<GameState>()(
 
       downgradeGraphics: () =>
         set((s) => {
-          const g = s.graphics;
-          if (g.motes) {
+          const q = s.graphics.quality;
+          if (q <= 0) return {};
+          if (q === 3) {
             pushToast(
               "The Guild notes your device is overheating. Magickal atmospheric effects have been temporarily suppressed.",
               "amber"
             );
-            return { graphics: { ...g, motes: false } };
           }
-          if (g.vignette || g.dayNight) {
-            return { graphics: { ...g, vignette: false, dayNight: false } };
-          }
-          return {};
+          return { graphics: QUALITY_PRESETS[(q - 1) as 0 | 1 | 2 | 3] };
         }),
 
       setGraphics: (patch) => set((s) => ({ graphics: { ...s.graphics, ...patch } })),
+      setQuality: (q) => set({ graphics: QUALITY_PRESETS[q] }),
 
       awardPotionBrewXP: (potionName, baseXp) => {
         const s = get();

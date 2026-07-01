@@ -841,6 +841,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => p.id !== particle.id)), POTION_FLY_MS + 260);
   }, []);
 
+  const graphics        = useGameStore((s) => s.graphics);
   const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
@@ -928,18 +929,20 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
 
           {/* Wall-to-floor shadow — sits behind light beams (z=2 < beams z=10) */}
-          <div
-            className="pointer-events-none absolute left-0 right-0"
-            style={{
-              top: 94,
-              height: 22,
-              background: "linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, transparent 100%)",
-              zIndex: 2,
-            }}
-          />
+          {graphics.wallShadow && (
+            <div
+              className="pointer-events-none absolute left-0 right-0"
+              style={{
+                top: 94,
+                height: 22,
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, transparent 100%)",
+                zIndex: 2,
+              }}
+            />
+          )}
 
           {/* Lamp ambient glow — wide radial pool reaching from lantern down to floor */}
-          {computeLampPositions(contentWidth).map((cx) => (
+          {graphics.lampGlow && computeLampPositions(contentWidth).map((cx) => (
             <div
               key={cx}
               className="pointer-events-none absolute lamp-flicker"
@@ -960,7 +963,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           ))}
 
           {/* Window light streaks — long diagonal beams sweeping into the scene */}
-          {computeWindowPositions(contentWidth).map((cx) => (
+          {graphics.windowBeams && computeWindowPositions(contentWidth).map((cx) => (
             <div
               key={cx}
               className="pointer-events-none absolute"
