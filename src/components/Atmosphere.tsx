@@ -47,8 +47,8 @@ function applyDayNightVars() {
 
   // Ground shadow under machines + trough: pronounced at dawn/dusk, dim at noon + midnight
   const shadowStrength = Math.max(dn.sunriseness, dn.sunsetness);
-  root.setProperty("--dn-shadow-op",    (0.06 + shadowStrength * 0.40).toFixed(3));
-  root.setProperty("--dn-shadow-scale", (0.55 + shadowStrength * 0.45).toFixed(3));
+  root.setProperty("--dn-shadow-op",    (0.18 + shadowStrength * 0.72).toFixed(3));
+  root.setProperty("--dn-shadow-scale", (0.65 + shadowStrength * 0.55).toFixed(3));
 
   // Workshop wall: window glass, hills, stars, lamps
   root.setProperty("--dn-window-color", dn.windowColor);
