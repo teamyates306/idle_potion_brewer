@@ -933,7 +933,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute"
               style={{
-                top: 100,
+                top: 89,
                 left: cx - 28,
                 width: 56,
                 height: 460,
