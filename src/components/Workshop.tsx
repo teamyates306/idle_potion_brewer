@@ -519,6 +519,9 @@ const MachineColumn = React.memo(function MachineColumn({
           <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} />
         </div>
 
+        {/* Ground shadow */}
+        <div className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2" style={{ width: 88, height: 12, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)" }} />
+
         {/* Sparks */}
         {sparks.map((spark) => (
           <div
@@ -959,29 +962,26 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 <div className="relative" style={{ width: w, height: 32 }}>
                   <TroughPile />
                   <img src={`/sprites/trough-${sw}.svg`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
-                  <div className="pointer-events-none absolute -bottom-5 left-0 right-0 h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28), transparent)" }} />
+                  <div className="pointer-events-none absolute -bottom-4 left-0 right-0 h-5" style={{ background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.32) 0%, transparent 70%)" }} />
                 </div>
               );
             })()}
           </div>
           {/* Machine columns */}
           <div ref={machineSectionRef} className="flex justify-center py-10">
-            <div className="relative flex" style={{ width: machines.length * COL_W }}>
-              {machines.map((machine, idx) => (
-                <MachineColumn
-                  key={machine.id}
-                  machine={machine}
-                  machineIdx={idx}
-                  loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
-                  workers={workers}
-                  onManage={() => onOpen("machine", machine.id)}
-                  onBrewStart={handleBrewStart}
-                  onBrewComplete={handleBrewComplete}
-                  onBrewBurst={handleBrewBurst}
-                />
-              ))}
-              <div className="pointer-events-none absolute -bottom-5 left-0 right-0 h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28), transparent)" }} />
-            </div>
+            {machines.map((machine, idx) => (
+              <MachineColumn
+                key={machine.id}
+                machine={machine}
+                machineIdx={idx}
+                loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
+                workers={workers}
+                onManage={() => onOpen("machine", machine.id)}
+                onBrewStart={handleBrewStart}
+                onBrewComplete={handleBrewComplete}
+                onBrewBurst={handleBrewBurst}
+              />
+            ))}
           </div>
 
           {/* Potion pile */}
