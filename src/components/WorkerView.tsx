@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
   CheckSquare, Square, X, Minus, Plus,
@@ -6,7 +6,6 @@ import {
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { useGameLoop } from "../hooks/useGameLoop";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
 import {
   autoClickPower,
@@ -14,7 +13,7 @@ import {
   autoClickReductionPerSec,
 } from "../engine/autoclick";
 import { fmt, fmtDuration } from "../util/format";
-import WorkerArt from "./art/WorkerArt";
+import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
 
 const HIRE_COST_BASE = 500;
@@ -134,7 +133,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
         <span className="shrink-0 text-cyan-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
       )}
       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-        <WorkerArt size={44} color={worker.color} specialization={worker.specialization} />
+        <WorkerArt size={44} specialization={worker.specialization} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
@@ -168,8 +167,12 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const bulkAssign = useGameStore((s) => s.bulkAssign);
   const bulkSpendTokens = useGameStore((s) => s.bulkSpendTokens);
   const cfg = useConfigStore();
-  const loopProgress = useGameLoop();
-  void loopProgress; // 12fps re-render tick; progress computed from timestamps
+  // Re-render at ~8fps so trip progress bars animate — no second game loop needed
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => (n + 1) % 1000000), 125);
+    return () => clearInterval(id);
+  }, []);
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
 
   // Roster controls
@@ -615,7 +618,7 @@ function WorkerDetailModal({
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #22d3ee33" }}>
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-              <WorkerArt size={40} color={worker.color} specialization={spec} />
+              <WorkerArt size={40} specialization={spec} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
             </div>
             <div>
               <h2 className="text-lg font-semibold text-cyan-800">{worker.name}</h2>

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useLayoutEffect, useState } from "react";
+import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -8,11 +8,12 @@ import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
 import { autoClickPower } from "../engine/autoclick";
-import WorkerArt from "./art/WorkerArt";
+import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
-import type { BrewingMachine, Worker } from "../types";
+import { PILE_COLORS } from "./art/PotionPileArt";
+import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -30,6 +31,8 @@ const FLOOR_BG = "#8a857c url('/sprites/floor-tile.svg')";
 const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
+const POTION_FLY_MS  = 2000; // must match fly-potion animation duration
+const POTION_LAND_MS = Math.round(POTION_FLY_MS * 0.82); // ~82% = when bottle arrives at pile
 
 const MACHINE_HUE    = [0, 120, 200, 270, 330];
 const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
@@ -50,6 +53,202 @@ interface Spark {
   color: string;
   createdAt: number;
 }
+
+interface FlyingParticle {
+  id: number;
+  type: "ingredient" | "potion";
+  x: number;      // viewport x (fixed-position)
+  y: number;      // viewport y
+  dx: number;     // displacement to target
+  dy: number;
+  arcX: number;   // horizontal arc mid-point offset
+  category?: string;
+  color?: string;
+  delay: number;  // ms
+  duration: number;
+}
+
+interface BrewBurstDot { bx: number; by: number; size: number; duration: number; delay: number; }
+interface BrewBurst { id: number; cx: number; cy: number; color: string; dots: BrewBurstDot[] }
+
+function BrewBurstEl({ b }: { b: BrewBurst }) {
+  return (
+    <div style={{ position: "absolute", left: b.cx, top: b.cy, width: 0, height: 0 }}>
+      {/* Shockwave ring */}
+      <div style={{
+        position: "absolute", width: 140, height: 140,
+        marginLeft: -70, marginTop: -70,
+        borderRadius: "50%",
+        border: `3px solid ${b.color}`,
+        boxShadow: `0 0 10px 3px ${b.color}70`,
+        animationName: "brew-burst-ring",
+        animationDuration: "520ms",
+        animationTimingFunction: "ease-out",
+        animationFillMode: "forwards",
+      } as React.CSSProperties} />
+      {/* Particles */}
+      {b.dots.map((d, i) => (
+        <div key={i} style={{
+          position: "absolute",
+          width: d.size, height: d.size,
+          marginLeft: -d.size / 2, marginTop: -d.size / 2,
+          borderRadius: "50%",
+          background: b.color,
+          boxShadow: `0 0 ${Math.round(d.size * 2)}px ${b.color}90`,
+          "--bx": `${d.bx}px`,
+          "--by": `${d.by}px`,
+          animationName: "brew-burst-particle",
+          animationDuration: `${d.duration}ms`,
+          animationDelay: `${d.delay}ms`,
+          animationTimingFunction: "ease-out",
+          animationFillMode: "both",
+        } as React.CSSProperties} />
+      ))}
+    </div>
+  );
+}
+
+function makeBurstDots(count: number): BrewBurstDot[] {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+    const dist  = 38 + Math.random() * 62;
+    return {
+      bx: Math.cos(angle) * dist,
+      by: Math.sin(angle) * dist,
+      size: 3 + Math.random() * 5,
+      duration: 520 + Math.random() * 260,
+      delay: Math.random() * 70,
+    };
+  });
+}
+
+// ── Trough pile ──────────────────────────────────────────────────────────────
+
+const RARITY_RANK: Record<Rarity, number> = {
+  legendary: 5, epic: 4, rare: 3, uncommon: 2, common: 1,
+};
+// Each layer: x-range narrows as you go up, so higher items always have a base
+// beneath them and nothing floats. Capacities sum to MAX_TROUGH_PILE (20).
+const PILE_LAYER_CFG = [
+  { xMin: 10, xMax: 90, yBase: 4,  capacity: 8 },  // layer 0 — widest base
+  { xMin: 20, xMax: 80, yBase: 13, capacity: 6 },  // layer 1
+  { xMin: 30, xMax: 70, yBase: 22, capacity: 4 },  // layer 2
+  { xMin: 40, xMax: 60, yBase: 31, capacity: 2 },  // layer 3 — narrow peak
+] as const;
+const MAX_TROUGH_PILE = PILE_LAYER_CFG.reduce((s, l) => s + l.capacity, 0); // 20
+
+function layerForSlot(i: number): number {
+  let consumed = 0;
+  for (let l = 0; l < PILE_LAYER_CFG.length; l++) {
+    consumed += PILE_LAYER_CFG[l].capacity;
+    if (i < consumed) return l;
+  }
+  return PILE_LAYER_CFG.length - 1;
+}
+
+function buildTroughSlots(
+  inv: Record<string, number>,
+  ingredients: Record<string, Ingredient>,
+): Array<{ id: string; xPct: number; yOff: number; rot: number; zIdx: number }> {
+  const stocked = Object.entries(inv)
+    .filter(([, n]) => n > 0)
+    .sort(([aid], [bid]) => {
+      const ra = RARITY_RANK[ingredients[aid]?.rarity ?? "common"] ?? 1;
+      const rb = RARITY_RANK[ingredients[bid]?.rarity ?? "common"] ?? 1;
+      if (ra !== rb) return rb - ra;
+      return aid.localeCompare(bid); // stable id tiebreak — order won't shift as counts change
+    });
+
+  if (stocked.length === 0) return [];
+
+  // Phase 1: one of each unique type (rarest first), up to MAX
+  const display: string[] = stocked.slice(0, MAX_TROUGH_PILE).map(([id]) => id);
+
+  // Phase 2: fill remaining slots proportionally by count, capped at (count-1) extras
+  const gap = MAX_TROUGH_PILE - display.length;
+  if (gap > 0) {
+    const total = stocked.reduce((s, [, n]) => s + n, 0);
+    const extras: string[] = [];
+    for (const [id, count] of stocked) {
+      const want = Math.floor((count / total) * gap);
+      const capped = Math.min(want, count - 1);
+      for (let i = 0; i < capped; i++) extras.push(id);
+    }
+    display.push(...extras.slice(0, gap));
+  }
+
+  // Pre-compute where each layer starts in the display array
+  const layerStarts = PILE_LAYER_CFG.map((_, l) =>
+    PILE_LAYER_CFG.slice(0, l).reduce((s, c) => s + c.capacity, 0),
+  );
+
+  return display.map((id, i) => {
+    // Hash purely from slot index — position never changes for a given slot
+    // regardless of which ingredient ends up there. This stops the pile
+    // reshuffling when inventory counts shift items between slots.
+    const h = Math.abs(Math.imul(i * 2654435761, 0x9e3779b9));
+
+    const l = layerForSlot(i);
+    const cfg = PILE_LAYER_CFG[l];
+    const withinLayer = i - layerStarts[l];
+
+    // Zone-based x: divide this layer's range into equal zones, one item per zone.
+    // This guarantees even coverage — no gaps — while small jitter keeps it organic.
+    const zoneW = (cfg.xMax - cfg.xMin) / cfg.capacity;
+    const zoneCenter = cfg.xMin + (withinLayer + 0.5) * zoneW;
+    const jitter = (((h % 100) / 100) - 0.5) * zoneW * 0.4; // ±20 % of zone width
+    const xPct = zoneCenter + jitter;
+
+    const yOff = cfg.yBase + ((h >> 4) % 5); // 0–4 px jitter within the layer
+    const rot  = ((h >> 12) % 45) - 22;       // –22 to +22 deg
+    const zIdx = l * 10 + Math.floor(xPct / 10);
+
+    return { id, xPct, yOff, rot, zIdx };
+  });
+}
+
+const TroughPile = React.memo(function TroughPile() {
+  const inv = useGameStore((s) => s.ingredientInv);
+  const cfg = useConfigStore();
+
+  const slots = useMemo(
+    () => buildTroughSlots(inv, cfg.ingredients),
+    [inv, cfg.ingredients],
+  );
+
+  if (slots.length === 0) return null;
+
+  return (
+    <>
+      {slots.map(({ id, xPct, yOff, rot, zIdx }, i) => {
+        const ing = cfg.ingredients[id];
+        if (!ing) return null;
+        return (
+          // Outer div: 14 px layout box used for centering + positioning.
+          // Inner div: renders the SVG at 24 px then CSS-scales to 14 px so the
+          // browser downsamples a higher-res raster → much smoother edges.
+          <div
+            key={i}
+            className="pointer-events-none absolute"
+            style={{
+              left: `${xPct}%`,
+              top: `${-(6 + yOff)}px`,
+              width: 14,
+              height: 14,
+              overflow: "visible",
+              transform: `translateX(-50%) rotate(${rot}deg)`,
+              zIndex: zIdx,
+            }}
+          >
+            <div style={{ transform: "scale(0.75)", transformOrigin: "top left", lineHeight: 0 }}>
+              <IngredientSvg category={ing.category} size={24} rarity={ing.rarity} />
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+});
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory";
 
@@ -82,12 +281,18 @@ const MachineColumn = React.memo(function MachineColumn({
   loopState,
   workers,
   onManage,
+  onBrewStart,
+  onBrewComplete,
+  onBrewBurst,
 }: {
   machine: BrewingMachine;
   machineIdx: number;
   loopState: MachineLoopState;
   workers: Worker[];
   onManage: () => void;
+  onBrewStart: (cauldronRect: DOMRect, categories: string[]) => void;
+  onBrewComplete: (cauldronRect: DOMRect, potionColor: string) => void;
+  onBrewBurst: (cx: number, cy: number, color: string) => void;
 }) {
   const clickBrew = useGameStore((s) => s.clickBrew);
   const player_click_power_level = useGameStore((s) => s.player_click_power_level);
@@ -99,28 +304,36 @@ const MachineColumn = React.memo(function MachineColumn({
   const sparkIdRef = useRef(0);
   const [bumping, setBumping]  = useState(false);
   const cauldronRef = useRef<HTMLDivElement>(null);
+  const heatRafRef = useRef(0);
+  const heatDecayActive = useRef(false);
 
   const { brewProgress, brewActive } = loopState;
   const hue    = MACHINE_HUE[machineIdx] ?? 0;
   const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
   const sparkColors = MACHINE_SPARK_COLORS[machineIdx] ?? MACHINE_SPARK_COLORS[0];
 
-  // Decay heat
-  useEffect(() => {
-    let raf: number;
+  // Decay heat — rAF only runs while heat > 0; stops itself when done
+  const startHeatDecay = useCallback(() => {
+    if (heatDecayActive.current) return;
+    heatDecayActive.current = true;
     let lastT = 0;
     const tick = (t: number) => {
-      raf = requestAnimationFrame(tick);
-      if (!lastT) { lastT = t; return; }
+      if (!lastT) { lastT = t; heatRafRef.current = requestAnimationFrame(tick); return; }
       const dt = (t - lastT) / 1000;
       lastT = t;
+      heatRef.current = Math.max(0, heatRef.current - HEAT_DECAY * dt);
+      setHeatDisplay(heatRef.current);
       if (heatRef.current > 0) {
-        heatRef.current = Math.max(0, heatRef.current - HEAT_DECAY * dt);
-        setHeatDisplay(heatRef.current);
+        heatRafRef.current = requestAnimationFrame(tick);
+      } else {
+        heatDecayActive.current = false;
       }
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    heatRafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(heatRafRef.current);
   }, []);
 
   // Remove expired sparks
@@ -137,21 +350,29 @@ const MachineColumn = React.memo(function MachineColumn({
   useEffect(() => {
     return subscribeGameEvent((evt) => {
       if (evt.channel !== "cauldron" || evt.machineId !== machine.id) return;
-      if (!useSettingsStore.getState().toastsEnabled) return;
       if (!cauldronRef.current) return;
       const rect = cauldronRef.current.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 3;
-      spawnFAT({
-        x: cx + (Math.random() - 0.5) * rect.width * 0.5,
-        y: cy + (Math.random() - 0.5) * 34,
-        text: evt.text,
-        color: CHANNEL_COLOR.cauldron,
-        arcX: (Math.random() - 0.5) * 36,
-        size: "md",
-      });
+      if (useSettingsStore.getState().toastsEnabled) {
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 3;
+        spawnFAT({
+          x: cx + (Math.random() - 0.5) * rect.width * 0.5,
+          y: cy + (Math.random() - 0.5) * 34,
+          text: evt.text,
+          color: CHANNEL_COLOR.cauldron,
+          arcX: (Math.random() - 0.5) * 36,
+          size: "md",
+        });
+      }
+      // Potion-exit animation: derive color from current pile count
+      const inv = useGameStore.getState().potionInv;
+      const total = Object.values(inv).reduce((a: number, b: number) => a + b, 0);
+      const colorIdx = ((total - 1) % PILE_COLORS.length + PILE_COLORS.length) % PILE_COLORS.length;
+      const potionColor = PILE_COLORS[colorIdx];
+      onBrewComplete(rect, potionColor);
+      onBrewBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, potionColor);
     });
-  }, [machine.id]);
+  }, [machine.id, onBrewComplete, onBrewBurst]);
 
   // Auto-worker FAT
   const machineWorkers = workers
@@ -190,6 +411,7 @@ const MachineColumn = React.memo(function MachineColumn({
     const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
     heatRef.current = newHeat;
     setHeatDisplay(newHeat);
+    startHeatDecay();
 
     const sparkCount = Math.floor(2 + newHeat * 6);
     const nowMs = Date.now();
@@ -228,13 +450,29 @@ const MachineColumn = React.memo(function MachineColumn({
     .filter((id): id is string => !!id)
     .map((id) => cfg.ingredients[id]?.category ?? "root");
 
+  // Fire ingredient-jump animation when a new brew starts
+  const prevBrewStartedAtRef = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    const curr = machine.brew_started_at;
+    if (
+      prevBrewStartedAtRef.current !== undefined &&
+      curr !== null &&
+      curr > (prevBrewStartedAtRef.current ?? 0) &&
+      !machine.brew_stalled &&
+      Date.now() - curr < 2000
+    ) {
+      if (cauldronRef.current) {
+        onBrewStart(cauldronRef.current.getBoundingClientRect(), recipeCategories);
+      }
+    }
+    prevBrewStartedAtRef.current = curr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machine.brew_started_at, machine.brew_stalled]);
+
   const hasTokens = (machine.upgrade_tokens ?? 0) > 0;
 
   return (
     <div className="flex flex-col items-center" style={{ width: COL_W, flexShrink: 0 }}>
-      {/* Conveyor in */}
-      <ConveyorWithIngredients running={brewActive} categories={recipeCategories} accentColor={accent} />
-
       {/* Cauldron — cog button in top-right corner */}
       <div
         ref={cauldronRef}
@@ -318,7 +556,7 @@ const MachineColumn = React.memo(function MachineColumn({
                   "--wb-rot": side === "left" ? "8deg" : "-8deg",
                 } as React.CSSProperties}
               >
-                <WorkerArt size={40} color={w.color} />
+                <WorkerArt size={52} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
               </div>
             </div>
           );
@@ -350,8 +588,6 @@ const MachineColumn = React.memo(function MachineColumn({
       })()}
       <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
 
-      {/* Conveyor out */}
-      <ConveyorWithPotion running={brewActive} accentColor={accent} />
     </div>
   );
 });
@@ -519,7 +755,81 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   const potionCount = Object.values(potionInv).reduce((a, b) => a + b, 0);
   const [displayPotionCount, setDisplayPotionCount] = useState(potionCount);
-  useEffect(() => { setDisplayPotionCount(potionCount); }, [potionCount]);
+  const prevPotionCountRef = useRef(potionCount);
+  useEffect(() => {
+    const prev = prevPotionCountRef.current;
+    prevPotionCountRef.current = potionCount;
+    if (potionCount <= prev) {
+      // sold / reset — update immediately
+      setDisplayPotionCount(potionCount);
+    } else {
+      // brewed — wait for the bottle to land before incrementing the pile
+      const t = setTimeout(() => setDisplayPotionCount(potionCount), POTION_LAND_MS);
+      return () => clearTimeout(t);
+    }
+  }, [potionCount]);
+
+  // Flying brew particles (ingredient jump in, potion jump out)
+  const flyIdRef = useRef(0);
+  const [flyingParticles, setFlyingParticles] = useState<FlyingParticle[]>([]);
+
+  const handleBrewStart = useCallback((cauldronRect: DOMRect, categories: string[]) => {
+    const trough = troughRef.current;
+    if (!trough || categories.length === 0) return;
+    const troughRect = trough.getBoundingClientRect();
+    const endX = cauldronRect.left + cauldronRect.width / 2;
+    const endY = cauldronRect.top + cauldronRect.height * 0.45;
+    const troughY = troughRect.top + troughRect.height / 2;
+    const particles: FlyingParticle[] = categories.map((cat, i) => {
+      const spreadX = (Math.random() - 0.5) * Math.min(troughRect.width * 0.3, 40);
+      const startX = Math.max(troughRect.left + 10, Math.min(troughRect.right - 10, endX + spreadX));
+      return {
+        id: flyIdRef.current++,
+        type: "ingredient" as const,
+        x: startX,
+        y: troughY,
+        dx: endX - startX,
+        dy: endY - troughY,
+        arcX: (Math.random() - 0.5) * 16,
+        category: cat,
+        delay: i * 90,
+        duration: 700,
+      };
+    });
+    setFlyingParticles((prev) => [...prev, ...particles]);
+    const maxEnd = Math.max(...particles.map((p) => p.delay + p.duration)) + 200;
+    const ids = new Set(particles.map((p) => p.id));
+    setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => !ids.has(p.id))), maxEnd);
+  }, []);
+
+  const [brewBursts, setBrewBursts] = useState<BrewBurst[]>([]);
+  const burstIdRef = useRef(0);
+  const handleBrewBurst = useCallback((cx: number, cy: number, color: string) => {
+    const id = burstIdRef.current++;
+    setBrewBursts(prev => [...prev, { id, cx, cy, color, dots: makeBurstDots(22) }]);
+    setTimeout(() => setBrewBursts(prev => prev.filter(b => b.id !== id)), 950);
+  }, []);
+
+  const handleBrewComplete = useCallback((cauldronRect: DOMRect, potionColor: string) => {
+    const pile = pileSectionRef.current;
+    if (!pile) return;
+    const pileRect = pile.getBoundingClientRect();
+    const startX = cauldronRect.left + cauldronRect.width / 2;
+    const startY = cauldronRect.top + cauldronRect.height * 0.5;
+    const endX = pileRect.left + pileRect.width * 0.5;
+    const endY = pileRect.top + pileRect.height * 0.4;
+    const particle: FlyingParticle = {
+      id: flyIdRef.current++,
+      type: "potion",
+      x: startX, y: startY,
+      dx: endX - startX, dy: endY - startY,
+      arcX: (Math.random() - 0.5) * 20,
+      color: potionColor,
+      delay: 0, duration: POTION_FLY_MS,
+    };
+    setFlyingParticles((prev) => [...prev, particle]);
+    setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => p.id !== particle.id)), POTION_FLY_MS + 260);
+  }, []);
 
   const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
@@ -614,6 +924,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           <div ref={workerSectionRef} className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
             {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
               if (workers[idx]?.assigned_machine_id != null) return null;
+              const phase = loopProgress.workers[idx]?.workerPhase;
+              const active = phase === "outbound" || phase === "inbound";
               return (
                 <div
                   key={idx}
@@ -625,7 +937,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                     transition: "transform 150ms linear, opacity 150ms linear",
                   }}
                 >
-                  <WorkerArt size={52} carrying={carrying} color={workers[idx]?.color} />
+                  <WorkerArt size={52} specialization={workers[idx]?.specialization} active={active} hueShift={workerHue(workers[idx]?.id ?? 0)} />
                 </div>
               );
             })}
@@ -633,16 +945,20 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Trough strip */}
           <div ref={troughRef} className="flex flex-col items-center">
-            <div
-              className="relative h-8 rounded-b-[36px] rounded-t-md border-x-4 border-b-4 border-amber-900 bg-gradient-to-b from-amber-950 to-stone-900 shadow-md"
-              style={{ width: Math.min(totalWidth - 32, Math.max(160, machines.length * 80)) }}
-            >
-              <div className="absolute inset-x-2 top-1 h-1.5 rounded-full bg-amber-800/50" />
-            </div>
+            {(() => {
+              const w  = Math.min(totalWidth - 32, Math.max(160, machines.length * 80));
+              const sw = w >= 400 ? 400 : w >= 320 ? 320 : w >= 240 ? 240 : 160;
+              return (
+                <div className="relative" style={{ width: w, height: 32 }}>
+                  <TroughPile />
+                  <img src={`/sprites/trough-${sw}.svg`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
+                </div>
+              );
+            })()}
           </div>
 
           {/* Machine columns */}
-          <div ref={machineSectionRef} className="flex justify-center py-1">
+          <div ref={machineSectionRef} className="flex justify-center py-10">
             {machines.map((machine, idx) => (
               <MachineColumn
                 key={machine.id}
@@ -651,14 +967,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
                 workers={workers}
                 onManage={() => onOpen("machine", machine.id)}
+                onBrewStart={handleBrewStart}
+                onBrewComplete={handleBrewComplete}
+                onBrewBurst={handleBrewBurst}
               />
             ))}
           </div>
 
           {/* Potion pile */}
           <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
-            <div className="relative">
-              <PotionPileArt count={displayPotionCount} size={130} />
+            <div className="relative" style={{ maxWidth: 'calc(100vw - 180px)', overflow: 'hidden' }}>
+              <PotionPileArt count={displayPotionCount} />
               {displayPotionCount > 0 && (
                 <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
                   {displayPotionCount}
@@ -670,6 +989,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           </div>
         </div>
       </div>
+
+      {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll */}
+      {(flyingParticles.length > 0 || brewBursts.length > 0) && (
+        <div className="pointer-events-none fixed inset-0 z-[21]">
+          {flyingParticles.map((p) => <FlyingParticleEl key={p.id} p={p} />)}
+          {brewBursts.map((b) => <BrewBurstEl key={b.id} b={b} />)}
+        </div>
+      )}
     </div>
   );
 }
@@ -782,46 +1109,37 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
   );
 }
 
-// ── Conveyors ─────────────────────────────────────────────────────────────────
-function ConveyorWithIngredients({
-  running, categories, accentColor,
-}: {
-  running: boolean; categories: string[]; accentColor: string;
-}) {
-  void accentColor;
-  const items = categories.length > 0 ? categories : [];
-  const count = Math.max(1, items.length);
+// ── Flying brew particles ─────────────────────────────────────────────────────
+function FlyPotion({ color = "#a855f7" }: { color?: string }) {
   return (
-    <div className="relative mx-auto my-1 h-20 w-9 overflow-hidden rounded-full border-2 border-amber-900/40 bg-amber-950/30 shadow-inner">
-      <div className="conveyor-on absolute inset-0" style={{ animationPlayState: running ? "running" : "paused" }} />
-      {running && items.map((cat, i) => (
-        <div key={i} className="conveyor-ingredient" style={{ animationDelay: `${(i / count) * 2.8}s`, animationDuration: "2.8s" }}>
-          <IngredientSvg category={cat} size={18} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ConveyorWithPotion({ running, accentColor }: { running: boolean; accentColor: string }) {
-  return (
-    <div className="relative mx-auto my-1 h-20 w-9 overflow-hidden rounded-full border-2 border-amber-900/40 bg-amber-950/30 shadow-inner">
-      <div className="conveyor-on absolute inset-0" style={{ animationPlayState: running ? "running" : "paused" }} />
-      {running && (
-        <div className="conveyor-potion" style={{ animationDelay: "1s" }}>
-          <MiniPotion color={accentColor} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MiniPotion({ color = "#a855f7" }: { color?: string }) {
-  return (
-    <svg width="14" height="18" viewBox="0 0 12 16" fill="none">
-      <rect x="4" y="0" width="4" height="3" rx="1" fill="#94a3b8" />
-      <path d="M4 3 H8 L10 8 A4 4 0 0 1 2 8 Z" fill={color} />
-      <path d="M3 6 A4 4 0 0 0 9 6 Z" fill="#fff" opacity="0.3" />
+    <svg width="16" height="16" viewBox="-8 -16 16 16" fill="none">
+      <polygon points="2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0" fill={color} opacity="0.6" />
+      <image href="/sprites/potion-bottle.svg" x="-8" y="-16" width="16" height="16" />
     </svg>
+  );
+}
+
+function FlyingParticleEl({ p }: { p: FlyingParticle }) {
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left: p.x,
+        top: p.y,
+        transform: "translate(-50%, -50%)",
+        "--fly-dx": `${p.dx}px`,
+        "--fly-dy": `${p.dy}px`,
+        "--fly-arc-x": `${p.arcX}px`,
+        animationName: p.type === "ingredient" ? "fly-ingredient" : "fly-potion",
+        animationDuration: `${p.duration}ms`,
+        animationDelay: `${p.delay}ms`,
+        animationFillMode: "both",
+        animationTimingFunction: p.type === "ingredient" ? "ease-in" : "cubic-bezier(0.22,1,0.36,1)",
+      } as React.CSSProperties}
+    >
+      {p.type === "ingredient"
+        ? <IngredientSvg category={p.category!} size={20} />
+        : <FlyPotion color={p.color!} />}
+    </div>
   );
 }

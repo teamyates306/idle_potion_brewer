@@ -3,7 +3,7 @@ import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, Shop
 import Modal from "./ui/Modal";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { upgradeCost, brewTime, xpRequired } from "../engine/formulas";
+import { upgradeCost, brewTime, xpRequired, SLOT_UNLOCK_COSTS } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
@@ -127,7 +127,7 @@ function MachinePanelBody({
 
   const speedCost = upgradeCost(machine.speed_upgrades, cfg.formulas);
   const multiCost = upgradeCost(machine.multi_upgrades, cfg.formulas);
-  const slotCost = upgradeCost(machine.slot_upgrades + 3, cfg.formulas);
+  const slotCost = SLOT_UNLOCK_COSTS[machine.slot_upgrades] ?? Infinity;
   const tokens = machine.upgrade_tokens ?? 0;
   const xpNeed = xpRequired(machine.level, cfg.formulas);
   const xpPct = Math.min(100, (machine.xp / xpNeed) * 100);

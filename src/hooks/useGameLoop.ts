@@ -163,7 +163,9 @@ export function useGameLoop(): LoopProgress {
       });
 
       // ---- machines ----
-      const machineStates: MachineLoopState[] = g.machines.map((machine) => {
+      // Re-read after updateBrewReadiness + completeTrip may have mutated brew_stalled
+      const freshMachines = useGameStore.getState().machines;
+      const machineStates: MachineLoopState[] = freshMachines.map((machine) => {
         const brewStalled = machine.brew_stalled ?? false;
         const brewActive = machine.running && !brewStalled;
         let brewProgress = 0;

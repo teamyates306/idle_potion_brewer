@@ -1,11 +1,11 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { MapPin, Lock, Footprints, HelpCircle, CheckSquare, Square } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { fmt, fmtDuration, RARITY_COLOR } from "../util/format";
 import { gatherRoundTrip } from "../engine/formulas";
-import WorkerArt from "./art/WorkerArt";
+import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Location } from "../types";
 
 // ── Spatial layout ────────────────────────────────────────────────────────────
@@ -76,8 +76,8 @@ export default function MapView({
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
 
-  const locations = Object.values(cfg.locations);
-  const { nodes, height } = buildLayout(locations);
+  const locations = useMemo(() => Object.values(cfg.locations), [cfg.locations]);
+  const { nodes, height } = useMemo(() => buildLayout(locations), [locations]);
   const firstUnlockedId = nodes.find((n) => unlocked.includes(n.loc.id))?.loc.id;
 
   // ── Drag to pan ─────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export default function MapView({
                 isUnlocked={unlocked.includes(n.loc.id)}
                 isExplored={explored.includes(n.loc.id)}
                 workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
-                workerColors={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.color)}
+                workerIds={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.id)}
                 ingredients={n.loc.drops}
                 discoveredDrops={discoveredDrops[n.loc.id] ?? []}
                 hasCompass={hasCompass}
@@ -173,7 +173,7 @@ function MapNode({
   isUnlocked,
   isExplored,
   workerCount,
-  workerColors,
+  workerIds,
   ingredients,
   discoveredDrops,
   hasCompass,
@@ -184,7 +184,7 @@ function MapNode({
   isUnlocked: boolean;
   isExplored: boolean;
   workerCount: number;
-  workerColors: string[];
+  workerIds: number[];
   ingredients: { ingredientId: string; weight: number }[];
   discoveredDrops: string[];
   hasCompass: boolean;
@@ -201,13 +201,13 @@ function MapNode({
       {/* Worker cluster (top-right) */}
       {workerCount > 0 && (
         <div className="absolute z-20 flex items-center" style={{ left: R - 6, top: -R - 2 }}>
-          {workerColors.slice(0, workerCount <= 3 ? workerCount : 2).map((c, i) => (
+          {workerIds.slice(0, workerCount <= 3 ? workerCount : 2).map((id, i) => (
             <span
               key={i}
               className="rounded-full"
               style={{ marginLeft: i === 0 ? 0 : -8, filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.6))" }}
             >
-              <WorkerArt size={22} color={c} />
+              <WorkerArt size={22} active={false} hueShift={workerHue(id)} />
             </span>
           ))}
           {workerCount > 3 && (
@@ -396,7 +396,7 @@ function LocationDetailModal({
                 <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Assignment</p>
                 <div className="flex items-center gap-3 rounded-xl border border-green-500/40 bg-green-950/20 p-3">
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${lockedWorker.color ?? "#7c3aed"}33` }}>
-                    <WorkerArt size={36} color={lockedWorker.color} carrying={isHere} />
+                    <WorkerArt size={36} active={false} hueShift={workerHue(lockedWorker.id)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-100">{lockedWorker.name}</div>
@@ -456,7 +456,7 @@ function LocationDetailModal({
                       <span className="shrink-0 text-green-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
                     )}
                     <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-                      <WorkerArt size={36} color={worker.color} carrying={isHere && isActive} />
+                      <WorkerArt size={36} active={false} hueShift={workerHue(worker.id)} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-slate-100">{worker.name}</div>

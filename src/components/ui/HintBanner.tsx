@@ -23,14 +23,14 @@ export default function HintBanner() {
 
   return (
     <div className="pointer-events-auto fixed bottom-20 left-1/2 z-[75] w-[92%] max-w-sm -translate-x-1/2">
-      <div className="hint-pop rounded-2xl border border-teal-700/60 bg-stone-900/97 px-4 py-3 shadow-2xl backdrop-blur">
+      <div className="hint-pop rounded-2xl border border-amber-700/70 bg-stone-900/97 px-4 py-3 shadow-2xl backdrop-blur">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 text-2xl leading-none">{current.icon}</span>
           <div className="min-w-0 flex-1">
-            <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-400">
+            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-500/80">
               {current.title}
             </p>
-            <p className="text-sm leading-snug text-slate-300">{current.body}</p>
+            <p className="text-sm leading-snug text-amber-100">{current.body}</p>
           </div>
           <button
             onClick={dismiss}

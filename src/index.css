@@ -25,54 +25,20 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #b39b6f; background-clip: content-box; }
 ::selection { background: #c79a3e66; color: #2f2113; }
 
-/* Vertical conveyor belt — warm wood, flows downward */
-@keyframes convey-v {
-  to { background-position: 0 24px; }
-}
-.conveyor-on {
-  background-image: repeating-linear-gradient(
-    0deg,
-    #78502a 0,
-    #78502a 12px,
-    #5c3a1e 12px,
-    #5c3a1e 24px
-  );
-  animation: convey-v 0.55s linear infinite;
-  /* background-position is GPU-accelerated; will-change not needed */
+/* Ingredient jump: trough → cauldron. Pops up slightly then arcs into the machine. */
+@keyframes fly-ingredient {
+  0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0; }
+  18%  { transform: translate(calc(-50% + var(--fly-arc-x, 0px)), calc(-50% - 22px)) scale(1.2); opacity: 1; }
+  82%  { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--fly-dx, 0px)), calc(-50% + var(--fly-dy, 0px))) scale(0.3); opacity: 0; }
 }
 
-/* Ingredient tokens sliding top → bottom — use translateY to avoid layout triggers */
-@keyframes slide-ingredient-v {
-  0%   { transform: translateX(-50%) translateY(-24px); opacity: 0; }
-  8%   { opacity: 1; }
-  92%  { opacity: 1; }
-  100% { transform: translateX(-50%) translateY(calc(100% + 64px)); opacity: 0; }
-}
-.conveyor-ingredient {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  animation: slide-ingredient-v 2.8s linear infinite;
-  animation-fill-mode: backwards;
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-
-/* Potion token sliding top → bottom — use translateY to avoid layout triggers */
-@keyframes slide-potion-v {
-  0%   { transform: translateX(-50%) translateY(-20px); opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { transform: translateX(-50%) translateY(calc(100% + 60px)); opacity: 0; }
-}
-.conveyor-potion {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  animation: slide-potion-v 3.5s linear infinite;
-  animation-fill-mode: backwards;
-  pointer-events: none;
-  will-change: transform, opacity;
+/* Potion exit: cauldron → pile. Pops up with spring, arcs to destination, fades out at full size. */
+@keyframes fly-potion {
+  0%   { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+  20%  { transform: translate(calc(-50% + var(--fly-arc-x, 0px)), calc(-50% - 40px)) scale(1.4); opacity: 1; }
+  82%  { transform: translate(calc(-50% + var(--fly-dx, 0px)), calc(-50% + var(--fly-dy, 0px))) scale(1.0); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--fly-dx, 0px)), calc(-50% + var(--fly-dy, 0px))) scale(1.0); opacity: 0; }
 }
 
 /* Floating Action Text — spawns at a viewport coordinate and drifts up */
@@ -105,6 +71,19 @@ body {
   100% { transform: translate(var(--sx, 0px), var(--sy, -40px)) scale(0.1); opacity: 0; }
 }
 
+/* Brew completion burst — particles shoot outward from cauldron */
+@keyframes brew-burst-particle {
+  0%   { transform: translate(0, 0) scale(1.8); opacity: 1; }
+  55%  { opacity: 0.85; }
+  100% { transform: translate(var(--bx, 60px), var(--by, 0px)) scale(0); opacity: 0; }
+}
+/* Brew completion burst — expanding shockwave ring */
+@keyframes brew-burst-ring {
+  0%   { transform: scale(0.05); opacity: 0.85; }
+  60%  { opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
 /* Coin counter — crunchy pulse + particles */
 @keyframes coin-pop {
   0%   { transform: scale(1); }
@@ -123,6 +102,11 @@ body {
 @keyframes coin-particle {
   0%   { transform: translate(0, 0) scale(1); opacity: 1; }
   100% { transform: translate(var(--cpx, 0px), var(--cpy, -22px)) scale(0.2); opacity: 0; }
+}
+
+/* Worker sprite-sheet walk cycle — background-position steps through 4 frames */
+@keyframes worker-walk {
+  to { background-position-x: var(--worker-sheet-w, -128px); }
 }
 
 /* Auto-clicker worker bump (duration set inline, tied to click speed) */
@@ -182,10 +166,9 @@ body {
   100% { transform: translate3d(var(--mote-end, 0px), var(--mote-rise, -40px), 0);    opacity: 0; }
 }
 
-/* Battery-saver mode: suppress decorative conveyor motion */
-.anim-throttle .conveyor-on { animation: none; }
-.anim-throttle .conveyor-ingredient,
-.anim-throttle .conveyor-potion { display: none; }
+/* Battery-saver mode: suppress decorative fly-in animations */
+.anim-throttle [style*="fly-ingredient"],
+.anim-throttle [style*="fly-potion"] { display: none; }
 
 /* Ingredient sprite rarity flair. Glow is applied inline (scales with size);
    particles + the legendary shimmer animate here. Sparkles twinkle in place. */

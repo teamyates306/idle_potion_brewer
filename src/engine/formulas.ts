@@ -85,6 +85,9 @@ export function upgradeCost(upgrades: number, f: BaseFormulas): number {
   return Math.floor(f.cost_base * Math.pow(f.cost_growth, upgrades));
 }
 
+/** Fixed costs for unlocking brewer slots 3 → 5.  Slot 5 gates mythic potions (mid-end game). */
+export const SLOT_UNLOCK_COSTS = [8_000, 80_000, 800_000] as const;
+
 /** Applies any pending level-ups given accumulated xp. */
 export function applyLevels(
   level: number,

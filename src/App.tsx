@@ -79,6 +79,18 @@ export default function App() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [applyOffline, refreshQuests, reconcileAchievements]);
 
+  // Keep lastSeen fresh and regenerate elapsed-cooldown quests.
+  // Only fires when tab is visible — no battery drain in background.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!document.hidden) {
+        useGameStore.setState({ lastSeen: Date.now() });
+        refreshQuests();
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [refreshQuests]);
+
   return (
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
       <Atmosphere />

@@ -24,6 +24,7 @@ import {
   gatherRoundTrip,
   rollMultiBrew,
   upgradeCost,
+  SLOT_UNLOCK_COSTS,
 } from "../engine/formulas";
 import { describePotion } from "../engine/potions";
 import {
@@ -716,10 +717,16 @@ export const useGameStore = create<GameState>()(
             : wk
         );
 
-        // Restart any stalled machine — new ingredients just arrived
-        const machines = s.machines.map((m) =>
-          m.brew_stalled ? { ...m, brew_stalled: false, brew_started_at: now() } : m
-        );
+        // Restart stalled machines that now have all needed ingredients
+        const machines = s.machines.map((m) => {
+          if (!m.brew_stalled) return m;
+          const slotIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
+          if (slotIds.length === 0) return m;
+          const need: Record<string, number> = {};
+          for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+          const hasAll = Object.entries(need).every(([id, n]) => (inv[id] ?? 0) >= n);
+          return hasAll ? { ...m, brew_stalled: false, brew_started_at: now() } : m;
+        });
 
         // Progressive discovery: reveal the specific drops brought back from here.
         const locDrops = { ...s.discovered_location_drops };
@@ -1216,7 +1223,7 @@ export const useGameStore = create<GameState>()(
           if (machine.unlocked_slots >= 5) return {};
           const tokens = machine.upgrade_tokens ?? 0;
           if (tokens < 1) return {};
-          const cost = upgradeCost(machine.slot_upgrades + 3, cfg.formulas);
+          const cost = SLOT_UNLOCK_COSTS[machine.slot_upgrades] ?? Infinity;
           if (s.coins < cost) return {};
           return {
             coins: s.coins - cost,
@@ -1244,7 +1251,12 @@ export const useGameStore = create<GameState>()(
 
       // ---- Offline simulation -----------------------------------------------
 
-      applyOffline: () =>
+      applyOffline: () => {
+        let anyGathered = false;
+        let workerFirstToken = false;
+        let machineFirstToken = false;
+        let anyStalled = false;
+
         set((s) => {
           const cfg = useConfigStore.getState();
           const elapsed = Math.max(0, (now() - s.lastSeen) / 1000);
@@ -1275,6 +1287,7 @@ export const useGameStore = create<GameState>()(
               totalWorkerXp += xpGained;
               const leveled = applyLevels(w.level, w.xp + xpGained, cfg.formulas);
               const levelsGained = leveled.level - w.level;
+              if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) workerFirstToken = true;
               return {
                 ...w,
                 xp: leveled.xp,
@@ -1312,6 +1325,8 @@ export const useGameStore = create<GameState>()(
             totalWorkerXp += xpGained;
             const leveled = applyLevels(w.level, w.xp + xpGained, cfg.formulas);
             const levelsGained = leveled.level - w.level;
+            anyGathered = true;
+            if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) workerFirstToken = true;
 
             return {
               ...w,
@@ -1387,6 +1402,7 @@ export const useGameStore = create<GameState>()(
                 brew_speed: machineSim.brew_speed + levelsGained * 0.03,
                 upgrade_tokens: (machineSim.upgrade_tokens ?? 0) + levelsGained,
               };
+              if (levelsGained > 0 && (machine.upgrade_tokens ?? 0) === 0) machineFirstToken = true;
 
               if (levelsGained > 0) {
                 currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
@@ -1399,6 +1415,7 @@ export const useGameStore = create<GameState>()(
               brewElapsedSecs -= currentBrewSecs;
             }
 
+            if (stalled) anyStalled = true;
             return {
               ...machineSim,
               brew_stalled: stalled,
@@ -1442,7 +1459,17 @@ export const useGameStore = create<GameState>()(
             welcomeBack,
             lastSeen: now(),
           };
-        }),
+        });
+
+        const g = get();
+        if (anyGathered) g.pushHint("first_gather_complete");
+        if (workerFirstToken) g.pushHint("worker_first_token");
+        if (machineFirstToken) g.pushHint("machine_first_token");
+        if (anyStalled) g.pushHint("brewer_stalled");
+        if (g.coins >= HIRE_COST_BASE * Math.pow(g.workers.length, 2)) g.pushHint("can_afford_worker");
+        const nextMachineCost = g.machines.length < 5 ? MACHINE_COSTS[g.machines.length] : null;
+        if (nextMachineCost !== null && g.coins >= nextMachineCost) g.pushHint("can_afford_machine");
+      },
 
       dismissWelcome: () => set({ welcomeBack: null }),
 
@@ -1710,10 +1737,3 @@ export const useGameStore = create<GameState>()(
   )
 );
 
-// Keep lastSeen fresh and regenerate elapsed-cooldown quests
-if (typeof window !== "undefined") {
-  setInterval(() => {
-    useGameStore.setState({ lastSeen: now() });
-    useGameStore.getState().refreshQuests();
-  }, 5000);
-}

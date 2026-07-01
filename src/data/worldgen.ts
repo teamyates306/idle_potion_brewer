@@ -206,8 +206,10 @@ export function buildLocations(allIngredients: Record<string, Ingredient>): Reco
   for (const t of Object.keys(byTier)) byTier[+t].sort((a, b) => allIngredients[a].base_value - allIngredients[b].base_value);
 
   const weightFor = (id: string) => {
-    const v = allIngredients[id].base_value;
-    return Math.max(5, Math.round(50 - Math.sqrt(v) * 3)); // cheaper = more common
+    const ing = allIngredients[id];
+    const base = Math.max(5, Math.round(50 - Math.sqrt(ing.base_value) * 3)); // cheaper = more common
+    const isRare = ing.rarity === "epic" || ing.rarity === "legendary";
+    return isRare ? Math.max(1, Math.round(base * 0.5)) : base;
   };
 
   const out: Record<string, Location> = {};
