@@ -5,6 +5,7 @@ import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
 import { masteryLevel, masteryXpProgress } from "../../data/masteryTrees";
 import IngredientSvg from "../art/IngredientSvg";
+import PotionIcon from "../art/PotionIcon";
 
 /**
  * Universal potion modal. Open it either:
@@ -77,11 +78,14 @@ export default function PotionDetailsModal({
       >
         {/* Header */}
         <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-purple-800">{potion.name}</h3>
-            <p className="text-xs text-slate-400">
-              ×{count} in inventory · 🪙 {fmt(potion.value)} each
-            </p>
+          <div className="flex items-start gap-3">
+            <PotionIcon name={potion.name} size={48} />
+            <div>
+              <h3 className="text-lg font-bold text-purple-800">{potion.name}</h3>
+              <p className="text-xs text-slate-400">
+                ×{count} in inventory · 🪙 {fmt(potion.value)} each
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}

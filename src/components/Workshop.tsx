@@ -12,7 +12,8 @@ import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
-import { PILE_COLORS } from "./art/PotionPileArt";
+import { parsePotionVisuals, DEFAULT_LIQUID_COLOR } from "../util/potionVisuals";
+import { describePotion } from "../engine/potions";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
@@ -364,11 +365,17 @@ const MachineColumn = React.memo(function MachineColumn({
           size: "md",
         });
       }
-      // Potion-exit animation: derive color from current pile count
-      const inv = useGameStore.getState().potionInv;
-      const total = Object.values(inv).reduce((a: number, b: number) => a + b, 0);
-      const colorIdx = ((total - 1) % PILE_COLORS.length + PILE_COLORS.length) % PILE_COLORS.length;
-      const potionColor = PILE_COLORS[colorIdx];
+      // Potion-exit animation: derive color from the actual brewed potion's suffix
+      const state = useGameStore.getState();
+      const m = state.machines.find((mc) => mc.id === machine.id);
+      const recipeIngredients = (m?.recipe_slots ?? [])
+        .filter((id): id is string => !!id)
+        .map((id) => useConfigStore.getState().ingredients[id])
+        .filter(Boolean);
+      const desc = recipeIngredients.length > 0
+        ? describePotion(recipeIngredients, useConfigStore.getState().formulas)
+        : null;
+      const potionColor = desc ? parsePotionVisuals(desc.name).liquidColor : DEFAULT_LIQUID_COLOR;
       onBrewComplete(rect, potionColor);
       onBrewBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, potionColor);
     });
@@ -977,7 +984,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Potion pile */}
           <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
             <div className="relative">
-              <PotionPileArt count={displayPotionCount} />
+              <PotionPileArt />
               {displayPotionCount > 0 && (
                 <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">
                   {displayPotionCount}

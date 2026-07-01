@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import {
-  Coins, Sparkles, FlaskConical, Search, ChevronDown, ChevronRight,
+  Coins, Search, ChevronDown, ChevronRight,
   Trash2, CheckSquare, Square, X,
 } from "lucide-react";
+import PotionIcon from "./art/PotionIcon";
 import { masteryLevel, masteryXpProgress } from "../data/masteryTrees";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
@@ -139,7 +140,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                         onClick={() => (auto && selectMode ? toggleSel(hash) : setDetail({ hash }))}
                         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                       >
-                        <Sparkles size={14} className={`shrink-0 ${auto ? "text-amber-400" : "text-purple-400"}`} />
+                        <PotionIcon name={d.name} size={16} />
                         <div className="min-w-0">
                           <div className={`truncate font-medium ${auto ? "text-amber-800" : "text-purple-800"}`}>{d.name}</div>
                           <div className="text-xs text-slate-400">×{count} · 🪙 {fmt(d.value)} each</div>
@@ -271,7 +272,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                         className="flex flex-col rounded-lg border border-purple-900/40 bg-slate-800/60 p-3 text-left transition hover:border-purple-500/50 hover:bg-slate-700/60 active:scale-[0.98]"
                       >
                         <div className="mb-1.5 flex items-center justify-between">
-                          <FlaskConical size={20} className="text-purple-400" />
+                          <PotionIcon name={g.name} size={20} />
                           {mLevel > 0 && (
                             <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
                               mLevel >= 10
