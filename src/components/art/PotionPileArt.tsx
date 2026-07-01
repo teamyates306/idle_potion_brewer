@@ -74,13 +74,7 @@ export default function PotionPileArt() {
   const count = bottleColors.length;
   const shown = Math.min(MAX_SHOWN, count);
 
-  if (shown === 0) {
-    return (
-      <svg width={80} height={40} viewBox="0 0 80 40" fill="none">
-        <text x="40" y="25" textAnchor="middle" fill="#475569" fontSize="10">(empty)</text>
-      </svg>
-    );
-  }
+  if (shown === 0) return null;
 
   const pts = ALL_POSITIONS.slice(0, shown);
 

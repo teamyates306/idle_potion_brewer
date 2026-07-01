@@ -963,6 +963,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               );
             })()}
           </div>
+          <div className="pointer-events-none w-full h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 100%)" }} />
 
           {/* Machine columns */}
           <div ref={machineSectionRef} className="flex justify-center py-10">
@@ -980,6 +981,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               />
             ))}
           </div>
+
+          <div className="pointer-events-none w-full h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 100%)" }} />
 
           {/* Potion pile */}
           <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
