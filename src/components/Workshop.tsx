@@ -938,6 +938,27 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
             }}
           />
 
+          {/* Lamp ambient glow — wide radial pool reaching from lantern down to floor */}
+          {computeLampPositions(contentWidth).map((cx) => (
+            <div
+              key={cx}
+              className="pointer-events-none absolute lamp-flicker"
+              style={{
+                top: 28,
+                left: cx - 57,
+                width: 114,
+                height: 380,
+                background:
+                  "radial-gradient(ellipse 87% 78% at 50% 23%, rgba(255,175,40,0.55) 0%, rgba(255,100,10,0.14) 45%, transparent 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 22%, black 100%)",
+                maskImage:       "linear-gradient(to bottom, transparent 0%, black 22%, black 100%)",
+                opacity: "var(--dn-lamp-glow-op, 0)",
+                transition: "opacity 3s ease-in-out",
+                zIndex: 1,
+              }}
+            />
+          ))}
+
           {/* Window light streaks — long diagonal beams sweeping into the scene */}
           {computeWindowPositions(contentWidth).map((cx) => (
             <div
@@ -1060,7 +1081,7 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
     </g>
   );
 }
-// Shared helper — used by both WorkshopWall (SVG) and the beam overlay
+// Shared helpers — used by WorkshopWall (SVG) and the overlay layers below
 function computeWindowPositions(width: number): number[] {
   const SPACING = 150;
   const center = width / 2;
@@ -1068,6 +1089,15 @@ function computeWindowPositions(width: number): number[] {
   const step = width / n;
   return Array.from({ length: n }, (_, i) => Math.round(step * (i + 0.5))).filter(
     (x) => Math.abs(x - center) > 62,
+  );
+}
+function computeLampPositions(width: number): number[] {
+  const SPACING = 150;
+  const center = width / 2;
+  const n = Math.max(2, Math.round(width / SPACING));
+  const step = width / n;
+  return Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1))).filter(
+    (x) => Math.abs(x - center) > 70,
   );
 }
 
@@ -1134,7 +1164,7 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
   const n = Math.max(2, Math.round(width / SPACING));
   const step = width / n;
   const windows = computeWindowPositions(width);
-  const lamps = Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1))).filter((x) => Math.abs(x - center) > 70);
+  const lamps = computeLampPositions(width);
   const signX = Math.round(center);
 
   return (
