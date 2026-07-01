@@ -927,6 +927,27 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
 
+          {/* Window light streaks — long diagonal beams sweeping into the scene */}
+          {computeWindowPositions(contentWidth).map((cx) => (
+            <div
+              key={cx}
+              className="pointer-events-none absolute"
+              style={{
+                top: 82,
+                left: cx - 28,
+                width: 56,
+                height: 460,
+                background:
+                  "linear-gradient(to bottom, rgba(255,235,140,0.32) 0%, rgba(255,235,140,0.14) 30%, rgba(255,235,140,0.04) 65%, transparent 100%)",
+                transform: "skewX(var(--dn-sun-skew, 0deg))",
+                transformOrigin: "top center",
+                opacity: "var(--dn-daylight-op, 0)",
+                transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out",
+                zIndex: 1,
+              }}
+            />
+          ))}
+
           {/* Inner scene — brewers centred in the fixed world */}
           <div className="relative z-[1] mx-auto flex w-full flex-col" style={{ maxWidth: totalWidth }}>
 
@@ -1028,6 +1049,30 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
     </g>
   );
 }
+// Shared helper — used by both WorkshopWall (SVG) and the beam overlay
+function computeWindowPositions(width: number): number[] {
+  const SPACING = 150;
+  const center = width / 2;
+  const n = Math.max(2, Math.round(width / SPACING));
+  const step = width / n;
+  return Array.from({ length: n }, (_, i) => Math.round(step * (i + 0.5))).filter(
+    (x) => Math.abs(x - center) > 62,
+  );
+}
+
+function WallWindowLight({ cx }: { cx: number }) {
+  return (
+    <g>
+      {/* Subtle warm halo around window frame — fades at night */}
+      <ellipse
+        cx={cx} cy={54}
+        rx={36} ry={40}
+        fill="url(#winGlow)"
+        style={{ opacity: "var(--dn-daylight-op, 0)", transition: "opacity 3.5s ease-in-out" }}
+      />
+    </g>
+  );
+}
 function WallWindow({ cx }: { cx: number }) {
   const id = `win${Math.round(cx)}`;
   const x = cx - 24, w = 48, y = 22, h = 64;
@@ -1071,13 +1116,11 @@ function WallLamp({ cx }: { cx: number }) {
 }
 
 function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; workerActive: boolean; width: number }) {
-  // Tile windows + lamps across the width, leaving a clear gap in the middle for
-  // the single central door (where workers emerge). No repeating doors.
   const SPACING = 150;
   const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
   const step = width / n;
-  const windows = Array.from({ length: n }, (_, i) => Math.round(step * (i + 0.5))).filter((x) => Math.abs(x - center) > 62);
+  const windows = computeWindowPositions(width);
   const lamps = Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1))).filter((x) => Math.abs(x - center) > 70);
   const signX = Math.round(center);
 
@@ -1098,8 +1141,18 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
             <stop offset="0.74" stopColor="transparent" />
             <stop offset="1" stopColor="#6b665e" stopOpacity="0.28" />
           </linearGradient>
+          {/* Window light glow gradient */}
+          <radialGradient id="winGlow" cx="50%" cy="40%" r="50%">
+            <stop offset="0%"   stopColor="#ffe8a0" stopOpacity="0.50" />
+            <stop offset="60%"  stopColor="#ffe8a0" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#ffe8a0" stopOpacity="0" />
+          </radialGradient>
         </defs>
         <rect width={width} height="96" fill="url(#wallBricks)" />
+        {/* Light halo rendered before window frames so glow sits behind the woodwork */}
+        {windows.map((x) => (
+          <WallWindowLight key={x} cx={x} />
+        ))}
         {windows.map((x) => (
           <WallWindow key={x} cx={x} />
         ))}

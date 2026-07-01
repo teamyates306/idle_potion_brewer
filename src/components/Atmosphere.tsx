@@ -50,6 +50,11 @@ function applyDayNightVars() {
   root.setProperty("--dn-shadow-op",    (0.18 + shadowStrength * 0.72).toFixed(3));
   root.setProperty("--dn-shadow-scale", (0.65 + shadowStrength * 0.55).toFixed(3));
 
+  // Window light shafts: bright during the day, angled by sun position
+  root.setProperty("--dn-daylight-op", dn.dayness.toFixed(3));
+  const dayFrac = Math.max(-1, Math.min(1, (dn.phase - 0.5) / 0.4)); // −1 dawn → 0 noon → +1 dusk
+  root.setProperty("--dn-sun-skew", `${(dayFrac * 32).toFixed(1)}deg`);
+
   // Workshop wall: window glass, hills, stars, lamps
   root.setProperty("--dn-window-color", dn.windowColor);
   root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
