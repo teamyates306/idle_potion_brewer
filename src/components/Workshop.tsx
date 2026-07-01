@@ -906,7 +906,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         onPointerCancel={onPointerEnd}
         onScroll={onScroll}
       >
-        <div ref={contentRef} className="relative mx-auto flex flex-col" style={{ width: contentWidth }}>
+        <div ref={contentRef} className="relative mx-auto flex flex-col" style={{ width: contentWidth, minHeight: "100%" }}>
 
           {/* Floor — part of the scroll content, so it travels with the cauldrons */}
           <div
@@ -976,7 +976,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Potion pile */}
           <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
-            <div className="relative" style={{ maxWidth: 'calc(100vw - 180px)', overflow: 'hidden' }}>
+            <div className="relative">
               <PotionPileArt count={displayPotionCount} />
               {displayPotionCount > 0 && (
                 <span className="absolute right-2 top-0 rounded-full bg-purple-600 px-2 py-0.5 text-xs font-bold text-white shadow">

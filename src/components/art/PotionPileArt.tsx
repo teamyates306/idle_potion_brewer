@@ -104,7 +104,7 @@ export default function PotionPileArt({ count }: Props) {
       width={Math.round(vbW * SCALE)}
       height={Math.round(vbH * SCALE)}
       viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-      style={{ maxWidth: '100%', height: 'auto' }}
+      style={{ display: 'block' }}
       fill="none"
     >
       <ellipse
