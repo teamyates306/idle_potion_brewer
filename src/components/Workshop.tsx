@@ -933,7 +933,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute"
               style={{
-                top: 82,
+                top: 100,
                 left: cx - 28,
                 width: 56,
                 height: 460,
@@ -943,7 +943,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 transformOrigin: "top center",
                 opacity: "var(--dn-daylight-op, 0)",
                 transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out",
-                zIndex: 1,
+                zIndex: 10,
               }}
             />
           ))}
