@@ -959,30 +959,30 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 <div className="relative" style={{ width: w, height: 32 }}>
                   <TroughPile />
                   <img src={`/sprites/trough-${sw}.svg`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
+                  <div className="pointer-events-none absolute -bottom-5 left-0 right-0 h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28), transparent)" }} />
                 </div>
               );
             })()}
           </div>
-          <div className="pointer-events-none w-full h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 100%)" }} />
-
           {/* Machine columns */}
           <div ref={machineSectionRef} className="flex justify-center py-10">
-            {machines.map((machine, idx) => (
-              <MachineColumn
-                key={machine.id}
-                machine={machine}
-                machineIdx={idx}
-                loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
-                workers={workers}
-                onManage={() => onOpen("machine", machine.id)}
-                onBrewStart={handleBrewStart}
-                onBrewComplete={handleBrewComplete}
-                onBrewBurst={handleBrewBurst}
-              />
-            ))}
+            <div className="relative flex" style={{ width: machines.length * COL_W }}>
+              {machines.map((machine, idx) => (
+                <MachineColumn
+                  key={machine.id}
+                  machine={machine}
+                  machineIdx={idx}
+                  loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
+                  workers={workers}
+                  onManage={() => onOpen("machine", machine.id)}
+                  onBrewStart={handleBrewStart}
+                  onBrewComplete={handleBrewComplete}
+                  onBrewBurst={handleBrewBurst}
+                />
+              ))}
+              <div className="pointer-events-none absolute -bottom-5 left-0 right-0 h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28), transparent)" }} />
+            </div>
           </div>
-
-          <div className="pointer-events-none w-full h-6" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.28) 0%, transparent 100%)" }} />
 
           {/* Potion pile */}
           <div ref={pileSectionRef} className="flex flex-col items-center pb-3">
