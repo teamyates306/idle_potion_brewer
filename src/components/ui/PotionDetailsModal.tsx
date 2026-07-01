@@ -156,7 +156,7 @@ export default function PotionDetailsModal({
                 </>
               )}
               {speedBuff > 0 && (
-                <p className="mt-2 text-[11px] text-emerald-400">
+                <p className="mt-2 text-[11px] text-emerald-700">
                   Brew speed bonus: <span className="font-semibold">+{speedBuff}%</span> for this potion
                 </p>
               )}
