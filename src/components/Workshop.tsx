@@ -927,6 +927,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
 
+          {/* Wall-to-floor shadow — sits behind light beams (z=2 < beams z=10) */}
+          <div
+            className="pointer-events-none absolute left-0 right-0"
+            style={{
+              top: 94,
+              height: 22,
+              background: "linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, transparent 100%)",
+              zIndex: 2,
+            }}
+          />
+
           {/* Window light streaks — long diagonal beams sweeping into the scene */}
           {computeWindowPositions(contentWidth).map((cx) => (
             <div
