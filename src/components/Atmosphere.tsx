@@ -63,8 +63,9 @@ function applyDayNightVars() {
   root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
   const lf = (0.5 + dn.lampGlow * 0.5).toFixed(2);
   const lg = (dn.lampGlow * 0.18).toFixed(2);
-  root.setProperty("--dn-lamp-flame",   `rgba(251,191,36,${lf})`);
-  root.setProperty("--dn-lamp-glow",    `rgba(251,191,36,${lg})`);
+  root.setProperty("--dn-lamp-flame",    `rgba(251,191,36,${lf})`);
+  root.setProperty("--dn-lamp-glow",     `rgba(251,191,36,${lg})`);
+  root.setProperty("--dn-lamp-glow-op",  dn.lampGlow.toFixed(3));
   const rn = `${Math.round(12 + dy*46 + sr*28 + ss*38)}`;
   const gn = `${Math.round(28 + dy*94 + sr*18 - ss*18)}`;
   const bn = `${Math.round(8  + dy*16 - sr*4  - ss*6 )}`;

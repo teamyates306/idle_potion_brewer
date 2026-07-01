@@ -1116,12 +1116,14 @@ function WallWindow({ cx }: { cx: number }) {
 function WallLamp({ cx }: { cx: number }) {
   return (
     <g transform={`translate(${cx},46)`}>
-      <line x1="0" y1="-24" x2="0" y2="-17" stroke="#7a6040" strokeWidth="1.5" />
-      <rect x="-7" y="-17" width="14" height="20" rx="2" fill="#3a2810" stroke="#7a6040" strokeWidth="1" />
-      <rect x="-5" y="-15" width="10" height="16" rx="1"
-        style={{ fill: "var(--dn-lamp-flame, rgba(251,191,36,0.50))", transition: "fill 3s ease-in-out" }} />
-      <ellipse cx="0" cy="6" rx="11" ry="4"
-        style={{ fill: "var(--dn-lamp-glow, rgba(251,191,36,0.00))", transition: "fill 3s ease-in-out" }} />
+      <image href="/sprites/lamp.svg" x="-7" y="-24" width="14" height="28" />
+      {/* Flickering orange glow pool — outer g fades with day/night, inner ellipse animates */}
+      <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
+        <ellipse cx="0" cy="6" rx="14" ry="5"
+          fill="url(#lampGlowGrad)"
+          style={{ animation: "lamp-flicker 2.8s ease-in-out infinite" }}
+        />
+      </g>
     </g>
   );
 }
@@ -1152,6 +1154,12 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
             <stop offset="0.74" stopColor="transparent" />
             <stop offset="1" stopColor="#6b665e" stopOpacity="0.28" />
           </linearGradient>
+          {/* Lantern glow pool gradient — warm orange core, fades to transparent */}
+          <radialGradient id="lampGlowGrad" cx="50%" cy="30%" r="70%">
+            <stop offset="0%"   stopColor="#ffb040" stopOpacity="0.90" />
+            <stop offset="55%"  stopColor="#ff6010" stopOpacity="0.40" />
+            <stop offset="100%" stopColor="#ff3000" stopOpacity="0" />
+          </radialGradient>
           {/* Window light glow gradient */}
           <radialGradient id="winGlow" cx="50%" cy="40%" r="50%">
             <stop offset="0%"   stopColor="#ffe8a0" stopOpacity="0.50" />

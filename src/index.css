@@ -242,3 +242,14 @@ body {
 .animate-bubble {
   animation: bubble-rise 1.3s ease-out infinite;
 }
+
+/* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
+@keyframes lamp-flicker {
+  0%,  100% { opacity: 1;    }
+  10%        { opacity: 0.72; }
+  22%        { opacity: 0.95; }
+  38%        { opacity: 0.60; }
+  52%        { opacity: 1;    }
+  67%        { opacity: 0.80; }
+  83%        { opacity: 0.90; }
+}
