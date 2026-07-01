@@ -941,7 +941,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                   "linear-gradient(to bottom, rgba(255,235,140,0.32) 0%, rgba(255,235,140,0.14) 30%, rgba(255,235,140,0.04) 65%, transparent 100%)",
                 transform: "skewX(var(--dn-sun-skew, 0deg))",
                 transformOrigin: "top center",
-                opacity: "var(--dn-daylight-op, 0)",
+                opacity: "var(--dn-beam-op, 0)",
                 transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out",
                 zIndex: 10,
               }}

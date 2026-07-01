@@ -54,6 +54,9 @@ function applyDayNightVars() {
   root.setProperty("--dn-daylight-op", dn.dayness.toFixed(3));
   const dayFrac = Math.max(-1, Math.min(1, (dn.phase - 0.5) / 0.4)); // −1 dawn → 0 noon → +1 dusk
   root.setProperty("--dn-sun-skew", `${(dayFrac * 32).toFixed(1)}deg`);
+  // Beam opacity: same at dawn/dusk, 0.8× at noon (vertical beams are slightly dimmer)
+  const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength);
+  root.setProperty("--dn-beam-op", beamOp.toFixed(3));
 
   // Workshop wall: window glass, hills, stars, lamps
   root.setProperty("--dn-window-color", dn.windowColor);
