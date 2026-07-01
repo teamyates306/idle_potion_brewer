@@ -520,7 +520,7 @@ const MachineColumn = React.memo(function MachineColumn({
         </div>
 
         {/* Ground shadow */}
-        <div className="pointer-events-none absolute -bottom-1.5 left-1/2 -translate-x-1/2" style={{ width: 88, height: 12, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)" }} />
+        <div className="pointer-events-none absolute -bottom-1.5 left-1/2" style={{ width: 88, height: 12, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(-50%) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
 
         {/* Sparks */}
         {sparks.map((spark) => (
@@ -962,7 +962,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 <div className="relative" style={{ width: w, height: 32 }}>
                   <TroughPile />
                   <img src={`/sprites/trough-${sw}.svg`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
-                  <div className="pointer-events-none absolute -bottom-4 left-0 right-0 h-5" style={{ background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.32) 0%, transparent 70%)" }} />
+                  <div className="pointer-events-none absolute -bottom-4 left-1/2 h-5" style={{ width: "85%", background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(-50%) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
                 </div>
               );
             })()}

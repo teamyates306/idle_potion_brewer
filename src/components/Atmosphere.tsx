@@ -45,6 +45,11 @@ function applyDayNightVars() {
   // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
   root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
 
+  // Ground shadow under machines + trough: pronounced at dawn/dusk, dim at noon + midnight
+  const shadowStrength = Math.max(dn.sunriseness, dn.sunsetness);
+  root.setProperty("--dn-shadow-op",    (0.06 + shadowStrength * 0.40).toFixed(3));
+  root.setProperty("--dn-shadow-scale", (0.55 + shadowStrength * 0.45).toFixed(3));
+
   // Workshop wall: window glass, hills, stars, lamps
   root.setProperty("--dn-window-color", dn.windowColor);
   root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
