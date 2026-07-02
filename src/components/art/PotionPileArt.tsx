@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
-import { parsePotionVisuals, DEFAULT_LIQUID_COLOR } from "../../util/potionVisuals";
+import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR } from "../../util/potionVisuals";
 
 // Layout geometry (SVG units)
 const SPACING_X  = 16;
@@ -38,15 +38,46 @@ const ALL_POSITIONS: [number, number][] = (() => {
 
 const MAX_SHOWN = ALL_POSITIONS.length;
 
-// Liquid polygon points (relative to bottle centre, SVG units matching the 16-unit bottle)
-const LIQUID_POINTS = "2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0";
+// Glow strength per prefix tier (px blur radius)
+const TIER_GLOW = [0, 1.5, 3, 4, 5.5, 7];
+// Particle count per tier (tier 0-2 = none, 3 = 2, 4-5 = 3)
+const TIER_PARTICLES = [0, 0, 0, 2, 3, 3];
+// Particle spawn spots — start above the bottle neck (y < -13) so they rise clear of the sprite
+const PARTICLE_SPOTS = [
+  { dx:  0, dy: -14, delay: 0   },
+  { dx: -2, dy: -13, delay: 0.7 },
+  { dx:  2, dy: -15, delay: 1.4 },
+];
 
-function Bottle({ x, y, liquidColor }: { x: number; y: number; liquidColor: string }) {
+function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier }: {
+  x: number; y: number; liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number;
+}) {
+  const glowPx = TIER_GLOW[Math.min(prefixTier, TIER_GLOW.length - 1)];
+  const filter = glowPx > 0
+    ? `drop-shadow(0 0 ${glowPx}px ${liquidColor})${glowPx >= 5 ? ` drop-shadow(0 0 ${+(glowPx * 1.6).toFixed(1)}px ${liquidColor})` : ""}`
+    : undefined;
   return (
-    <g transform={`translate(${x} ${y})`}>
-      <polygon points={LIQUID_POINTS} fill={liquidColor} opacity="0.75" />
-      <image href="/sprites/potion-bottle.svg" x="-8" y="-16" width="16" height="16" />
+    <g transform={`translate(${x} ${y})`} style={filter ? { filter } : undefined}>
+      <polygon points={liquidPoints} fill={liquidColor} opacity="0.75" />
+      <image href={sprite} x="-8" y="-16" width="16" height="16" />
     </g>
+  );
+}
+
+function BottleParticles({ x, y, liquidColor, prefixTier }: {
+  x: number; y: number; liquidColor: string; prefixTier: number;
+}) {
+  const numParticles = TIER_PARTICLES[Math.min(prefixTier, TIER_PARTICLES.length - 1)];
+  if (numParticles === 0) return null;
+  return (
+    <>
+      {PARTICLE_SPOTS.slice(0, numParticles).map((p, i) => (
+        <circle key={i} cx={x + p.dx} cy={y + p.dy} r="2.5" fill={liquidColor} opacity="0">
+          <animate attributeName="cy" values={`${y + p.dy};${y + p.dy - 8}`} dur="1.8s" repeatCount="indefinite" begin={`${p.delay}s`} />
+          <animate attributeName="opacity" values="0;0.9;0" dur="1.8s" repeatCount="indefinite" begin={`${p.delay}s`} />
+        </circle>
+      ))}
+    </>
   );
 }
 
@@ -55,23 +86,24 @@ export default function PotionPileArt() {
   const potionInv = useGameStore((s) => s.potionInv);
   const cfg = useConfigStore();
 
-  // Build stable ordered colour list: sort hashes alphabetically for stable positions,
-  // expand each by count, then cycle through for as many slots as needed.
-  const bottleColors = useMemo(() => {
+  const bottleData = useMemo(() => {
     const sorted = Object.entries(potionInv)
       .filter(([, c]) => c > 0)
       .sort(([a], [b]) => a.localeCompare(b));
 
-    const colors: string[] = [];
+    const entries: { liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number }[] = [];
     for (const [hash, count] of sorted) {
       const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
-      const color = d ? parsePotionVisuals(d.name).liquidColor : DEFAULT_LIQUID_COLOR;
-      for (let i = 0; i < count; i++) colors.push(color);
+      const visuals = d ? parsePotionVisuals(d.name) : null;
+      const typeData = visuals ? getPotionTypeData(visuals.potionType) : getPotionTypeData("Tonic");
+      const liquidColor = visuals ? visuals.liquidColor : DEFAULT_LIQUID_COLOR;
+      const prefixTier = visuals ? visuals.prefixTier : 0;
+      for (let i = 0; i < count; i++) entries.push({ liquidColor, prefixTier, ...typeData });
     }
-    return colors;
+    return entries;
   }, [potionInv, cfg.ingredients, cfg.formulas]);
 
-  const count = bottleColors.length;
+  const count = bottleData.length;
   const shown = Math.min(MAX_SHOWN, count);
 
   if (shown === 0) return null;
@@ -98,7 +130,7 @@ export default function PotionPileArt() {
       width={Math.round(vbW * SCALE)}
       height={Math.round(vbH * SCALE)}
       viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-      style={{ display: "block" }}
+      style={{ display: "block", overflow: "visible" }}
       fill="none"
     >
       <ellipse
@@ -109,9 +141,15 @@ export default function PotionPileArt() {
         fill="#000"
         opacity="0.25"
       />
-      {pts.map(([x, y], i) => (
-        <Bottle key={i} x={x} y={y} liquidColor={bottleColors[i % bottleColors.length]} />
-      ))}
+      {pts.map(([x, y], i) => {
+        const b = bottleData[i % bottleData.length];
+        return <Bottle key={i} x={x} y={y} liquidColor={b.liquidColor} liquidPoints={b.liquidPoints} sprite={b.sprite} prefixTier={b.prefixTier} />;
+      })}
+      {/* Particle layer rendered on top of all bottles, outside filtered groups */}
+      {pts.map(([x, y], i) => {
+        const b = bottleData[i % bottleData.length];
+        return <BottleParticles key={`p${i}`} x={x} y={y} liquidColor={b.liquidColor} prefixTier={b.prefixTier} />;
+      })}
     </svg>
   );
 }

@@ -43,7 +43,11 @@ export default function CoinCounter() {
       }, 650);
     }
 
-    if (rafRef.current) return; // a tween is already running
+    // Cancel any in-flight tween and restart toward the new target.
+    // The old guard (`if (rafRef.current) return`) blocked new tweens when a
+    // previous RAF was still queued, causing the display to freeze.
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (displayRef.current === coins) { rafRef.current = 0; return; }
 
     const tick = () => {
       const target = targetRef.current;

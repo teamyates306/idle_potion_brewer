@@ -1313,7 +1313,9 @@ export const useGameStore = create<GameState>()(
             const trips = Math.floor(timeSinceTripStart / tripSecs);
             if (trips === 0) return w;
 
-            const totalItems = trips * w.retrieval_size;
+            const caravanFx = computeMasteryEffects(s.masteryUnlocks);
+            const effectiveSize = w.retrieval_size * (1 + caravanFx.caravan_size_pct / 100);
+            const totalItems = trips * effectiveSize;
             totalGathers += Math.floor(totalItems);
             const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
             const seenHere = new Set(discoveredLocDrops[loc.id] ?? []);
@@ -1353,6 +1355,7 @@ export const useGameStore = create<GameState>()(
           let discoveredPotions = [...new Set(s.discoveredPotions ?? [])];
           let totalPotionsBrewedCount = 0;
           let totalMachineXp = 0;
+          const offlinePotionBrews: Record<string, number> = {}; // potionName → total outputs
 
           const machinesSim = s.machines.map((machine) => {
             if (!machine.running || !machine.brew_started_at) return machine;
@@ -1393,8 +1396,12 @@ export const useGameStore = create<GameState>()(
               const outputs = rollMultiBrew(effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas));
 
               totalPotionsBrewedCount += outputs;
+              offlinePotionBrews[potion.name] = (offlinePotionBrews[potion.name] ?? 0) + outputs;
               if ((s.autoSellHashes ?? []).includes(potion.hash)) {
-                coins += potion.value * outputs;
+                const offlineFx = computeMasteryEffects(s.masteryUnlocks);
+                const valueMult = 1 + offlineFx.potion_value_pct / 100;
+                const sellMult  = 1 + offlineFx.sell_price_pct  / 100;
+                coins += Math.round(potion.value * valueMult * sellMult) * outputs;
               } else {
                 potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
               }
@@ -1453,10 +1460,29 @@ export const useGameStore = create<GameState>()(
             ? machinesSim.map((m) => ({ ...m, brew_started_at: m.running ? now() : null }))
             : machinesSim;
 
+          // Apply mastery XP for all offline brews
+          const fx = computeMasteryEffects(s.masteryUnlocks);
+          const xpMult = 1 + fx.mastery_xp_pct / 100;
+          let potionMastery = { ...s.potionMastery };
+          let masteryTokens = s.masteryTokens;
+          for (const [potionName, outputs] of Object.entries(offlinePotionBrews)) {
+            const xpGained = Math.round(MASTERY_BASE_XP_PER_BREW * outputs * xpMult);
+            const entry = potionMastery[potionName] ?? { xp: 0, tokenAwarded: false };
+            const newXp = entry.xp + xpGained;
+            const justMastered = masteryLevel(newXp) >= 10 && !entry.tokenAwarded;
+            potionMastery = {
+              ...potionMastery,
+              [potionName]: { xp: newXp, tokenAwarded: entry.tokenAwarded || justMastered },
+            };
+            if (justMastered) masteryTokens += 1;
+          }
+
           return {
             coins,
             ingredientInv: inv,
             potionInv,
+            potionMastery,
+            masteryTokens,
             discoveredPotions,
             discovered: Array.from(discovered),
             discoveredAttributes,
@@ -1477,6 +1503,11 @@ export const useGameStore = create<GameState>()(
         if (g.coins >= HIRE_COST_BASE * Math.pow(g.workers.length, 2)) g.pushHint("can_afford_worker");
         const nextMachineCost = g.machines.length < 5 ? MACHINE_COSTS[g.machines.length] : null;
         if (nextMachineCost !== null && g.coins >= nextMachineCost) g.pushHint("can_afford_machine");
+
+        // Batch achievement checks for milestones crossed offline
+        g.checkAchievements("potions_brewed", g.total_brews);
+        g.checkAchievements("potions_discovered", g.discoveredPotions.length);
+        g.checkAchievements("coins", g.coins);
       },
 
       dismissWelcome: () => set({ welcomeBack: null }),

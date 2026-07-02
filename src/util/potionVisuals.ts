@@ -41,6 +41,40 @@ export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
 // Fallback colour when no suffix matches
 export const DEFAULT_LIQUID_COLOR = "#8a6fa3";
 
+// Per-type sprite path and liquid polygon points.
+// Polygon coords: SVG space with origin at bottle bottom-centre (same as PotionPileArt).
+// Remaining types will be filled in as polygons are defined.
+export const POTION_TYPE_DATA: Record<string, { sprite: string; liquidPoints: string }> = {
+  Tonic: {
+    sprite: "/sprites/potion-bottle.svg",
+    liquidPoints: "2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0",
+  },
+  Elixir: {
+    sprite: "/sprites/potion-elixir.svg",
+    liquidPoints: "-1.5,-8.5 1.5,-8.5 1.5,-6.5 -1.5,-6.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 1.5,-6.5 -1.5,-6.5",
+  },
+  Brew: {
+    sprite: "/sprites/potion-brew.svg",
+    liquidPoints: "-1.5,-10.5 -5.5,-10.5 -6.5,-9.5 -7.5,-8.5 -7.5,-2.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 7.5,-2.5 7.5,-8.5 6.5,-9.5 5.5,-10.5 1.5,-10.5",
+  },
+  Philter: {
+    sprite: "/sprites/potion-philter.svg",
+    liquidPoints: "-5.5,-11.5 -6.5,-10.5 -6.5,-8.5 -5.5,-7.5 -5.5,-5.5 -4.5,-4.5 -4.5,-2.5 -3.5,-1.5 -2.5,-0.5 2.5,-0.5 3.5,-1.5 4.5,-2.5 4.5,-4.5 5.5,-5.5 5.5,-7.5 6.5,-8.5 6.5,-10.5 5.5,-11.5",
+  },
+  Draught: {
+    sprite: "/sprites/potion-draught.svg",
+    liquidPoints: "-3.5,-12.5 -4.5,-11.5 -4.5,-10.5 -4.5,-10.5 -3.5,-9.5 -2.5,-8.5 -3.5,-7.5 -4.5,-6.5 -5.5,-5.5 -5.5,-3.5 -2.5,-0.5 2.5,-0.5 5.5,-3.5 5.5,-5.5 2.5,-8.5 4.5,-10.5 4.5,-11.5 3.5,-12.5",
+  },
+  Decoction: {
+    sprite: "/sprites/potion-decoction.svg",
+    liquidPoints: "-3.5,-11.5 -3.5,-9.5 -5.5,-7.5 -5.5,-6.5 -7.5,-4.5 -7.5,-2.5 -5.5,-0.5 1.5,-0.5 2.5,-1.5 3.5,-1.5 6.5,-4.5 6.5,-7.5 4.5,-9.5 4.5,-10.5 3.5,-11.5",
+  },
+};
+
+export function getPotionTypeData(potionType: string) {
+  return POTION_TYPE_DATA[potionType] ?? POTION_TYPE_DATA.Tonic;
+}
+
 // Prefix → visual effect tier (0 = none, 5 = maximum)
 export const PREFIX_TIERS: Record<string, number> = {
   Lesser:  0,
