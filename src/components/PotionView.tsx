@@ -116,7 +116,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
 
         {tab === "sell" ? (
           entries.length === 0 && autoSellHashes.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-500">No potions yet. Brew something!</p>
+            <p className="py-6 text-center text-sm text-slate-600">No potions yet. Brew something!</p>
           ) : (
             <>
               {(() => {

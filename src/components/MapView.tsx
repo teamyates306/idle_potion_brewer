@@ -380,7 +380,7 @@ function LocationDetailModal({
               onClick={() => { unlockLocation(loc.id); }}
               disabled={coins < loc.unlockCost}
               className={`w-full rounded-lg px-3 py-2 text-sm font-semibold ${
-                coins >= loc.unlockCost ? "bg-green-600 text-white hover:bg-green-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                coins >= loc.unlockCost ? "bg-green-700 text-white hover:bg-green-600" : "cursor-not-allowed bg-slate-800 text-slate-500"
               }`}
             >
               Unlock 🪙 {fmt(loc.unlockCost)}
@@ -414,7 +414,7 @@ function LocationDetailModal({
                   <button
                     data-tut="assign-confirm"
                     onClick={() => { assignWorker(lockedWorkerIndex!, loc.id); onClose(); }}
-                    className="mt-3 w-full rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white hover:bg-green-500 active:scale-[0.99]"
+                    className="mt-3 w-full rounded-lg bg-green-700 py-2.5 text-sm font-semibold text-white hover:bg-green-600 active:scale-[0.99]"
                   >
                     Assign {lockedWorker.name} to {loc.name}
                   </button>
@@ -472,7 +472,7 @@ function LocationDetailModal({
                     ) : (
                       <button
                         onClick={() => { assignWorker(idx, loc.id); onClose(); }}
-                        className="shrink-0 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500 active:scale-95 transition"
+                        className="shrink-0 rounded-lg bg-green-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-600 active:scale-95 transition"
                       >
                         Send
                       </button>
@@ -487,7 +487,7 @@ function LocationDetailModal({
                 onClick={() => { bulkAssign([...bulkSel], loc.id, null); onClose(); }}
                 disabled={bulkSel.size === 0}
                 className={`mt-3 w-full rounded-lg py-2.5 text-sm font-semibold transition ${
-                  bulkSel.size > 0 ? "bg-green-600 text-white hover:bg-green-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                  bulkSel.size > 0 ? "bg-green-700 text-white hover:bg-green-600" : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
                 Send {bulkSel.size > 0 ? bulkSel.size : ""} to {loc.name}

@@ -922,7 +922,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Floor — part of the scroll content, so it travels with the cauldrons */}
           <div
             className="pointer-events-none absolute inset-x-0 z-0"
-            style={{ top: 92, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 12px 20px -12px rgba(60,54,46,0.30)" }}
+            style={{ top: 140, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 12px 20px -12px rgba(60,54,46,0.30)" }}
           />
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
@@ -933,7 +933,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
             <div
               className="pointer-events-none absolute left-0 right-0"
               style={{
-                top: 94,
+                top: 142,
                 height: 22,
                 background: "linear-gradient(to bottom, rgba(0,0,0,0.38) 0%, transparent 100%)",
                 zIndex: 2,
@@ -947,7 +947,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute lamp-flicker"
               style={{
-                top: 28,
+                top: 76,
                 left: cx - 57,
                 width: 114,
                 height: 380,
@@ -968,7 +968,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute"
               style={{
-                top: 89,
+                top: 137,
                 left: cx - 28,
                 width: 56,
                 height: 460,
@@ -1072,15 +1072,15 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
   const fx = cx - 38; // frame left (76 wide), workers emerge from here
   return (
     <g>
-      <rect x={fx} y={16} width={76} height={80} rx={5} fill="#3a2008" />
-      <rect x={fx + 5} y={20} width={66} height={76} rx={3} fill="#2e1a08" />
-      <rect x={fx + 9} y={25} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
-      <rect x={fx + 41} y={25} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
-      <rect x={fx + 9} y={58} width={58} height={34} rx={2} fill="#221408" opacity={0.6} />
-      <circle cx={fx + 63} cy={64} r={3.5} fill="#c8a040" />
-      <circle cx={fx + 63} cy={64} r={1.8} fill="#f0c870" />
-      {workerActive && <rect x={fx + 5} y={20} width={66} height={76} rx={3} fill="#fbbf24" opacity={0.1} />}
-      <rect x={fx} y={16} width={76} height={80} rx={5} fill="none" stroke="#4a3010" strokeWidth={2} />
+      <rect x={fx} y={64} width={76} height={80} rx={5} fill="#3a2008" />
+      <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#2e1a08" />
+      <rect x={fx + 9} y={73} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
+      <rect x={fx + 41} y={73} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
+      <rect x={fx + 9} y={106} width={58} height={34} rx={2} fill="#221408" opacity={0.6} />
+      <circle cx={fx + 63} cy={112} r={3.5} fill="#c8a040" />
+      <circle cx={fx + 63} cy={112} r={1.8} fill="#f0c870" />
+      {workerActive && <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#fbbf24" opacity={0.1} />}
+      <rect x={fx} y={64} width={76} height={80} rx={5} fill="none" stroke="#4a3010" strokeWidth={2} />
     </g>
   );
 }
@@ -1109,7 +1109,7 @@ function WallWindowLight({ cx }: { cx: number }) {
     <g>
       {/* Subtle warm halo around window frame — fades at night */}
       <ellipse
-        cx={cx} cy={54}
+        cx={cx} cy={102}
         rx={36} ry={40}
         fill="url(#winGlow)"
         style={{ opacity: "var(--dn-daylight-op, 0)", transition: "opacity 3.5s ease-in-out" }}
@@ -1119,7 +1119,7 @@ function WallWindowLight({ cx }: { cx: number }) {
 }
 function WallWindow({ cx }: { cx: number }) {
   const id = `win${Math.round(cx)}`;
-  const x = cx - 24, w = 48, y = 22, h = 64;
+  const x = cx - 24, w = 48, y = 70, h = 64;
   return (
     <g>
       <clipPath id={id}><rect x={x} y={y} width={w} height={h} rx="7" /></clipPath>
@@ -1148,7 +1148,7 @@ function WallWindow({ cx }: { cx: number }) {
 }
 function WallLamp({ cx }: { cx: number }) {
   return (
-    <g transform={`translate(${cx},46)`}>
+    <g transform={`translate(${cx},94)`}>
       <image href="/sprites/lamp.svg" x="-7" y="-24" width="14" height="28" />
       {/* Flickering orange glow pool — outer g fades with day/night, inner ellipse animates */}
       <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
@@ -1174,10 +1174,10 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
     <button
       onClick={onClick}
       className="relative z-[1] block overflow-hidden transition active:opacity-90"
-      style={{ height: 96, width }}
+      style={{ height: 144, width }}
       title="Open the Map"
     >
-      <svg width={width} height="96" viewBox={`0 0 ${width} 96`} preserveAspectRatio="none" fill="none">
+      <svg width={width} height="144" viewBox={`0 0 ${width} 144`} preserveAspectRatio="none" fill="none">
         <defs>
           <pattern id="wallBricks" width="96" height="48" patternUnits="userSpaceOnUse">
             {/* wall-tile.svg: 96×48 pixel-art tile — swap path when file is updated */}
@@ -1200,7 +1200,7 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
             <stop offset="100%" stopColor="#ffe8a0" stopOpacity="0" />
           </radialGradient>
         </defs>
-        <rect width={width} height="96" fill="url(#wallBricks)" />
+        <rect width={width} height="144" fill="url(#wallBricks)" />
         {/* Light halo rendered before window frames so glow sits behind the woodwork */}
         {windows.map((x) => (
           <WallWindowLight key={x} cx={x} />
@@ -1214,11 +1214,11 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
         {/* Single central door — workers emerge here */}
         <WallDoor cx={center} workerActive={workerActive} />
         {/* Hanging sign, centred above the door */}
-        <rect x={signX - 52} y="0.5" width="104" height="14" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
-        <text x={signX} y="11" textAnchor="middle" fill="#c8a050" fontSize="9" fontFamily="serif" letterSpacing="2">
+        <rect x={signX - 52} y="48.5" width="104" height="14" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
+        <text x={signX} y="59" textAnchor="middle" fill="#c8a050" fontSize="9" fontFamily="serif" letterSpacing="2">
           THE WORKSHOP
         </text>
-        <rect width={width} height="96" fill="url(#wallFade)" />
+        <rect width={width} height="144" fill="url(#wallFade)" />
       </svg>
     </button>
   );

@@ -94,16 +94,10 @@ export default function App() {
   return (
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
       <Atmosphere />
-      {/* HUD — styled as the top of the stone wall */}
-      <header
-        className="relative z-[4] flex items-center justify-between px-4 py-2.5"
-        style={{
-          background: "linear-gradient(to bottom, #3d2810 0%, #5a4028 100%)",
-          borderBottom: "2px solid #3a2008",
-        }}
-      >
-        <h1 className="text-sm font-bold tracking-wide text-amber-200">🧪 Idle Potion Brewer</h1>
-        <div className="flex items-center gap-2">
+
+      {/* HUD — floats above the scene so Workshop atmosphere covers the full viewport */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end px-3 py-2">
+        <div className="pointer-events-auto flex items-center gap-2">
           <CoinCounter />
           <button
             onClick={() => setSettingsOpen(true)}
@@ -113,10 +107,10 @@ export default function App() {
             <SlidersHorizontal size={16} />
           </button>
         </div>
-      </header>
+      </div>
 
-      {/* Workshop scene */}
-      <main className="relative z-[2] flex-1 overflow-hidden">
+      {/* Workshop scene — fills full height so wall + atmosphere reach the top edge */}
+      <main className="relative z-[2] h-full overflow-hidden">
         <Workshop onOpen={(p, machineId?) => { if (p === "map") setMapLockedWorker(null); if (machineId) setMachineTabId(machineId); setPanel(p); }} />
       </main>
 
@@ -256,7 +250,7 @@ export default function App() {
 
           <button
             onClick={dismissWelcome}
-            className="mt-5 w-full rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+            className="mt-5 w-full rounded-lg bg-cyan-700 py-2.5 font-semibold text-white hover:bg-cyan-600"
           >
             Back to Brewing
           </button>

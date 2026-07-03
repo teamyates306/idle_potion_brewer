@@ -319,7 +319,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
               key={key}
               onClick={() => setSortBy(key)}
               className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-                sortBy === key ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                sortBy === key ? "bg-slate-300 text-white" : "bg-slate-800 text-slate-300 hover:text-slate-200"
               }`}
             >
               {label}
@@ -328,7 +328,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
           <button
             onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); setActiveGroup(null); setBulkUpgrade(""); setBulkCount(1); }}
             className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
-              selectMode ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+              selectMode ? "bg-slate-300 text-white" : "bg-slate-800 text-slate-300 hover:text-slate-200"
             }`}
           >
             {selectMode ? "Cancel" : "Select"}
@@ -389,7 +389,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                 onClick={applyBulkAssign}
                 disabled={selected.size === 0 || !bulkDest}
                 className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  selected.size > 0 && bulkDest ? "bg-cyan-600 text-white hover:bg-cyan-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
+                  selected.size > 0 && bulkDest ? "bg-cyan-700 text-white hover:bg-cyan-600" : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
                 Assign
@@ -469,7 +469,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             disabled={!canAffordHire}
             className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition ${
               canAffordHire
-                ? "bg-cyan-600 text-white hover:bg-cyan-500 active:scale-[0.98]"
+                ? "bg-cyan-700 text-white hover:bg-cyan-600 active:scale-[0.98]"
                 : "cursor-not-allowed bg-slate-700 text-slate-500"
             }`}
           >
@@ -755,7 +755,7 @@ function WorkerDetailModal({
               <button
                 data-tut="assign-location"
                 onClick={() => onOpenMap(workerIndex)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2.5 font-semibold text-white hover:bg-cyan-500"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-700 py-2.5 font-semibold text-white hover:bg-cyan-600"
               >
                 <MapPin size={16} /> Assign to Location
               </button>

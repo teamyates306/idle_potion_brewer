@@ -297,7 +297,7 @@ function MachinePanelBody({
             ? "cursor-not-allowed bg-slate-800 text-slate-500"
             : machine.running
             ? "bg-rose-600 text-white hover:bg-rose-500"
-            : "bg-green-600 text-white hover:bg-green-500"
+            : "bg-green-700 text-white hover:bg-green-600"
         }`}
       >
         {machine.running ? <><Pause size={18} /> Stop Brewing</> : <><Play size={18} /> Set to Brew</>}
@@ -346,7 +346,7 @@ function MachinePanelBody({
           />
         </div>
       ) : (
-        <p className="mt-1 text-center text-xs italic text-slate-600">Level up the machine to unlock upgrades.</p>
+        <p className="mt-1 text-center text-xs italic text-slate-400">Level up the machine to unlock upgrades.</p>
       )}
 
       {slotModal !== null && (

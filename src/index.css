@@ -13,7 +13,7 @@ body {
   background-color: #9a958c;
   background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='40'><rect width='60' height='40' fill='%239a958c'/><rect x='1' y='1' width='27' height='17' rx='2' fill='%23aaa49a'/><rect x='31' y='1' width='27' height='17' rx='2' fill='%23a09a90'/><rect x='-14' y='21' width='27' height='17' rx='2' fill='%23a09a90'/><rect x='16' y='21' width='27' height='17' rx='2' fill='%23aaa49a'/><rect x='46' y='21' width='27' height='17' rx='2' fill='%23a09a90'/></svg>");
   color: #3d2c1a;
-  font-family: "Times New Roman", Times, Georgia, serif;
+  font-family: "Silkscreen", monospace;
   -webkit-tap-highlight-color: transparent;
   overflow: hidden;
 }
