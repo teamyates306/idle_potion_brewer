@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   BrewingMachine,
+  DiscoveryBounty,
   Ingredient,
   IngredientInventory,
   PotionInventory,
@@ -41,6 +42,7 @@ import {
   questProgress,
   deductQuest,
 } from "../engine/quests";
+import { generateDiscoveryBounty } from "../engine/discovery";
 import { pushGameEvent } from "../util/gameEvents";
 import { pushToast } from "../util/toast";
 import { emitHint } from "../util/hintBus";
@@ -269,6 +271,9 @@ interface GameState {
   activeQuests: Quest[];
   questCooldowns: Partial<Record<QuestDifficulty, number>>;
 
+  // discovery bounty
+  discoveryBounty: DiscoveryBounty | null;
+
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
   assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
@@ -305,6 +310,8 @@ interface GameState {
   // quests
   refreshQuests: () => void;
   completeQuest: (questId: string) => void;
+  refreshDiscoveryBounty: () => void;
+  claimDiscoveryBounty: () => void;
 
   // upgrades
   buyWorkerSpeed: (workerIndex?: number) => void;
@@ -424,6 +431,7 @@ export const useGameStore = create<GameState>()(
       questsUnlocked: false,
       activeQuests: [],
       questCooldowns: {},
+      discoveryBounty: null,
       player_click_power_level: 0,
       unlocked_globals: [],
       graphics: { ...DEFAULT_GRAPHICS },
@@ -953,6 +961,17 @@ export const useGameStore = create<GameState>()(
           pushGameEvent("discovery", `✨ ${potion.name} discovered!`);
           pushGameEvent("pile", `+${bonus.toLocaleString()} 🪙 discovery bonus`);
           get().refreshQuests();
+
+          // Mark discovery bounty ready to claim if this is the target
+          const g = get();
+          if (
+            g.discoveryBounty &&
+            !g.discoveryBounty.readyToClaim &&
+            g.discoveryBounty.cooldownUntil === null &&
+            potion.name === g.discoveryBounty.targetName
+          ) {
+            set({ discoveryBounty: { ...g.discoveryBounty, readyToClaim: true } });
+          }
         }
 
         // Achievements (event-driven)
@@ -1093,6 +1112,10 @@ export const useGameStore = create<GameState>()(
       refreshQuests: () => {
         const s = get();
         const cfg = useConfigStore.getState();
+
+        // Discovery bounty runs independently of quest unlock state.
+        get().refreshDiscoveryBounty();
+
         const groups = uniqueNameGroups(s.discoveredPotions, cfg);
         const unlocked = s.questsUnlocked || groups.length >= UNIQUE_NAMES_TO_UNLOCK_QUESTS;
         if (!unlocked || groups.length === 0) return;
@@ -1134,6 +1157,37 @@ export const useGameStore = create<GameState>()(
         set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
         get().checkAchievements("coins", s.coins + quest.reward);
+      },
+
+      refreshDiscoveryBounty: () => {
+        const s = get();
+        if (s.discovered.length < 10) return;
+        const cfg = useConfigStore.getState();
+
+        const maxComboSize = Math.max(...s.machines.map((m) => m.unlocked_slots));
+
+        if (s.discoveryBounty === null) {
+          const b = generateDiscoveryBounty(s.discovered, s.discoveredPotions, cfg.ingredients, cfg.formulas, maxComboSize);
+          if (b) set({ discoveryBounty: { ...b, readyToClaim: false, cooldownUntil: null } });
+          return;
+        }
+
+        if (s.discoveryBounty.cooldownUntil !== null && now() >= s.discoveryBounty.cooldownUntil) {
+          const b = generateDiscoveryBounty(s.discovered, s.discoveredPotions, cfg.ingredients, cfg.formulas, maxComboSize);
+          set({ discoveryBounty: b ? { ...b, readyToClaim: false, cooldownUntil: null } : null });
+        }
+      },
+
+      claimDiscoveryBounty: () => {
+        const s = get();
+        const b = s.discoveryBounty;
+        if (!b || !b.readyToClaim) return;
+        set({
+          coins: s.coins + b.reward,
+          discoveryBounty: { ...b, readyToClaim: false, cooldownUntil: now() + QUEST_COOLDOWN_MS },
+        });
+        pushGameEvent("pile-burst", `+${b.reward.toLocaleString()} 🪙`);
+        get().checkAchievements("coins", s.coins + b.reward);
       },
 
       // ---- Worker upgrades --------------------------------------------------
@@ -1719,6 +1773,7 @@ export const useGameStore = create<GameState>()(
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
+        discoveryBounty: s.discoveryBounty,
         player_click_power_level: s.player_click_power_level,
         unlocked_globals: s.unlocked_globals,
         lastSeen: s.lastSeen,
@@ -1768,6 +1823,9 @@ export const useGameStore = create<GameState>()(
           masteryTokens: p.masteryTokens ?? 0,
           masteryUnlocks: p.masteryUnlocks ?? [],
           seenHints: p.seenHints ?? [],
+          // Cooldown state is not persisted across reloads — on return the player
+          // always gets a fresh bounty rather than sitting in a countdown.
+          discoveryBounty: p.discoveryBounty?.cooldownUntil != null ? null : (p.discoveryBounty ?? null),
         };
       },
     }

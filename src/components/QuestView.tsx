@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ScrollText, Check, Hourglass } from "lucide-react";
+import { ScrollText, Check, Hourglass, FlaskConical } from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import { useGameStore, QUEST_COOLDOWN_MS } from "../store/gameStore";
@@ -71,6 +71,9 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   const activeQuests = useGameStore((s) => s.activeQuests);
   const questCooldowns = useGameStore((s) => s.questCooldowns);
   const refreshQuests = useGameStore((s) => s.refreshQuests);
+  const discovered = useGameStore((s) => s.discovered);
+  const discoveryBounty = useGameStore((s) => s.discoveryBounty);
+  const claimDiscoveryBounty = useGameStore((s) => s.claimDiscoveryBounty);
   const [detailName, setDetailName] = useState<string | null>(null);
 
   // 1s tick so countdowns update live and elapsed cooldowns regenerate.
@@ -94,6 +97,14 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
     setTimeout(() => setBursts((b) => b.filter((bb) => bb.id !== id)), 1200);
   };
 
+  const handleClaimBounty = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    celebrate(r.left + r.width / 2, r.top + r.height / 2, "#a855f7");
+    claimDiscoveryBounty();
+  };
+
+  const showDiscovery = discovered.length >= 10;
+
   return (
     <>
       <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b">
@@ -109,6 +120,63 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
             return <CooldownCard key={tier} tier={tier} readyAt={readyAt} />;
           })}
         </div>
+
+        {showDiscovery && (
+          <div className="mt-5">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-300">
+              <FlaskConical size={13} />
+              Discovery Bounty
+            </div>
+            {discoveryBounty && discoveryBounty.cooldownUntil === null ? (
+              <div className="rounded-xl border border-purple-700/40 bg-purple-950/40 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-purple-200 italic">"{discoveryBounty.targetName}"</span>
+                  <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">
+                    🪙 {fmt(discoveryBounty.reward)}
+                  </span>
+                </div>
+                <p className="mb-3 text-[11px] text-slate-400">
+                  {discoveryBounty.readyToClaim
+                    ? "You've discovered it! Claim your reward below."
+                    : "Brew a potion with this name for the first time to claim the bounty."}
+                </p>
+                <button
+                  onClick={handleClaimBounty}
+                  disabled={!discoveryBounty.readyToClaim}
+                  className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition ${
+                    discoveryBounty.readyToClaim
+                      ? "bg-purple-600 text-white hover:bg-purple-500 active:scale-[0.99]"
+                      : "cursor-not-allowed bg-slate-800 text-slate-500"
+                  }`}
+                >
+                  {discoveryBounty.readyToClaim
+                    ? <><Check size={15} /> Claim Reward</>
+                    : <><FlaskConical size={15} /> Discover to claim</>}
+                </button>
+              </div>
+            ) : discoveryBounty?.cooldownUntil !== null && discoveryBounty?.cooldownUntil !== undefined ? (
+              <div className="rounded-xl border border-dashed border-purple-700/40 bg-purple-950/40 p-3 opacity-80">
+                <div className="flex flex-col items-center justify-center py-3 text-center">
+                  <Hourglass size={16} className="mb-1 text-purple-400" />
+                  <span className="text-lg font-semibold tabular-nums text-slate-200">
+                    {fmtCountdown(discoveryBounty.cooldownUntil - Date.now())}
+                  </span>
+                  <span className="mt-0.5 text-[11px] text-slate-500">until a new discovery bounty is posted</span>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full bg-purple-500"
+                      style={{ width: `${Math.min(100, Math.max(0, (1 - (discoveryBounty.cooldownUntil - Date.now()) / QUEST_COOLDOWN_MS) * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-purple-700/30 bg-purple-950/20 p-3 text-center text-[11px] text-slate-500">
+                Searching for a discovery target…
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
 
       <CelebrationLayer bursts={bursts} />

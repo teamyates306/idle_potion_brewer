@@ -136,3 +136,11 @@ export interface PotionMasteryEntry {
   xp: number;
   tokenAwarded: boolean;
 }
+
+export interface DiscoveryBounty {
+  targetName: string;
+  reward: number;
+  readyToClaim: boolean;
+  /** Null while bounty is active; timestamp when countdown started after claiming. */
+  cooldownUntil: number | null;
+}
