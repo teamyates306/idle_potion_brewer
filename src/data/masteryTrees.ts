@@ -153,7 +153,14 @@ export const MASTERY_TREES: MasteryTreeDef[] = [
 
 export type MasteryEffects = Record<MasteryEffectType, number>;
 
+// The store replaces masteryUnlocks immutably on every unlock, so the array
+// reference is a valid cache key. This runs in the game loop per worker/machine
+// per tick — memoizing it turns 50-node scans into a WeakMap lookup.
+const effectsCache = new WeakMap<string[], MasteryEffects>();
+
 export function computeMasteryEffects(unlockedNodes: string[]): MasteryEffects {
+  const cached = effectsCache.get(unlockedNodes);
+  if (cached) return cached;
   const effects: MasteryEffects = {
     brew_speed_pct: 0,
     worker_speed_pct: 0,
@@ -170,5 +177,6 @@ export function computeMasteryEffects(unlockedNodes: string[]): MasteryEffects {
       if (unlocked.has(node.id)) effects[node.effect.type] += node.effect.value;
     }
   }
+  effectsCache.set(unlockedNodes, effects);
   return effects;
 }

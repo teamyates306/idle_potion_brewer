@@ -588,15 +588,15 @@ const MachineColumn = React.memo(function MachineColumn({
         />
       </div>
 
-      {/* Status + machine name */}
+      {/* Status + machine name — darker inks so they stay readable on the stone floor */}
       {(() => {
         const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
-        if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-500">No recipe</span>;
-        if (!machine.running) return <span className="mt-1 text-[10px] text-stone-500">Idle</span>;
-        if (machine.brew_stalled) return <span className="mt-1 text-[10px] text-amber-500/80 animate-pulse">Need ingredients</span>;
-        return <span className="mt-1 text-[10px] text-amber-700/80">Brewing…</span>;
+        if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-700">No recipe</span>;
+        if (!machine.running) return <span className="mt-1 text-[10px] text-stone-700">Idle</span>;
+        if (machine.brew_stalled) return <span className="mt-1 text-[10px] font-semibold text-amber-900/90 animate-pulse">Need ingredients</span>;
+        return <span className="mt-1 text-[10px] text-amber-900/80">Brewing…</span>;
       })()}
-      <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent }}>{machine.name}</div>
+      <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent, textShadow: "0 1px 1px rgba(40,30,15,0.35)" }}>{machine.name}</div>
 
     </div>
   );
@@ -846,6 +846,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
   const anyMachineTokens  = machines.some((m) => (m.upgrade_tokens ?? 0) > 0);
+  // Surface truly idle workers (no location, no machine) so wasted hands are visible at a glance
+  const idleWorkerCount = workers.filter((w) => !w.assigned_location && w.assigned_machine_id == null).length;
 
   const TRACK = 68;
   const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {
@@ -879,7 +881,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           onClick={() => onOpen("worker")}
           top={badgeY.workers}
           glow={anyTokens}
-          badge={anyTokens ? `✦${totalWorkerTokens}` : undefined}
+          badge={anyTokens ? `✦${totalWorkerTokens}` : idleWorkerCount > 0 ? `💤${idleWorkerCount}` : undefined}
           dataTut="workers"
         />
         <RailBadge

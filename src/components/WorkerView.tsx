@@ -4,8 +4,10 @@ import {
   CheckSquare, Square, X, Minus, Plus,
 } from "lucide-react";
 import Modal from "./ui/Modal";
+import EditableName from "./ui/EditableName";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
+import { HIRE_COST_BASE } from "../engine/economyConstants";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
 import {
   autoClickPower,
@@ -15,8 +17,6 @@ import {
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
-
-const HIRE_COST_BASE = 500;
 
 // Mirrors gameStore's specMult — used for accurate upgrade previews in the detail modal.
 function specMult(spec: WorkerSpecialization, type: "speed" | "size" | "clkspd" | "clkpow"): number {
@@ -138,8 +138,8 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <span className="font-semibold text-slate-100">{worker.name}</span>
-          <span className="text-xs text-cyan-400">Lvl {worker.level}</span>
-          {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-400">✦ {tokens}</span>}
+          <span className="text-xs text-cyan-700">Lvl {worker.level}</span>
+          {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-700">✦ {tokens}</span>}
         </div>
         <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
@@ -511,7 +511,7 @@ function PendingTokensPanel({
 
   return (
     <div className="mb-3 rounded-xl border border-yellow-700/40 bg-yellow-950/20 p-3 space-y-2">
-      <div className="text-xs font-bold text-yellow-500">
+      <div className="text-xs font-bold text-yellow-700">
         ✦ {totalTokens} upgrade token{totalTokens !== 1 ? "s" : ""} ready
         <span className="ml-2 text-[10px] font-normal text-slate-500">spend by type across all workers</span>
       </div>
@@ -538,13 +538,13 @@ function PendingTokensPanel({
               disabled={!canAfford}
               className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition active:scale-95 ${
                 canAfford
-                  ? "bg-yellow-700/40 text-yellow-200 hover:bg-yellow-700/60"
+                  ? "bg-yellow-700/40 text-yellow-950 hover:bg-yellow-700/60"
                   : "cursor-not-allowed bg-slate-800/60 text-slate-500"
               }`}
             >
               <Icon size={12} />
               <span>{label}</span>
-              <span className={`rounded px-1 text-[10px] font-semibold ${canAfford ? "bg-yellow-600/30 text-yellow-400" : "bg-slate-700 text-slate-500"}`}>
+              <span className={`rounded px-1 text-[10px] font-semibold ${canAfford ? "bg-yellow-600/40 text-yellow-950" : "bg-slate-700 text-slate-500"}`}>
                 ×{eligibleIdx.length}
               </span>
               <span className={`text-[10px] ${canAfford ? "text-amber-700" : "text-slate-600"}`}>
@@ -572,6 +572,7 @@ function WorkerDetailModal({
   const coins = useGameStore((s) => s.coins);
   const buySpeed = useGameStore((s) => s.buyWorkerSpeed);
   const buySize = useGameStore((s) => s.buyWorkerSize);
+  const renameWorker = useGameStore((s) => s.renameWorker);
   const assignToMachine = useGameStore((s) => s.assignWorkerToMachine);
   const assignToLocation = useGameStore((s) => s.assignWorker);
   const buyClickSpeed = useGameStore((s) => s.buyClickSpeed);
@@ -620,8 +621,14 @@ function WorkerDetailModal({
             <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
               <WorkerArt size={40} specialization={spec} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-cyan-800">{worker.name}</h2>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-cyan-800">
+                <EditableName
+                  value={worker.name}
+                  onSave={(name) => renameWorker(workerIndex, name)}
+                  inputClassName="text-lg font-semibold"
+                />
+              </h2>
               <p className="text-xs text-slate-400">
                 Level {worker.level} {spec !== "none" && spec !== "standard" ? `· ${spec.charAt(0).toUpperCase() + spec.slice(1)}` : "Worker"}
               </p>

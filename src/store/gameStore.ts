@@ -56,6 +56,13 @@ export { MACHINE_COSTS };
 
 const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
 export const QUEST_COOLDOWN_MS = 60 * 60 * 1000;
+/** Per-difficulty quest cooldowns: easier commissions return faster, keeping the
+ *  quest loop alive for players who lean on it (the weakest earner in sim runs). */
+export const QUEST_COOLDOWNS_MS: Record<QuestDifficulty, number> = {
+  Easy: 30 * 60 * 1000,
+  Medium: 45 * 60 * 1000,
+  Challenging: 60 * 60 * 1000,
+};
 
 // ---- Machine configuration ------------------------------------------------
 const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
@@ -283,6 +290,8 @@ interface GameState {
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
   hireWorker: () => void;
+  renameWorker: (workerIndex: number, name: string) => void;
+  renameMachine: (machineId: number, name: string) => void;
   buyClickSpeed: (workerIndex: number) => void;
   buyClickPower: (workerIndex: number) => void;
   autoClickTick: (dtSeconds: number) => void;
@@ -637,16 +646,20 @@ export const useGameStore = create<GameState>()(
 
       autoClickTick: (dt) => {
         const s = get();
-        const machineWorkers = s.workers.filter((w) => w.assigned_machine_id != null);
-        if (machineWorkers.length === 0) return;
+        // Fast exit: only do work when at least one worker is clicking a machine
+        // that is actively brewing. Otherwise this ran at ~12fps producing fresh
+        // worker/machine arrays every tick, re-rendering every subscriber for nothing.
+        const activeMachineIds = new Set(
+          s.machines.filter((m) => m.running && !m.brew_stalled && m.brew_started_at).map((m) => m.id)
+        );
+        if (activeMachineIds.size === 0) return;
+        if (!s.workers.some((w) => w.assigned_machine_id != null && activeMachineIds.has(w.assigned_machine_id))) return;
 
         const cfg = useConfigStore.getState();
 
         // Grant XP to workers assigned to actively-brewing machines
         const workers = s.workers.map((w) => {
-          if (w.assigned_machine_id == null) return w;
-          const m = s.machines.find((m) => m.id === w.assigned_machine_id);
-          if (!m || !m.running || m.brew_stalled || !m.brew_started_at) return w;
+          if (w.assigned_machine_id == null || !activeMachineIds.has(w.assigned_machine_id)) return w;
           const xpGain = autoClickXpPerSec(w.auto_click_speed) * dt;
           const leveled = applyLevels(w.level, w.xp + xpGain, cfg.formulas);
           const levelsGained = leveled.level - w.level;
@@ -661,13 +674,13 @@ export const useGameStore = create<GameState>()(
 
         // Per-machine: advance brew timer by workers' click reduction
         const machines = s.machines.map((machine) => {
-          if (!machine.running || machine.brew_stalled || !machine.brew_started_at) return machine;
+          if (!activeMachineIds.has(machine.id)) return machine;
           const assigned = s.workers.filter((w) => w.assigned_machine_id === machine.id);
           if (assigned.length === 0) return machine;
           const reductionMs = assigned.reduce(
             (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0) * dt * 1000, 0
           );
-          return { ...machine, brew_started_at: machine.brew_started_at - reductionMs };
+          return { ...machine, brew_started_at: machine.brew_started_at! - reductionMs };
         });
 
         set({ workers, machines });
@@ -770,6 +783,28 @@ export const useGameStore = create<GameState>()(
           get().pushHint("worker_first_token");
         }
       },
+
+      // Custom names: trimmed, 1–18 chars. Empty input is a no-op so a stray
+      // save on a blank field can never wipe a name.
+      renameWorker: (workerIndex, name) =>
+        set((s) => {
+          const clean = name.trim().slice(0, 18);
+          if (!clean || !s.workers[workerIndex]) return {};
+          return {
+            workers: s.workers.map((w, i) => (i === workerIndex ? { ...w, name: clean } : w)),
+          };
+        }),
+
+      renameMachine: (machineId, name) =>
+        set((s) => {
+          const clean = name.trim().slice(0, 18);
+          if (!clean) return {};
+          const mi = getMachineIdx(s.machines, machineId);
+          if (mi < 0) return {};
+          return {
+            machines: s.machines.map((m, i) => (i === mi ? { ...m, name: clean } : m)),
+          };
+        }),
 
       hireWorker: () => {
         set((s) => {
@@ -988,22 +1023,23 @@ export const useGameStore = create<GameState>()(
       // marked stalled (waiting_for_ingredients) so it stops animating, can't be
       // clicked, and auto-clickers don't touch it — until ingredients arrive.
       updateBrewReadiness: () => {
+        // Read-first, set-only-on-change: this runs every loop tick, and calling
+        // set() with an empty patch still notifies every store subscriber.
+        const s = get();
+        let changed = false;
         let anyBecameStalled = false;
-        set((s) => {
-          let changed = false;
-          const machines = s.machines.map((m) => {
-            if (!m.running) return m;
-            const slotIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
-            if (slotIds.length === 0) return m;
-            const need: Record<string, number> = {};
-            for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
-            const hasAll = Object.entries(need).every(([id, n]) => (s.ingredientInv[id] ?? 0) >= n);
-            if (!hasAll && !m.brew_stalled) { changed = true; anyBecameStalled = true; return { ...m, brew_stalled: true, brew_started_at: now() }; }
-            if (hasAll && m.brew_stalled) { changed = true; return { ...m, brew_stalled: false, brew_started_at: now() }; }
-            return m;
-          });
-          return changed ? { machines } : {};
+        const machines = s.machines.map((m) => {
+          if (!m.running) return m;
+          const slotIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
+          if (slotIds.length === 0) return m;
+          const need: Record<string, number> = {};
+          for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+          const hasAll = Object.entries(need).every(([id, n]) => (s.ingredientInv[id] ?? 0) >= n);
+          if (!hasAll && !m.brew_stalled) { changed = true; anyBecameStalled = true; return { ...m, brew_stalled: true, brew_started_at: now() }; }
+          if (hasAll && m.brew_stalled) { changed = true; return { ...m, brew_stalled: false, brew_started_at: now() }; }
+          return m;
         });
+        if (changed) set({ machines });
         if (anyBecameStalled) get().pushHint("brewer_stalled");
       },
 
@@ -1152,7 +1188,7 @@ export const useGameStore = create<GameState>()(
 
         const potionInv = deductQuest(quest, s.potionInv, cfg.ingredients, cfg.formulas);
         const activeQuests = s.activeQuests.filter((q) => q.id !== questId);
-        const questCooldowns = { ...(s.questCooldowns ?? {}), [quest.difficulty]: now() + QUEST_COOLDOWN_MS };
+        const questCooldowns = { ...(s.questCooldowns ?? {}), [quest.difficulty]: now() + QUEST_COOLDOWNS_MS[quest.difficulty] };
 
         set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
@@ -1435,23 +1471,28 @@ export const useGameStore = create<GameState>()(
 
             let currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
 
+            // Loop-invariant work hoisted: the recipe (and thus the potion and
+            // per-brew ingredient needs) never changes across catch-up iterations.
+            const need: Record<string, number> = {};
+            for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
+            const needEntries = Object.entries(need);
+            const potion = describePotion(ingredients, cfg.formulas);
+            const isAutoSold = (s.autoSellHashes ?? []).includes(potion.hash);
+
             while (brewElapsedSecs >= currentBrewSecs) {
-              const need: Record<string, number> = {};
-              for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
               let hasAll = true;
-              for (const [id, n] of Object.entries(need)) {
+              for (const [id, n] of needEntries) {
                 if ((inv[id] ?? 0) < n) { hasAll = false; break; }
               }
               if (!hasAll) { stalled = true; break; }
 
-              for (const [id, n] of Object.entries(need)) inv[id] = (inv[id] ?? 0) - n;
+              for (const [id, n] of needEntries) inv[id] = (inv[id] ?? 0) - n;
 
-              const potion = describePotion(ingredients, cfg.formulas);
               const outputs = rollMultiBrew(effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas));
 
               totalPotionsBrewedCount += outputs;
               offlinePotionBrews[potion.name] = (offlinePotionBrews[potion.name] ?? 0) + outputs;
-              if ((s.autoSellHashes ?? []).includes(potion.hash)) {
+              if (isAutoSold) {
                 const offlineFx = computeMasteryEffects(s.masteryUnlocks);
                 const valueMult = 1 + offlineFx.potion_value_pct / 100;
                 const sellMult  = 1 + offlineFx.sell_price_pct  / 100;
@@ -1647,12 +1688,14 @@ export const useGameStore = create<GameState>()(
           tutorial_step: 0,
           has_completed_tutorial: false,
           unlocked_achievements: [],
+          collected_achievements: [],
           total_brews: 0,
           lastSeen: now(),
           welcomeBack: null,
           questsUnlocked: false,
           activeQuests: [],
           questCooldowns: {},
+          discoveryBounty: null,
           player_click_power_level: 0,
           unlocked_globals: [],
           potionMastery: {},

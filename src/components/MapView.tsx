@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useLayoutEffect } from "react";
 import { MapPin, Lock, Footprints, HelpCircle, CheckSquare, Square } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
@@ -9,51 +9,78 @@ import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Location } from "../types";
 
 // ── Spatial layout ────────────────────────────────────────────────────────────
-// Known locations get hand-placed branching positions; unknown (dev-added) ones
-// are appended in a chain below. The canvas is larger than the viewport so the
-// player pans around it by dragging.
-const CANVAS_W = 540;
-const ROW_H = 168;
+// Every location is placed on a single winding trail in progression order
+// (sorted by travel distance), snaking 3-per-row down the parchment. This keeps
+// neighbouring locations close together and makes the unlock order readable at
+// a glance — previously only 7 landmarks were hand-placed and the other 25 were
+// stacked one-per-row in a ~4,400px column.
+// Canvas fits the modal width (no horizontal panning) — the trail only scrolls
+// vertically, two locations per row. Actual width is measured from the viewport.
+const FALLBACK_CANVAS_W = 400;
+const ROW_H = 145;
 const TOP = 80;
 const VIEWPORT_H = 420;
-
-interface LayoutSpec { col: number; row: number }
-const MAP_LAYOUT: Record<string, LayoutSpec> = {
-  hollow:  { col: 0.50, row: 0 },
-  crags:   { col: 0.24, row: 1 },
-  sunken:  { col: 0.76, row: 1 },
-  thicket: { col: 0.15, row: 2 },
-  barrens: { col: 0.50, row: 2 },
-  peak:    { col: 0.85, row: 2 },
-  abyss:   { col: 0.33, row: 3 },
-};
+const TRAIL_COLS = [0.26, 0.74];
 
 // Muted, earthy danger ramp (safe moss → deep oxblood) — no neon.
 const DANGER_COLOR = ["#6f8a4a", "#b08a33", "#bf7b3a", "#a8472f", "#7d3b4a"];
 
 interface PlacedNode { loc: Location; x: number; y: number }
 
-function buildLayout(locations: Location[]): { nodes: PlacedNode[]; height: number } {
-  let maxRow = 0;
-  const nodes: PlacedNode[] = [];
-
-  for (const loc of locations) {
-    const spec = MAP_LAYOUT[loc.id];
-    if (!spec) continue;
-    maxRow = Math.max(maxRow, spec.row);
-    nodes.push({ loc, x: spec.col * CANVAS_W, y: TOP + spec.row * ROW_H });
+/** Small deterministic hash so each node gets a stable organic jitter. */
+function idHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
+  return Math.abs(h);
+}
 
-  const unknown = locations
-    .filter((l) => !MAP_LAYOUT[l.id])
-    .sort((a, b) => a.distance - b.distance);
-  unknown.forEach((loc, i) => {
-    const row = maxRow + 1 + i;
-    nodes.push({ loc, x: (i % 2 === 0 ? 0.3 : 0.7) * CANVAS_W, y: TOP + row * ROW_H });
-    maxRow = row;
+function buildLayout(locations: Location[], width: number): { nodes: PlacedNode[]; height: number } {
+  const ordered = [...locations].sort(
+    (a, b) => a.distance - b.distance || a.id.localeCompare(b.id),
+  );
+  const nodes: PlacedNode[] = ordered.map((loc, i) => {
+    const row = Math.floor(i / TRAIL_COLS.length);
+    const within = i % TRAIL_COLS.length;
+    // Serpentine: even rows read left→right, odd rows right→left, so the trail
+    // is continuous instead of jumping back across the map.
+    const col = row % 2 === 0 ? TRAIL_COLS[within] : TRAIL_COLS[TRAIL_COLS.length - 1 - within];
+    const h = idHash(loc.id);
+    const jx = ((h % 100) / 100 - 0.5) * 24;          // ±12px organic drift
+    const jy = (((h >> 7) % 100) / 100 - 0.5) * 28;   // ±14px
+    return { loc, x: col * width + jx, y: TOP + row * ROW_H + jy };
   });
+  const rows = Math.max(1, Math.ceil(ordered.length / TRAIL_COLS.length));
+  return { nodes, height: TOP + (rows - 1) * ROW_H + 130 };
+}
 
-  return { nodes, height: TOP + maxRow * ROW_H + 110 };
+/** Dashed ink trail linking consecutive locations, drawn beneath the nodes. */
+function TrailPath({ nodes, width, height }: { nodes: PlacedNode[]; width: number; height: number }) {
+  if (nodes.length < 2) return null;
+  const d = nodes
+    .map((n, i) => `${i === 0 ? "M" : "L"} ${Math.round(n.x)} ${Math.round(n.y)}`)
+    .join(" ");
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fill="none"
+    >
+      <path
+        d={d}
+        stroke="#7a5a34"
+        strokeOpacity="0.32"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray="1 10"
+      />
+    </svg>
+  );
 }
 
 export default function MapView({
@@ -70,6 +97,7 @@ export default function MapView({
   const pushHint = useGameStore((s) => s.pushHint);
   const explored = useGameStore((s) => s.exploredLocations);
   const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
+  const coins = useGameStore((s) => s.coins);
   const workers = useGameStore((s) => s.workers);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
   const hasCompass = unlocked_globals.includes("cartographers_compass");
@@ -77,11 +105,24 @@ export default function MapView({
   const [selected, setSelected] = useState<Location | null>(null);
 
   const locations = useMemo(() => Object.values(cfg.locations), [cfg.locations]);
-  const { nodes, height } = useMemo(() => buildLayout(locations), [locations]);
-  const firstUnlockedId = nodes.find((n) => unlocked.includes(n.loc.id))?.loc.id;
 
   // ── Drag to pan ─────────────────────────────────────────────────────────────
   const vpRef = useRef<HTMLDivElement>(null);
+
+  // Fit the trail to the modal's inner width so it never pans horizontally.
+  const [canvasW, setCanvasW] = useState(FALLBACK_CANVAS_W);
+  useLayoutEffect(() => {
+    const vp = vpRef.current;
+    if (!vp) return;
+    const measure = () => setCanvasW(Math.max(320, vp.clientWidth));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(vp);
+    return () => ro.disconnect();
+  }, []);
+
+  const { nodes, height } = useMemo(() => buildLayout(locations, canvasW), [locations, canvasW]);
+  const firstUnlockedId = nodes.find((n) => unlocked.includes(n.loc.id))?.loc.id;
   const drag = useRef({ x: 0, y: 0, sl: 0, st: 0, active: false });
   const moved = useRef(false);
 
@@ -110,7 +151,7 @@ export default function MapView({
   return (
     <>
       <Modal title="The Map" onClose={onClose} accent="#5e7a45">
-        <p className="mb-3 text-xs text-slate-400">Drag to explore. Tap a location to send workers or learn more.</p>
+        <p className="mb-3 text-xs text-slate-400">Drag to explore. The trail winds deeper — tap a location to send workers or learn more.</p>
 
         <div
           ref={vpRef}
@@ -125,7 +166,7 @@ export default function MapView({
           <div
             className="relative"
             style={{
-              width: CANVAS_W,
+              width: canvasW,
               height,
               // Aged-paper map: warm parchment base, soft sepia blotches, faint ink grid.
               backgroundColor: "#e3cfa0",
@@ -136,12 +177,14 @@ export default function MapView({
               backgroundSize: "auto, auto, 26px 26px",
             }}
           >
+            <TrailPath nodes={nodes} width={canvasW} height={height} />
             {nodes.map((n) => (
               <MapNode
                 key={n.loc.id}
                 node={n}
                 isUnlocked={unlocked.includes(n.loc.id)}
                 isExplored={explored.includes(n.loc.id)}
+                canAfford={coins >= n.loc.unlockCost}
                 workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
                 workerIds={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.id)}
                 ingredients={n.loc.drops}
@@ -172,6 +215,7 @@ function MapNode({
   node,
   isUnlocked,
   isExplored,
+  canAfford,
   workerCount,
   workerIds,
   ingredients,
@@ -183,6 +227,7 @@ function MapNode({
   node: PlacedNode;
   isUnlocked: boolean;
   isExplored: boolean;
+  canAfford: boolean;
   workerCount: number;
   workerIds: number[];
   ingredients: { ingredientId: string; weight: number }[];
@@ -250,7 +295,18 @@ function MapNode({
           {node.loc.name}
         </div>
         <div className="mt-1 flex flex-wrap justify-center gap-0.5">
-          {!isExplored ? (
+          {!isUnlocked ? (
+            // Unlock cost right on the node — green when the player can afford it
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                canAfford
+                  ? "bg-emerald-700 text-emerald-50 shadow"
+                  : "bg-slate-800 text-slate-400"
+              }`}
+            >
+              🪙 {fmt(node.loc.unlockCost)}
+            </span>
+          ) : !isExplored ? (
             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">??? Uncharted</span>
           ) : (
             ingredients.map((d) => {

@@ -101,12 +101,31 @@ function dominantAttrs(stats: Attributes): [keyof Attributes, keyof Attributes |
   return [firstKey, secondKey];
 }
 
+// Memo cache: describePotion is pure but sits in the render/game-loop hot path
+// (per machine per tick) and in the offline catch-up loop. Entries are validated
+// against the exact formulas + ingredient object references so live config edits
+// (Dev Dashboard) can never serve stale descriptors.
+interface DescCacheEntry { f: BaseFormulas; ings: Ingredient[]; desc: PotionDescriptor }
+const descCache = new Map<string, DescCacheEntry>();
+const DESC_CACHE_MAX = 500;
+
+function cacheValid(entry: DescCacheEntry, ingredients: Ingredient[], f: BaseFormulas): boolean {
+  if (entry.f !== f || entry.ings.length !== ingredients.length) return false;
+  for (let i = 0; i < ingredients.length; i++) {
+    if (entry.ings[i] !== ingredients[i]) return false;
+  }
+  return true;
+}
+
 export function describePotion(
   ingredients: Ingredient[],
   f: BaseFormulas
 ): PotionDescriptor {
   const ids = ingredients.map((i) => i.id);
   const hash = potionHash(ids);
+
+  const cached = descCache.get(hash);
+  if (cached && cacheValid(cached, ingredients, f)) return cached.desc;
 
   const stats = Object.fromEntries(
     ATTR_KEYS.map((k) => [k, sumAttr(ingredients, k)])
@@ -139,7 +158,10 @@ export function describePotion(
   const suffix = ATTRIBUTE_SUFFIX_REGISTRY[primaryAttr];
   const name = `${prefix} ${type} of ${suffix}`;
 
-  return { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility };
+  const desc: PotionDescriptor = { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility };
+  if (descCache.size >= DESC_CACHE_MAX) descCache.clear();
+  descCache.set(hash, { f, ings: [...ingredients], desc });
+  return desc;
 }
 
 export function describeFromHash(

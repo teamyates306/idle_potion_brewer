@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag, Sparkles, ChevronLeft, Search, X } from "lucide-react";
 import Modal from "./ui/Modal";
+import EditableName from "./ui/EditableName";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { upgradeCost, brewTime, xpRequired, SLOT_UNLOCK_COSTS } from "../engine/formulas";
+import { upgradeCost, brewTime, xpRequired, SLOT_UNLOCK_COSTS, RARITY_WEIGHT } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
@@ -101,6 +102,7 @@ function MachinePanelBody({
 }) {
   const inv = useGameStore((s) => s.ingredientInv);
   const discoveredPotions = useGameStore((s) => s.discoveredPotions);
+  const renameMachine = useGameStore((s) => s.renameMachine);
   const setRecipe = useGameStore((s) => s.setRecipe);
   const toggleRunning = useGameStore((s) => s.toggleRunning);
   const buyBrewSpeed = useGameStore((s) => s.buyBrewSpeed);
@@ -134,8 +136,13 @@ function MachinePanelBody({
 
   return (
     <>
-      <div className="mb-1 text-xs font-semibold" style={{ color: accent }}>
-        {machine.name} · Lvl {machine.level}
+      <div className="mb-1 flex items-center gap-1 text-xs font-semibold" style={{ color: accent }}>
+        <EditableName
+          value={machine.name}
+          onSave={(name) => renameMachine(machine.id, name)}
+          inputClassName="text-xs font-semibold"
+        />
+        <span className="shrink-0">· Lvl {machine.level}</span>
       </div>
 
       {tokens > 0 && (
@@ -482,9 +489,6 @@ function RecipePickerModal({ machine, onPick, onClose }: {
   );
 }
 
-// Local rarity weights — mirrors formulas.ts RARITY_WEIGHT (not exported)
-const RARITY_W: Record<string, number> = { common: 1, uncommon: 2, rare: 5, epic: 12, legendary: 30 };
-
 function fmtRate(perSec: number): string {
   if (perSec >= 1 / 60) return `${(perSec * 60).toFixed(2)}/min`;
   return `${(perSec * 3600).toFixed(1)}/hr`;
@@ -509,7 +513,7 @@ function BrewAnalytics({
 
   // Step 2: ingredient complexity
   const raritySum = ingredients.length
-    ? ingredients.reduce((a, ing) => a + (RARITY_W[ing.rarity] ?? 1), 0)
+    ? ingredients.reduce((a, ing) => a + (RARITY_WEIGHT[ing.rarity] ?? 1), 0)
     : 1;
   const afterComplexity = baseBt * raritySum;
 

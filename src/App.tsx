@@ -208,7 +208,7 @@ export default function App() {
         <Modal title="Welcome Back, Brewmaster" onClose={dismissWelcome} accent="#22d3ee">
           <p className="mb-4 text-sm italic text-slate-400">
             You were away for{" "}
-            <span className="font-semibold text-cyan-300 not-italic">{fmtDuration(welcomeBack.seconds)}</span>.
+            <span className="font-semibold text-cyan-800 not-italic">{fmtDuration(welcomeBack.seconds)}</span>.
             The guild kept busy.
           </p>
 
@@ -216,34 +216,34 @@ export default function App() {
             <StatRow
               label="Ingredients gathered"
               value={welcomeBack.gathers.toLocaleString()}
-              color="text-green-300"
+              color="text-green-800"
             />
             {welcomeBack.potionsBrewedCount > 0 && (
               <StatRow
                 label="Potions brewed"
                 value={welcomeBack.potionsBrewedCount.toLocaleString()}
-                color="text-purple-300"
+                color="text-purple-800"
               />
             )}
             {welcomeBack.coinsEarned > 0 && (
               <StatRow
                 label="Coins earned"
                 value={`🪙 ${welcomeBack.coinsEarned.toLocaleString()}`}
-                color="text-yellow-300"
+                color="text-amber-700"
               />
             )}
             {welcomeBack.workerXpEarned > 0 && (
               <StatRow
                 label="Worker XP earned"
                 value={welcomeBack.workerXpEarned.toLocaleString()}
-                color="text-cyan-300"
+                color="text-cyan-800"
               />
             )}
             {welcomeBack.machineXpEarned > 0 && (
               <StatRow
                 label="Machine XP earned"
                 value={welcomeBack.machineXpEarned.toLocaleString()}
-                color="text-amber-300"
+                color="text-amber-800"
               />
             )}
           </div>

@@ -17,7 +17,7 @@ export function gatherYield(worker: Worker): number {
   return worker.retrieval_size;
 }
 
-const RARITY_WEIGHT: Record<string, number> = {
+export const RARITY_WEIGHT: Record<string, number> = {
   common: 1,
   uncommon: 2,
   rare: 5,

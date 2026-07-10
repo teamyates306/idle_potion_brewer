@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { ScrollText, Check, Hourglass, FlaskConical } from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
-import { useGameStore, QUEST_COOLDOWN_MS } from "../store/gameStore";
+import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
 import { fmt } from "../util/format";
 
+// Dark ink shades — the light -300 pastels were near-invisible on parchment cards.
 const DIFF_STYLE: Record<QuestDifficulty, { text: string; bg: string; bar: string; spark: string }> = {
-  Easy:        { text: "text-green-300",  bg: "bg-green-950/40 border-green-700/40",   bar: "bg-green-500", spark: "#22c55e" },
-  Medium:      { text: "text-amber-300",  bg: "bg-amber-950/40 border-amber-700/40",   bar: "bg-amber-500", spark: "#f59e0b" },
-  Challenging: { text: "text-rose-300",   bg: "bg-rose-950/40 border-rose-700/40",     bar: "bg-rose-500", spark: "#f43f5e" },
+  Easy:        { text: "text-green-800",  bg: "bg-green-950/40 border-green-700/40",   bar: "bg-green-500", spark: "#22c55e" },
+  Medium:      { text: "text-amber-800",  bg: "bg-amber-950/40 border-amber-700/40",   bar: "bg-amber-500", spark: "#f59e0b" },
+  Challenging: { text: "text-rose-800",   bg: "bg-rose-950/40 border-rose-700/40",     bar: "bg-rose-500", spark: "#f43f5e" },
 };
 
 interface Burst { id: number; x: number; y: number; color: string }
@@ -123,14 +124,14 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
 
         {showDiscovery && (
           <div className="mt-5">
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-300">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-purple-800">
               <FlaskConical size={13} />
               Discovery Bounty
             </div>
             {discoveryBounty && discoveryBounty.cooldownUntil === null ? (
               <div className="rounded-xl border border-purple-700/40 bg-purple-950/40 p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-200 italic">"{discoveryBounty.targetName}"</span>
+                  <span className="text-xs font-semibold text-purple-900 italic">"{discoveryBounty.targetName}"</span>
                   <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">
                     🪙 {fmt(discoveryBounty.reward)}
                   </span>
@@ -253,7 +254,7 @@ function QuestCard({
 function CooldownCard({ tier, readyAt }: { tier: QuestDifficulty; readyAt?: number }) {
   const style = DIFF_STYLE[tier];
   const remaining = readyAt ? readyAt - Date.now() : 0;
-  const pct = readyAt ? Math.min(100, Math.max(0, (1 - remaining / QUEST_COOLDOWN_MS) * 100)) : 100;
+  const pct = readyAt ? Math.min(100, Math.max(0, (1 - remaining / QUEST_COOLDOWNS_MS[tier]) * 100)) : 100;
 
   return (
     <div className={`rounded-xl border border-dashed p-3 opacity-80 ${style.bg}`}>
