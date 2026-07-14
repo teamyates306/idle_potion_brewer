@@ -3,44 +3,67 @@
 //
 // The economy tracks a "satiation bucket" per potion attribute (the Equilibrium
 // Offset Model): 0 = baseline (×1.0 price). Selling potions floods buckets
-// positive (price down to −50%); total neglect starves them negative (price up
-// to +50%). Only the top-10 most significant attributes (the "board") actually
-// affect prices — the rest sit Dormant at ×1.0. Random ticker-tape events
-// override the caps entirely (−75%..+100%) on a strict 5-day phase wave.
+// positive (price down to −50%). Only the top-10 most significant attributes
+// (the "board") actually affect prices — the rest sit Dormant at ×1.0. Random
+// ticker-tape events (−75%..+100%) STACK multiplicatively on top of the
+// player-driven rate, on a strict 5-day phase wave.
 //
-// Everything here is PURE math on a snapshot — the store owns the state and
-// decides when to settle (lazy: hour rollover, dashboard open, bulk sale).
+// STABILITY RULES (2026-07 anti-oscillation pass): flooding one attribute by
+// spamming a single recipe used to be able to rapidly lock it at the ±50%
+// hard cap, then whipsaw back the moment the player switched potions. Four
+// rules keep the board hovering near baseline with only subtle, organic
+// movement instead:
+//   1. Dampened satiation  — each sale adds LESS the closer the bucket already
+//      sits to the cap (delta = amount × (1 − current/cap)), so the extremes
+//      become exponentially harder to reach.
+//   2. Gravity mean reversion — idle days pull satiation back toward 0 at a
+//      speed proportional to how far it has drifted: gentle near baseline,
+//      aggressive at the extremes. (This also replaces the old flat
+//      "scarcity drift" that pushed neglected attributes into a permanent
+//      +50% bonus — under gravity, truly inactive attributes now settle at
+//      baseline rather than drifting away from it.)
+//   3. Autonomous absorption threshold — a flat "Healthy Consumption Limit"
+//      per attribute per market day; trickle sales under it never touch the
+//      bucket at all (zero penalty), so only genuine bulk dumps move prices.
+//   4. Market noise — a small ±3% random wobble is layered onto the final
+//      rate of every currently-active (board) attribute each time the market
+//      resettles, so prices never read as a rigid formula.
+//
+// The market ticks once per in-game DAY (the shared 3-minute clock) — never on
+// the game tick loop. Everything here is PURE math on a snapshot; the store
+// owns the state and decides when to settle (day rollover, dashboard open,
+// bulk sale).
 // =============================================================================
 import type { Attributes } from "../types";
 import { ATTR_KEYS } from "./potions";
+import { gameDay } from "./clock";
 
-// ── The exchange clock ────────────────────────────────────────────────────────
-// The market runs on its own posted trading hours, independent of the cosmetic
-// 2-minute day/night cycle: 1 market hour = 90 real seconds, so a market day
-// is 36 real minutes and a full 5-day event wave plays out over ~3 real hours.
-export const GAX_HOUR_MS = 90_000;
-export const GAX_HOURS_PER_DAY = 24;
-
-export function gaxHourIndex(nowMs: number): number {
-  return Math.floor(nowMs / GAX_HOUR_MS);
+/** The market settles on in-game day boundaries (3 real minutes each). */
+export function gaxDayIndex(nowMs: number = Date.now()): number {
+  return gameDay(nowMs);
 }
 
-// ── Tuning constants ──────────────────────────────────────────────────────────
+// ── Tuning constants (all per market DAY) ─────────────────────────────────────
 /** Satiation magnitude (attribute points sold) that pins the ±50% caps. */
 export const SAT_CAP = 4000;
-/** Velocity gate: this many attribute-points of sales per market hour are
- *  absorbed by natural demand before any satiation accrues. */
-export const HOURLY_DRAIN = 400;
-/** Flooded buckets snap 25% back toward baseline each silent market hour. */
-export const SNAPBACK = 0.75;
-/** Ignored attributes drift this many points negative per silent hour
- *  (≈3 market days of total neglect to reach the +50% scarcity ceiling). */
-export const SCARCITY_DRIFT = 55;
-/** Offline catch-up decay per market hour away (spec: 0.85^hours). */
+/** Rule 3 — Healthy Consumption Limit: attribute-points of sales per market
+ *  day that are absorbed by natural demand before any satiation accrues. */
+export const HEALTHY_LIMIT = 250;
+/** Rule 2 — gravity reversion rate on idle days: gentle drift near baseline,
+ *  ramping up to an aggressive pull at the ±cap extremes. */
+export const GRAVITY_MIN_RATE = 0.04;
+export const GRAVITY_MAX_RATE = 0.55;
+/** Rule 4 — market noise: ± this fraction, layered onto the final rate of
+ *  every active (board) attribute on each resettle. */
+export const NOISE_AMPLITUDE = 0.03;
+/** Offline catch-up decay per market day away. */
 export const OFFLINE_DECAY = 0.85;
 export const BOARD_SIZE = 10;
 /** Deviation below this never earns a board seat (keeps noise Dormant). */
 export const MIN_SIGNIFICANCE = 0.05;
+/** Final per-attribute rate clamp once events + noise stack on satiation. */
+export const RATE_MIN = 0.25;
+export const RATE_MAX = 2.5;
 
 // ── Multiplier math ───────────────────────────────────────────────────────────
 /** Player-driven satiation → price multiplier, hard-clamped to 0.5×..1.5×. */
@@ -53,11 +76,31 @@ export function significance(mult: number): number {
   return Math.abs(mult - 1);
 }
 
+/**
+ * Rule 1 — dampened satiation delta: `amount × (1 − current/cap)`, so a
+ * bucket already near the cap in the direction of travel absorbs
+ * progressively less from each new sale (and, symmetrically, a bucket
+ * starting from the opposite extreme absorbs more — there's more "room").
+ */
+export function dampedDelta(current: number, rawDelta: number, cap: number): number {
+  if (rawDelta === 0) return 0;
+  const signedCap = rawDelta > 0 ? cap : -cap;
+  const room = Math.max(0, 1 - current / signedCap);
+  return rawDelta * room;
+}
+
+/** Rule 2 — gravity reversion rate for an idle day: proportional to distance
+ *  from baseline (0 = calm centre, ±cap = the extremes). */
+export function gravityRate(sat: number): number {
+  const dist = Math.min(1, Math.abs(sat) / SAT_CAP);
+  return GRAVITY_MIN_RATE + (GRAVITY_MAX_RATE - GRAVITY_MIN_RATE) * dist;
+}
+
 // ── Ticker events ─────────────────────────────────────────────────────────────
 export interface GaxEventDef {
   id: string;
   headline: string;
-  /** attribute → additive price modifier at peak (−0.75 .. +1.0) */
+  /** attribute → additive rate modifier at peak (−0.75 .. +1.0) */
   effects: Partial<Record<keyof Attributes, number>>;
 }
 
@@ -108,47 +151,49 @@ export const GAX_EVENTS_BY_ID: Record<string, GaxEventDef> = Object.fromEntries(
 /** An event instance in progress. */
 export interface GaxEventState {
   defId: string;
-  startHour: number; // gax hour index when the forecast broke
+  startDay: number; // game day when the forecast broke
 }
 
 export type GaxEventPhase = "forecast" | "peak" | "trailing" | "over";
 
-/** Strict 5-day phase array: D1 forecast (×1.0), D2-4 peak (locked at the
+/** Strict 5-day phase array: D1 forecast (no impact), D2-4 peak (full
  *  modifier), D5 trailing (halfway back), D6 over. */
-export function eventPhase(ev: GaxEventState, hour: number): GaxEventPhase {
-  const day = Math.floor((hour - ev.startHour) / GAX_HOURS_PER_DAY); // 0-based
-  if (day <= 0) return "forecast";
-  if (day <= 3) return "peak";
-  if (day === 4) return "trailing";
+export function eventPhase(ev: GaxEventState, day: number): GaxEventPhase {
+  const d = day - ev.startDay; // 0-based
+  if (d <= 0) return "forecast";
+  if (d <= 3) return "peak";
+  if (d === 4) return "trailing";
   return "over";
 }
 
-export function eventDayNumber(ev: GaxEventState, hour: number): number {
-  return Math.min(5, Math.floor((hour - ev.startHour) / GAX_HOURS_PER_DAY) + 1);
+export function eventDayNumber(ev: GaxEventState, day: number): number {
+  return Math.min(5, day - ev.startDay + 1);
 }
 
-/** Event-driven multiplier for an attribute, or null when the event doesn't
- *  touch it / isn't in an impacting phase. */
-export function eventMultiplier(ev: GaxEventState | null, hour: number, attr: string): number | null {
-  if (!ev) return null;
+/** Event rate factor for an attribute (×1 when untouched / not impacting).
+ *  Events STACK multiplicatively on the player-driven rate. */
+export function eventFactor(ev: GaxEventState | null, day: number, attr: string): number {
+  if (!ev) return 1;
   const def = GAX_EVENTS_BY_ID[ev.defId];
   const effect = def?.effects[attr as keyof Attributes];
-  if (effect === undefined) return null;
-  const phase = eventPhase(ev, hour);
+  if (effect === undefined) return 1;
+  const phase = eventPhase(ev, day);
   if (phase === "peak") return 1 + effect;
   if (phase === "trailing") return 1 + effect / 2;
-  return null; // forecast & over: market unaffected
+  return 1; // forecast & over: market unaffected
 }
 
 // ── Market snapshot ───────────────────────────────────────────────────────────
 export interface GaxMarketState {
   satiation: Record<string, number>;
-  /** attribute-points sold since the last hourly settle (the pending buffer) */
+  /** attribute-points sold since the last settle (the pending buffer) */
   pending: Record<string, number>;
   board: string[];
-  lastSettledHour: number;
+  /** Rule 4 — per-attribute noise offset, refreshed every settle (board-only). */
+  noise: Record<string, number>;
+  lastSettledDay: number;
   event: GaxEventState | null;
-  lastEventEndHour: number;
+  lastEventEndDay: number;
 }
 
 export function emptyMarket(nowMs: number): GaxMarketState {
@@ -156,37 +201,80 @@ export function emptyMarket(nowMs: number): GaxMarketState {
     satiation: {},
     pending: {},
     board: [],
-    lastSettledHour: gaxHourIndex(nowMs),
+    noise: {},
+    lastSettledDay: gaxDayIndex(nowMs),
     event: null,
-    lastEventEndHour: 0,
+    lastEventEndDay: 0,
   };
 }
 
-/** Current effective multiplier for one attribute (board membership + event
- *  overrides applied). Dormant attributes are pinned to ×1.0. */
-export function attrMultiplier(m: GaxMarketState, hour: number, attr: string): number {
-  const evMult = eventMultiplier(m.event, hour, attr);
-  if (evMult !== null) return evMult;
-  if (!m.board.includes(attr)) return 1;
-  return satiationMultiplier(m.satiation[attr] ?? 0);
+/** Current effective rate for one attribute: the player-driven satiation rate
+ *  (board members only — Dormant is pinned ×1.0) with any event factor stacked
+ *  on top, plus a small market-noise wobble (rule 4, board members only),
+ *  clamped to the global rate window. */
+export function attrMultiplier(m: GaxMarketState, day: number, attr: string): number {
+  const onBoard = m.board.includes(attr);
+  const playerRate = onBoard ? satiationMultiplier(m.satiation[attr] ?? 0) : 1;
+  const noise = onBoard ? (m.noise?.[attr] ?? 0) : 0;
+  const rate = playerRate * eventFactor(m.event, day, attr) + noise;
+  return Math.max(RATE_MIN, Math.min(RATE_MAX, rate));
 }
 
 /**
  * Sale price multiplier for a potion: the weighted average of its positive
- * attributes' market multipliers (weights = each attribute's share of the
- * potion's positive stat total). Neutral 1.0 when the potion has no stats.
+ * attributes' market rates (weights = each attribute's share of the potion's
+ * positive stat total). Neutral 1.0 when the potion has no stats.
  */
-export function potionPriceMultiplier(m: GaxMarketState, hour: number, stats: Attributes): number {
+export function potionPriceMultiplier(m: GaxMarketState, day: number, stats: Attributes): number {
   let total = 0;
   let acc = 0;
   for (const k of ATTR_KEYS) {
     const v = stats[k];
     if (v <= 0) continue;
     total += v;
-    acc += v * attrMultiplier(m, hour, k);
+    acc += v * attrMultiplier(m, day, k);
   }
   if (total <= 0) return 1;
-  return Math.max(0.25, Math.min(2, acc / total));
+  return Math.max(RATE_MIN, Math.min(RATE_MAX, acc / total));
+}
+
+/** One line of a potion's financial breakdown. */
+export interface GaxQuoteRow {
+  attr: string;
+  /** the potion's stat value for this attribute (its weight in the blend) */
+  weight: number;
+  rate: number; // effective ×rate for this attribute
+  /** why the rate is off baseline */
+  reason: "event" | "flooded" | "starved" | "dormant";
+}
+
+export interface GaxQuote {
+  mult: number;
+  rows: GaxQuoteRow[];
+}
+
+/**
+ * Lazy on-demand quote for one potion: final multiplier + per-attribute audit.
+ * Only ever call this when a specific potion is actually rendered (detail
+ * modal, sell card) — never over the whole potion list.
+ */
+export function gaxPotionQuote(m: GaxMarketState, day: number, stats: Attributes): GaxQuote {
+  const rows: GaxQuoteRow[] = [];
+  for (const k of ATTR_KEYS) {
+    const v = stats[k];
+    if (v <= 0) continue;
+    const rate = attrMultiplier(m, day, k);
+    const hasEvent = eventFactor(m.event, day, k) !== 1;
+    const sat = m.board.includes(k) ? (m.satiation[k] ?? 0) : 0;
+    rows.push({
+      attr: k,
+      weight: v,
+      rate,
+      reason: hasEvent ? "event" : sat > 0 ? "flooded" : sat < 0 ? "starved" : "dormant",
+    });
+  }
+  rows.sort((a, b) => b.weight - a.weight);
+  return { mult: potionPriceMultiplier(m, day, stats), rows };
 }
 
 /** Record a sale into the pending buffer (no settling — lazy by design). */
@@ -201,12 +289,12 @@ export function recordSale(m: GaxMarketState, stats: Attributes, count: number):
 /** Recompute the top-10 board. Event-affected attributes (during impact
  *  phases) hold guaranteed seats; the rest are ranked by significance. An
  *  evicted attribute goes Dormant and its bucket resets to baseline. */
-export function reselectBoard(m: GaxMarketState, hour: number): { evicted: string[]; admitted: string[] } {
+export function reselectBoard(m: GaxMarketState, day: number): { evicted: string[]; admitted: string[] } {
   const seats: { attr: string; score: number }[] = [];
   for (const attr of ATTR_KEYS) {
-    const evMult = eventMultiplier(m.event, hour, attr);
-    if (evMult !== null) {
-      seats.push({ attr, score: 10 + significance(evMult) }); // event = guaranteed seat
+    const ef = eventFactor(m.event, day, attr);
+    if (ef !== 1) {
+      seats.push({ attr, score: 10 + significance(ef) }); // event = guaranteed seat
       continue;
     }
     const score = significance(satiationMultiplier(m.satiation[attr] ?? 0));
@@ -223,7 +311,7 @@ export function reselectBoard(m: GaxMarketState, hour: number): { evicted: strin
 }
 
 export interface SettleResult {
-  hoursApplied: number;
+  daysApplied: number;
   evicted: string[];
   admitted: string[];
   eventStarted: GaxEventState | null;
@@ -231,80 +319,93 @@ export interface SettleResult {
 }
 
 /**
- * Settle the market up to `nowHour` (mutates the snapshot). Live path: applies
- * the hourly rules per elapsed hour, capped — beyond a day's worth of hours the
- * offline exponential-decay shortcut is used instead of looping.
+ * Settle the market up to `nowDay` (mutates the snapshot). Short gaps apply
+ * the per-day rules; anything longer than a week uses the offline
+ * exponential-decay shortcut instead of looping.
  */
 export function settleMarket(
   m: GaxMarketState,
-  nowHour: number,
+  nowDay: number,
   rng: () => number = Math.random
 ): SettleResult {
-  const result: SettleResult = { hoursApplied: 0, evicted: [], admitted: [], eventStarted: null, eventEnded: null };
-  let hours = nowHour - m.lastSettledHour;
-  if (hours <= 0) return result;
-  result.hoursApplied = hours;
+  const result: SettleResult = { daysApplied: 0, evicted: [], admitted: [], eventStarted: null, eventEnded: null };
+  const days = nowDay - m.lastSettledDay;
+  if (days <= 0) return result;
+  result.daysApplied = days;
 
-  // ---- Offline shortcut: long gaps use exponential decay, no loops ----------
-  if (hours > GAX_HOURS_PER_DAY) {
-    const decay = Math.pow(OFFLINE_DECAY, hours);
+  if (days > 7) {
+    // ---- Offline shortcut: exponential decay, no loops ---------------------
+    // Rule 2 (gravity) collapses to plain exponential decay over a long gap;
+    // rule 1 (dampening) still governs how much of the offline sales volume
+    // actually lands, using the pre-decay bucket as its reference point.
+    const decay = Math.pow(OFFLINE_DECAY, days);
     for (const attr of ATTR_KEYS) {
       const old = m.satiation[attr] ?? 0;
       let sat = old * decay;
-      // Offline sales land net of the drain the market absorbed while away.
+      // Rule 3 — only bulk volume beyond the accumulated healthy limit counts.
       const sold = m.pending[attr] ?? 0;
-      if (sold > 0) sat += Math.max(0, sold - HOURLY_DRAIN * hours);
+      const excess = Math.max(0, sold - HEALTHY_LIMIT * days);
+      if (excess > 0) sat += dampedDelta(sat, excess, SAT_CAP);
       m.satiation[attr] = Math.max(-SAT_CAP, Math.min(SAT_CAP, sat));
       m.pending[attr] = 0;
     }
   } else {
-    // ---- Live hourly loop ------------------------------------------------
-    for (let h = 0; h < hours; h++) {
+    // ---- Live daily loop ----------------------------------------------------
+    for (let d = 0; d < days; d++) {
       for (const attr of ATTR_KEYS) {
         const sold = m.pending[attr] ?? 0;
         let sat = m.satiation[attr] ?? 0;
-        if (sold > 0) {
-          // The Flood — gated by sales velocity vs the market's natural drain.
-          sat += Math.max(0, sold - HOURLY_DRAIN);
-        } else if (sat > 0) {
-          // The Rubber Band — flooded markets snap 25% back per silent hour.
-          sat *= SNAPBACK;
-          if (sat < 1) sat = 0;
+        // Rule 3 — trickle sales under the Healthy Consumption Limit bypass
+        // the bucket entirely; only the excess above it is bulk dumping.
+        const excess = Math.max(0, sold - HEALTHY_LIMIT);
+        if (excess > 0) {
+          // Rule 1 — dampened satiation: less added the nearer the cap.
+          sat += dampedDelta(sat, excess, SAT_CAP);
         } else {
-          // The Starvation — ignored markets drift into scarcity bonus.
-          sat -= SCARCITY_DRIFT;
+          // Rule 2 — gravity mean reversion: idle days pull every bucket back
+          // toward baseline, aggressively at the extremes, gently near 0.
+          sat *= 1 - gravityRate(sat);
+          if (Math.abs(sat) < 1) sat = 0;
         }
         m.satiation[attr] = Math.max(-SAT_CAP, Math.min(SAT_CAP, sat));
         m.pending[attr] = 0;
       }
     }
   }
-  m.lastSettledHour = nowHour;
+  m.lastSettledDay = nowDay;
 
   // ---- Event lifecycle -------------------------------------------------------
-  if (m.event && eventPhase(m.event, nowHour) === "over") {
+  if (m.event && eventPhase(m.event, nowDay) === "over") {
     result.eventEnded = m.event.defId;
-    m.lastEventEndHour = nowHour;
+    m.lastEventEndDay = nowDay;
     m.event = null;
   }
-  if (!m.event && nowHour - m.lastEventEndHour >= GAX_HOURS_PER_DAY) {
-    // One roll per elapsed market day: ~45% chance a new anomaly breaks.
-    const dayRolls = Math.max(1, Math.min(7, Math.floor(hours / GAX_HOURS_PER_DAY)));
+  if (!m.event && nowDay - m.lastEventEndDay >= 2) {
+    // One roll per elapsed day: ~22% chance a new anomaly breaks.
+    const dayRolls = Math.max(1, Math.min(7, days));
     for (let d = 0; d < dayRolls; d++) {
-      if (rng() < 0.45) {
+      if (rng() < 0.22) {
         const def = GAX_EVENTS[Math.floor(rng() * GAX_EVENTS.length)];
         // If it broke while away, back-date it a random amount of the window.
-        const backdate = hours > GAX_HOURS_PER_DAY ? Math.floor(rng() * Math.min(hours, 5 * GAX_HOURS_PER_DAY)) : 0;
-        m.event = { defId: def.id, startHour: nowHour - backdate };
+        const backdate = days > 7 ? Math.floor(rng() * Math.min(days, 5)) : 0;
+        m.event = { defId: def.id, startDay: nowDay - backdate };
         result.eventStarted = m.event;
         break;
       }
     }
   }
 
-  const swap = reselectBoard(m, nowHour);
+  const swap = reselectBoard(m, nowDay);
   result.evicted = swap.evicted;
   result.admitted = swap.admitted;
+
+  // Rule 4 — market noise: refresh a small ±NOISE_AMPLITUDE wobble for every
+  // currently-active (board) attribute on each resettle. Evicted attributes
+  // simply drop out (their noise is never read once Dormant).
+  const noise: Record<string, number> = {};
+  for (const attr of m.board) noise[attr] = (rng() * 2 - 1) * NOISE_AMPLITUDE;
+  m.noise = noise;
+
   return result;
 }
 
@@ -312,3 +413,13 @@ export function settleMarket(
 export function attrLabel(attr: string): string {
   return attr.charAt(0).toUpperCase() + attr.slice(1);
 }
+
+/** Small emoji per attribute for compact market rows. */
+export const ATTR_EMOJI: Record<string, string> = {
+  strength: "💪", speed: "🏃", vitality: "🌿", density: "🪨", elasticity: "🎗️",
+  focus: "🎯", mana: "🔮", resonance: "🎶", insight: "👁️", luck: "🍀",
+  heat: "🔥", cold: "❄️", shock: "⚡", aqua: "💧", terra: "⛰️", aero: "🌬️",
+  radiance: "☀️", void: "🕳️", toxicity: "☠️", volatility: "💥", acidity: "🧪",
+  alkalinity: "🧂", viscosity: "🍯", stability: "⚖️", solvency: "🫧",
+  chrono: "⏳", gravitas: "🌌", entropy: "🥀", soul: "👻", mutation: "🧬",
+};

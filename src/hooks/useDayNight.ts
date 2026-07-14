@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
-const DAY_DURATION_MS = 2 * 60 * 1000; // 2 minutes = 1 full day
+import { DAY_DURATION_MS } from "../engine/clock";
 
 /** Returns phase 0–1 where 0/1=midnight, 0.25=sunrise, 0.5=noon, 0.75=sunset */
 export function getDayPhase(): number {

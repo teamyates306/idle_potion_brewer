@@ -167,10 +167,10 @@ const CONTENT: Record<TabId, React.ReactNode> = {
       </P>
       <H>Supply &amp; demand</H>
       <ul>
-        <LI><Em>Flooding:</Em> dumping lots of one kind of potion saturates its attributes — prices sink, down to −50%.</LI>
-        <LI><Em>Scarcity:</Em> markets nobody sells into drift upward, up to +50%.</LI>
-        <LI><Em>The drain:</Em> small trickle sales are absorbed by natural demand — casual auto-selling won't tank a market.</LI>
-        <LI><Em>Recovery:</Em> a flooded market snaps 25% back toward normal every quiet market hour.</LI>
+        <LI><Em>Flooding:</Em> dumping lots of one kind of potion saturates its attributes — prices sink toward −50%, but each extra sale moves the price less the nearer it gets to the floor, so a single spree can't slam a market flat.</LI>
+        <LI><Em>The drain:</Em> small trickle sales are absorbed by natural demand entirely — casual auto-selling never touches the market.</LI>
+        <LI><Em>Recovery:</Em> every quiet market day pulls a price back toward normal — gently near baseline, aggressively if it's sitting at an extreme — so idle attributes settle near ×1.00 instead of drifting away.</LI>
+        <LI><Em>Noise:</Em> active markets get a faint day-to-day wobble (±3%) so prices never feel like a rigid formula.</LI>
       </ul>
       <H>The board &amp; the ticker</H>
       <P>

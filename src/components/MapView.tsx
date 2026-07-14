@@ -11,22 +11,33 @@ import WorkerArt, { workerHue } from "./art/WorkerArt";
 import SettlementModal from "./SettlementModal";
 import type { Location, Settlement } from "../types";
 
-// ── Radial "bloom" layout ─────────────────────────────────────────────────────
-// The workshop sits at the centre of the map; every location and settlement
-// blooms outward around it on its region's ring. Distance from the centre still
-// tracks travel distance / cost, but there is deliberately no trail — nothing
-// implies a fixed order, and any node in an unlocked region can be opened next.
+// ── Region-island layout ──────────────────────────────────────────────────────
+// Each region is its own irregular "island" scattered across the parchment —
+// deliberately NOT arranged easy→hard, so nothing implies a fixed progression
+// order. The workshop sits inside the Home Vale; every region's locations and
+// settlements cluster inside their island. (A hand-drawn map sprite will
+// eventually replace the generated blobs; the layout data stays the same.)
 const CANVAS = 1160;
-const CENTER = CANVAS / 2;
-const RING_RADII = [120, 205, 290, 375, 460, 540];
 const VIEWPORT_H = 420;
+
+/** Hand-placed island centres + radii, keyed by region id. Progression tiers
+ *  are intentionally shuffled spatially (the endgame Riftlands sit due north). */
+const REGION_LAYOUT: Record<string, { cx: number; cy: number; r: number }> = {
+  region_home_vale:          { cx: 565, cy: 585, r: 175 },
+  region_whispering_woods:   { cx: 275, cy: 350, r: 180 },
+  region_searing_crags:      { cx: 880, cy: 370, r: 170 },
+  region_umbral_marches:     { cx: 315, cy: 855, r: 170 },
+  region_shattered_frontier: { cx: 880, cy: 830, r: 170 },
+  region_riftlands:          { cx: 610, cy: 165, r: 145 },
+};
 
 // Muted, earthy danger ramp (safe moss → deep oxblood) — no neon.
 const DANGER_COLOR = ["#6f8a4a", "#b08a33", "#bf7b3a", "#a8472f", "#7d3b4a"];
 
 type MapEntry =
   | { kind: "location"; loc: Location; distance: number }
-  | { kind: "settlement"; settlement: Settlement; distance: number };
+  | { kind: "settlement"; settlement: Settlement; distance: number }
+  | { kind: "gax"; distance: number };
 
 interface PlacedNode { entry: MapEntry; x: number; y: number; region: RegionDef; regionIdx: number }
 
@@ -40,10 +51,18 @@ function idHash(s: string): number {
   return Math.abs(h);
 }
 
+function idOf(e: MapEntry): string {
+  return e.kind === "location" ? e.loc.id : e.kind === "settlement" ? e.settlement.id : "gax";
+}
+
+const GOLDEN_ANGLE = 2.39996;
+
 function buildLayout(locations: Location[], settlements: Settlement[]): PlacedNode[] {
   const entries: MapEntry[] = [
     ...locations.map((loc) => ({ kind: "location" as const, loc, distance: loc.distance })),
     ...settlements.map((settlement) => ({ kind: "settlement" as const, settlement, distance: settlement.distance })),
+    // The Exchange lives in the Whispering Woods (distance band 7–19).
+    { kind: "gax" as const, distance: 12 },
   ];
   const byRegion = new Map<number, MapEntry[]>();
   for (const e of entries) {
@@ -56,20 +75,20 @@ function buildLayout(locations: Location[], settlements: Settlement[]): PlacedNo
 
   const nodes: PlacedNode[] = [];
   for (const [ri, members] of byRegion) {
+    const region = REGIONS[ri];
+    const layout = REGION_LAYOUT[region.id];
     members.sort((a, b) => a.distance - b.distance || idOf(a).localeCompare(idOf(b)));
-    const base = RING_RADII[ri] ?? RING_RADII[RING_RADII.length - 1];
-    const n = members.length;
+    const isHome = region.id === "region_home_vale"; // workshop occupies the centre
+    const seed = (idHash(region.id) % 100) / 100 * Math.PI * 2;
     members.forEach((entry, j) => {
-      const h = idHash(idOf(entry));
-      // Even angular spread with a small stable jitter; each ring starts at a
-      // different offset so nodes don't line up into visual "spokes".
-      const angle = -Math.PI / 2 + ri * 0.55 + ((j + 0.5) / n) * Math.PI * 2 + ((h % 100) / 100 - 0.5) * (0.5 / n) * Math.PI;
-      const radius = base + (((h >> 7) % 100) / 100 - 0.5) * 34;
+      // Golden-angle spiral around the island centre: dense, organic, no spokes.
+      const rr = (isHome ? 70 : 34) + 38 * Math.sqrt(j + (isHome ? 0.2 : 0.45));
+      const angle = seed + j * GOLDEN_ANGLE;
       nodes.push({
         entry,
-        x: CENTER + Math.cos(angle) * radius,
-        y: CENTER + Math.sin(angle) * radius,
-        region: REGIONS[ri],
+        x: layout.cx + Math.cos(angle) * rr,
+        y: layout.cy + Math.sin(angle) * rr,
+        region,
         regionIdx: ri,
       });
     });
@@ -77,73 +96,77 @@ function buildLayout(locations: Location[], settlements: Settlement[]): PlacedNo
   return nodes;
 }
 
-function idOf(e: MapEntry): string {
-  return e.kind === "location" ? e.loc.id : e.settlement.id;
+/** Wobbly organic blob path (smoothed radial polygon), deterministic per seed. */
+function blobPath(cx: number, cy: number, r: number, seedStr: string): string {
+  const N = 12;
+  const h = idHash(seedStr);
+  const pts: [number, number][] = [];
+  for (let i = 0; i < N; i++) {
+    const wobble = 0.84 + (((h >> ((i * 5) % 27)) & 0xff) / 255) * 0.28;
+    const a = (i / N) * Math.PI * 2;
+    pts.push([cx + Math.cos(a) * r * wobble, cy + Math.sin(a) * r * wobble]);
+  }
+  // Smooth through midpoints with quadratic segments.
+  const mid = (a: [number, number], b: [number, number]): [number, number] =>
+    [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  let d = `M ${mid(pts[N - 1], pts[0]).map((v) => v.toFixed(1)).join(" ")}`;
+  for (let i = 0; i < N; i++) {
+    const p = pts[i];
+    const m = mid(p, pts[(i + 1) % N]);
+    d += ` Q ${p[0].toFixed(1)} ${p[1].toFixed(1)} ${m[0].toFixed(1)} ${m[1].toFixed(1)}`;
+  }
+  return d + " Z";
 }
 
-/** Outer radius of each region band (midpoint between neighbouring rings). */
-const BAND_OUTER = RING_RADII.map((r, i) =>
-  i < RING_RADII.length - 1 ? (r + RING_RADII[i + 1]) / 2 : r + 42
-);
-
-/** Concentric region bands painted beneath the nodes: filled discs, largest
- *  first, so each band tint shows as an annulus. Locked regions read as grey. */
-function RegionBands({ unlockedRegions }: { unlockedRegions: string[] }) {
+/** The region islands: irregular tinted landmasses with their names written
+ *  across them, fantasy-map style. Locked islands read grey. */
+function RegionIslands({ unlockedRegions }: { unlockedRegions: string[] }) {
   return (
     <svg className="pointer-events-none absolute inset-0" width={CANVAS} height={CANVAS} viewBox={`0 0 ${CANVAS} ${CANVAS}`}>
-      {[...REGIONS].map((region, i) => ({ region, i })).reverse().map(({ region, i }) => {
+      {REGIONS.map((region) => {
+        const layout = REGION_LAYOUT[region.id];
         const locked = !unlockedRegions.includes(region.id);
+        const tilt = ((idHash(region.id) % 17) - 8) * 0.6; // −5°..+5° label tilt
         return (
-          <circle
-            key={region.id}
-            cx={CENTER}
-            cy={CENTER}
-            r={BAND_OUTER[i]}
-            fill={locked ? "#8a7a5c" : region.color}
-            fillOpacity={locked ? 0.10 : 0.13}
-          />
+          <g key={region.id}>
+            <path
+              d={blobPath(layout.cx, layout.cy, layout.r, region.id)}
+              fill={locked ? "#8a7a5c" : region.color}
+              fillOpacity={locked ? 0.12 : 0.16}
+              stroke={locked ? "#8a7a5c" : region.color}
+              strokeOpacity={locked ? 0.35 : 0.45}
+              strokeWidth="2.5"
+              strokeDasharray={locked ? "7 5" : undefined}
+            />
+            <text
+              x={layout.cx}
+              y={layout.cy - layout.r - 10}
+              textAnchor="middle"
+              transform={`rotate(${tilt} ${layout.cx} ${layout.cy - layout.r - 10})`}
+              style={{
+                fontFamily: "'Silkscreen', monospace",
+                fontSize: 17,
+                fontWeight: 700,
+                letterSpacing: 3,
+                fill: locked ? "#7d7361" : region.color,
+                opacity: 0.85,
+                filter: "drop-shadow(0 1px 0 rgba(246,238,218,0.8))",
+              }}
+            >
+              {locked ? "🔒 " : ""}{region.name.toUpperCase()}
+            </text>
+          </g>
         );
       })}
-      {/* thin separators between bands */}
-      {BAND_OUTER.slice(0, -1).map((r, i) => (
-        <circle key={i} cx={CENTER} cy={CENTER} r={r} fill="none" stroke="#7a5a34" strokeOpacity="0.3" strokeWidth="1.5" />
-      ))}
     </svg>
   );
 }
 
-/** Region name chips pinned to the top of each band. */
-function RegionLabels({ unlockedRegions, onPick }: { unlockedRegions: string[]; onPick: (r: RegionDef) => void }) {
-  return (
-    <>
-      {REGIONS.map((region, i) => {
-        const locked = !unlockedRegions.includes(region.id);
-        // Pin each label near its band's outer edge, above that band's nodes.
-        const y = CENTER - (RING_RADII[i] + (BAND_OUTER[i] - RING_RADII[i]) * 0.8);
-        return (
-          <button
-            key={region.id}
-            onClick={() => onPick(region)}
-            className={`absolute z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-sm transition active:scale-95 ${
-              locked
-                ? "border-slate-700/70 bg-[#d8c49a] text-slate-500"
-                : "border-transparent text-[#f6eeda]"
-            }`}
-            style={{ left: CENTER, top: y, ...(locked ? {} : { background: region.color }) }}
-          >
-            {locked && <Lock size={9} />}
-            {region.name}
-          </button>
-        );
-      })}
-    </>
-  );
-}
-
-/** Unclickable workshop marker at the heart of the map. */
+/** Unclickable workshop marker at the heart of the Home Vale. */
 function WorkshopNode() {
+  const { cx, cy } = REGION_LAYOUT.region_home_vale;
   return (
-    <div className="pointer-events-none absolute z-10" style={{ left: CENTER, top: CENTER, transform: "translate(-50%, -50%)" }}>
+    <div className="pointer-events-none absolute z-10" style={{ left: cx, top: cy, transform: "translate(-50%, -50%)" }}>
       <div
         className="flex items-center justify-center rounded-full border-2"
         style={{
@@ -181,11 +204,7 @@ export default function MapView({
   const unlockedRegions = useGameStore((s) => s.unlockedRegions);
   const pushHint = useGameStore((s) => s.pushHint);
   const explored = useGameStore((s) => s.exploredLocations);
-  const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
-  const coins = useGameStore((s) => s.coins);
   const workers = useGameStore((s) => s.workers);
-  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
-  const hasCompass = unlocked_globals.includes("cartographers_compass");
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
@@ -202,12 +221,13 @@ export default function MapView({
   const drag = useRef({ x: 0, y: 0, sl: 0, st: 0, active: false });
   const moved = useRef(false);
 
-  // Start centred on the workshop.
+  // Start centred on the workshop (inside the Home Vale island).
   useLayoutEffect(() => {
     const vp = vpRef.current;
     if (!vp) return;
-    vp.scrollLeft = CENTER - vp.clientWidth / 2;
-    vp.scrollTop = CENTER - vp.clientHeight / 2;
+    const home = REGION_LAYOUT.region_home_vale;
+    vp.scrollLeft = home.cx - vp.clientWidth / 2;
+    vp.scrollTop = home.cy - vp.clientHeight / 2;
   }, []);
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -239,8 +259,11 @@ export default function MapView({
       setSelectedRegion(node.region);
       return;
     }
-    if (node.entry.kind === "settlement") setSelectedSettlement(node.entry.settlement);
-    else {
+    if (node.entry.kind === "gax") {
+      setGaxOpen(useGameStore.getState().gaxUnlocked ? "dashboard" : "unlock");
+    } else if (node.entry.kind === "settlement") {
+      setSelectedSettlement(node.entry.settlement);
+    } else {
       if (!unlocked.includes(node.entry.loc.id)) pushHint("map_locked_location");
       setSelected(node.entry.loc);
     }
@@ -250,8 +273,8 @@ export default function MapView({
     <>
       <Modal title="The Map" onClose={onClose} accent="#5e7a45">
         <p className="mb-3 text-xs text-slate-400">
-          Your workshop sits at the heart of the wilds. Locations bloom outward in
-          all directions — unlock any of them, in any order, region by region.
+          The known world, region by region. Tap any node to learn more — nothing
+          here has to be unlocked in any particular order.
         </p>
 
         <div
@@ -278,12 +301,13 @@ export default function MapView({
               backgroundSize: "auto, auto, 26px 26px",
             }}
           >
-            <RegionBands unlockedRegions={unlockedRegions} />
-            <RegionLabels unlockedRegions={unlockedRegions} onPick={setSelectedRegion} />
+            <RegionIslands unlockedRegions={unlockedRegions} />
             <WorkshopNode />
-            <GaxNode onClick={() => setGaxOpen(useGameStore.getState().gaxUnlocked ? "dashboard" : "unlock")} />
             {nodes.map((n) => {
               const regionLocked = !unlockedRegions.includes(n.region.id);
+              if (n.entry.kind === "gax") {
+                return <GaxNode key="gax" node={n} regionLocked={regionLocked} onClick={() => handleNodeTap(n)} />;
+              }
               if (n.entry.kind === "settlement") {
                 const st = n.entry.settlement;
                 return (
@@ -306,11 +330,7 @@ export default function MapView({
                   regionLocked={regionLocked}
                   isUnlocked={unlocked.includes(loc.id)}
                   isExplored={explored.includes(loc.id)}
-                  canAfford={coins >= loc.unlockCost}
                   workerIds={workers.filter((w) => w.assigned_location === loc.id).map((w) => w.id)}
-                  ingredients={loc.drops}
-                  discoveredDrops={discoveredDrops[loc.id] ?? []}
-                  hasCompass={hasCompass}
                   dataTut={firstUnlockedId?.entry.kind === "location" && firstUnlockedId.entry.loc.id === loc.id ? "map-location" : undefined}
                   onClick={() => handleNodeTap(n)}
                 />
@@ -345,47 +365,42 @@ export default function MapView({
 }
 
 // ── The Grand Alchemical Exchange node ───────────────────────────────────────
-// A special institution, not a resource node: workers can't be sent here. It
-// sits just off the Home Vale on the road to the Whispering Woods.
-const GAX_POS = {
-  x: CENTER + Math.cos(Math.PI * 0.86) * 172,
-  y: CENTER + Math.sin(Math.PI * 0.86) * 172,
-};
-
-function GaxNode({ onClick }: { onClick: () => void }) {
+// A special institution inside the Whispering Woods, not a resource node —
+// workers can't be sent here. Tap to charter it (or open the dashboard).
+function GaxNode({ node, regionLocked, onClick }: { node: PlacedNode; regionLocked: boolean; onClick: () => void }) {
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
+  const dim = regionLocked || !gaxUnlocked;
   return (
-    <div className="absolute z-10" style={{ left: GAX_POS.x, top: GAX_POS.y, transform: "translate(-50%, -50%)" }}>
+    <div className="absolute" style={{ left: node.x, top: node.y, transform: "translate(-50%, -50%)" }}>
       <button
         onClick={onClick}
         className="relative flex items-center justify-center rounded-xl border-2 transition active:scale-95"
         style={{
-          width: 58,
-          height: 58,
-          borderColor: gaxUnlocked ? "#8a6a1f" : "#b39b6f",
-          background: gaxUnlocked
+          width: 56,
+          height: 56,
+          borderColor: !dim ? "#8a6a1f" : "#b39b6f",
+          background: !dim
             ? "radial-gradient(circle at 35% 30%, #fff3cf, #e2b64e)"
             : "radial-gradient(circle at 35% 30%, #ece0c0, #d6c096)",
-          boxShadow: gaxUnlocked ? "0 2px 8px rgba(140,100,20,0.45), 0 0 14px rgba(226,182,78,0.35)" : "inset 0 1px 2px rgba(120,90,50,0.25)",
+          boxShadow: !dim ? "0 2px 8px rgba(140,100,20,0.45), 0 0 14px rgba(226,182,78,0.35)" : "inset 0 1px 2px rgba(120,90,50,0.25)",
+          opacity: regionLocked ? 0.55 : 1,
+          filter: regionLocked ? "grayscale(0.7)" : undefined,
         }}
         title="The Grand Alchemical Exchange"
       >
-        {gaxUnlocked
-          ? <Landmark size={26} className="text-amber-900" />
+        {!dim
+          ? <Landmark size={25} className="text-amber-900" />
           : (
             <>
-              <Landmark size={24} className="text-slate-400" />
+              <Landmark size={23} className="text-slate-400" />
               <Lock size={13} className="absolute right-1.5 top-1.5 text-slate-500" />
             </>
           )}
       </button>
-      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
-        <div className="text-[11px] font-bold leading-tight text-amber-950">The Grand Alchemical Exchange</div>
-        {!gaxUnlocked && (
-          <span className="mt-0.5 inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-slate-300">
-            🪙 {fmt(GAX_UNLOCK_COST)} to charter
-          </span>
-        )}
+      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-28 -translate-x-1/2 text-center">
+        <div className={`text-[11px] font-bold leading-tight ${dim ? "text-slate-400" : "text-amber-950"}`}>
+          The Grand Exchange
+        </div>
       </div>
     </div>
   );
@@ -555,9 +570,6 @@ function SettlementNode({
         <div className={`text-[11px] font-semibold leading-tight ${regionLocked ? "text-slate-400" : "text-amber-900"}`}>
           {settlement.name}
         </div>
-        <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold ${regionLocked ? "bg-slate-800 text-slate-500" : "bg-amber-900/80 text-amber-100"}`}>
-          ⚖ Trading Post
-        </span>
       </div>
     </div>
   );
@@ -570,11 +582,7 @@ function MapNode({
   regionLocked,
   isUnlocked,
   isExplored,
-  canAfford,
   workerIds,
-  ingredients,
-  discoveredDrops,
-  hasCompass,
   dataTut,
   onClick,
 }: {
@@ -583,15 +591,10 @@ function MapNode({
   regionLocked: boolean;
   isUnlocked: boolean;
   isExplored: boolean;
-  canAfford: boolean;
   workerIds: number[];
-  ingredients: { ingredientId: string; weight: number }[];
-  discoveredDrops: string[];
-  hasCompass: boolean;
   dataTut?: string;
   onClick: () => void;
 }) {
-  const cfg = useConfigStore();
   const R = 30;
   const workerCount = workerIds.length;
   const dangerColor = DANGER_COLOR[Math.min(loc.danger, DANGER_COLOR.length - 1)];
@@ -646,47 +649,11 @@ function MapNode({
         )}
       </button>
 
-      {/* Label — wraps so the full name and all ingredient pills stay visible.
+      {/* Label — name only; the icon says the rest and tapping opens details.
           pointer-events-none so overlapping labels never swallow node clicks. */}
-      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
+      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-28 -translate-x-1/2 text-center">
         <div className={`text-[11px] font-semibold leading-tight ${dim ? "text-slate-400" : "text-slate-100"}`}>
           {loc.name}
-        </div>
-        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
-          {regionLocked ? (
-            <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[9px] text-slate-500">Region locked</span>
-          ) : !isUnlocked ? (
-            // Unlock cost right on the node — green when the player can afford it
-            <span
-              className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
-                canAfford
-                  ? "bg-emerald-700 text-emerald-50 shadow"
-                  : "bg-slate-800 text-slate-400"
-              }`}
-            >
-              🪙 {fmt(loc.unlockCost)}
-            </span>
-          ) : !isExplored ? (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">??? Uncharted</span>
-          ) : (
-            ingredients.map((d) => {
-              const ing = cfg.ingredients[d.ingredientId];
-              if (!ing) return null;
-              const found = discoveredDrops.includes(d.ingredientId);
-              const totalWeight = ingredients.reduce((a, x) => a + x.weight, 0);
-              const pct = hasCompass && found ? ((d.weight / totalWeight) * 100).toFixed(1) + "%" : null;
-              return (
-                <span
-                  key={d.ingredientId}
-                  className="flex items-center gap-0.5 rounded bg-slate-900/90 px-1 py-0.5 text-[9px] text-slate-300"
-                >
-                  <span style={{ color: found ? RARITY_COLOR[ing.rarity] : "#475569" }}>●</span>
-                  {found ? ing.name : "???"}
-                  {pct && <span className="text-emerald-700 ml-0.5">{pct}</span>}
-                </span>
-              );
-            })
-          )}
         </div>
       </div>
     </div>

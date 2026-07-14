@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Coins, Search, ChevronDown, ChevronRight,
   Trash2, CheckSquare, Square, X,
@@ -14,6 +14,8 @@ import { groupHashesByName } from "../engine/quests";
 import { fmt } from "../util/format";
 import { gatherRoundTrip, brewTime, effectiveMultiBrew } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
+import { gaxDayIndex, potionPriceMultiplier } from "../engine/gax";
+import type { Attributes } from "../types";
 
 type Tab = "sell" | "discovered" | "supply";
 type Detail = { hash: string } | { name: string } | null;
@@ -35,6 +37,16 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const [tab, setTab] = useState<Tab>(initialTab ?? "sell");
   const [detail, setDetail] = useState<Detail>(null);
 
+  // ---- GAX live pricing (lazy): only the Sell tab shows "price right now",
+  // computed per RENDERED card — never across the whole discovered list.
+  const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
+  const gaxMarket = useGameStore((s) => s.gaxMarket);
+  const settleGax = useGameStore((s) => s.settleGax);
+  useEffect(() => { if (gaxUnlocked && tab === "sell") settleGax(); }, [gaxUnlocked, tab, settleGax]);
+  const marketDay = gaxDayIndex(Date.now());
+  const liveMult = (stats: Attributes): number =>
+    gaxUnlocked ? potionPriceMultiplier(gaxMarket, marketDay, stats) : 1;
+
   // Discovered controls
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("value");
@@ -46,9 +58,11 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const entries = Object.entries(potionInv).filter(([, c]) => c > 0);
+  // "Sell Everything" total uses today's market rates so the button matches
+  // the actual proceeds (bounded by inventory size — never the global list).
   const totalValue = entries.reduce((acc, [hash, count]) => {
     const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
-    return acc + (d ? d.value * count : 0);
+    return acc + (d ? Math.round(d.value * liveMult(d.stats)) * count : 0);
   }, 0);
 
   const nameGroups = useMemo(
@@ -128,6 +142,10 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                   const checked = selected.has(hash);
                   const isFirstPotion = firstPotion;
                   firstPotion = false;
+                  // Price right now — computed only for this rendered card.
+                  const mult = liveMult(d.stats);
+                  const liveValue = Math.round(d.value * mult);
+                  const deltaPct = Math.round((mult - 1) * 100);
                   return (
                     <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
                       {auto && selectMode && (
@@ -143,7 +161,17 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                         <PotionIcon name={d.name} size={16} />
                         <div className="min-w-0">
                           <div className={`truncate font-medium ${auto ? "text-amber-800" : "text-purple-800"}`}>{d.name}</div>
-                          <div className="text-xs text-slate-400">×{count} · 🪙 {fmt(d.value)} each</div>
+                          <div
+                            className="text-xs text-slate-400"
+                            title={deltaPct !== 0 ? `Base 🪙 ${fmt(d.value)} · market ×${mult.toFixed(2)} — tap for the breakdown` : undefined}
+                          >
+                            ×{count} · 🪙 {fmt(liveValue)} each
+                            {deltaPct !== 0 && (
+                              <span className={`ml-1 font-semibold ${deltaPct > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                {deltaPct > 0 ? "▲" : "▼"}{Math.abs(deltaPct)}%
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </button>
                       {!selectMode && (

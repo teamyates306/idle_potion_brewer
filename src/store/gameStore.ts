@@ -21,7 +21,7 @@ import {
   emptyMarket,
   eventDayNumber,
   eventPhase,
-  gaxHourIndex,
+  gaxDayIndex,
   potionPriceMultiplier,
   recordSale,
   satiationMultiplier,
@@ -84,7 +84,7 @@ export interface GaxAuditRow {
 }
 
 export interface GaxOfflineReport {
-  hoursAway: number;
+  daysAway: number;
   /** Event active on return (headline + wave day), if any. */
   activeEvent: { headline: string; day: number; phase: string } | null;
   /** Headline of an event that fully played out while away, if any. */
@@ -100,6 +100,7 @@ function cloneMarket(m: GaxMarketState): GaxMarketState {
     satiation: { ...m.satiation },
     pending: { ...m.pending },
     board: [...m.board],
+    noise: { ...(m.noise ?? {}) },
     event: m.event ? { ...m.event } : null,
   };
 }
@@ -1597,14 +1598,14 @@ export const useGameStore = create<GameState>()(
       settleGax: () => {
         const s = get();
         if (!s.gaxUnlocked) return;
-        const hour = gaxHourIndex(now());
-        if (hour <= s.gaxMarket.lastSettledHour) return; // nothing due — stay lazy
+        const day = gaxDayIndex(now());
+        if (day <= s.gaxMarket.lastSettledDay) return; // nothing due — stay lazy
         const m = cloneMarket(s.gaxMarket);
-        const res = settleMarket(m, hour);
+        const res = settleMarket(m, day);
         set({ gaxMarket: m });
         if (res.eventStarted) {
           const def = GAX_EVENTS_BY_ID[res.eventStarted.defId];
-          if (def && eventPhase(res.eventStarted, hour) === "forecast") {
+          if (def && eventPhase(res.eventStarted, day) === "forecast") {
             pushToast(`📰 GAX Forecast: ${def.headline}`, "amber");
           }
         }
@@ -1613,11 +1614,11 @@ export const useGameStore = create<GameState>()(
       gaxPriceAndRecord: (stats, count) => {
         const s = get();
         if (!s.gaxUnlocked) return 1;
-        const hour = gaxHourIndex(now());
+        const day = gaxDayIndex(now());
         const m = cloneMarket(s.gaxMarket);
-        // Bulk-sale trigger: settle any elapsed hours before pricing.
-        if (hour > m.lastSettledHour) settleMarket(m, hour);
-        const mult = potionPriceMultiplier(m, hour, stats);
+        // Bulk-sale trigger: settle any elapsed market days before pricing.
+        if (day > m.lastSettledDay) settleMarket(m, day);
+        const mult = potionPriceMultiplier(m, day, stats);
         recordSale(m, stats, count);
         set({ gaxMarket: m });
         return mult;
@@ -1995,7 +1996,7 @@ export const useGameStore = create<GameState>()(
             // GAX: offline sales settle at the last posted prices (the Guild
             // Auditor charges yesterday's board); volumes accrue for the audit.
             const gaxMult = s.gaxUnlocked && isAutoSold
-              ? potionPriceMultiplier(s.gaxMarket, s.gaxMarket.lastSettledHour, potion.stats)
+              ? potionPriceMultiplier(s.gaxMarket, s.gaxMarket.lastSettledDay, potion.stats)
               : 1;
             // Same additive mastery reduction as the live loop (tree % + potion
             // mastery %, capped) so offline and online brew rates match.
@@ -2093,15 +2094,15 @@ export const useGameStore = create<GameState>()(
           let gaxMarket = s.gaxMarket;
           let gaxOfflineReport = s.gaxOfflineReport;
           if (s.gaxUnlocked) {
-            const nowHour = gaxHourIndex(now());
-            const marketHoursAway = nowHour - s.gaxMarket.lastSettledHour;
-            if (marketHoursAway > 0) {
+            const nowDay = gaxDayIndex(now());
+            const marketDaysAway = nowDay - s.gaxMarket.lastSettledDay;
+            if (marketDaysAway > 0) {
               const m = cloneMarket(s.gaxMarket);
               const hadEvent = m.event;
               for (const [attr, pts] of Object.entries(offlineGaxSold)) {
                 m.pending[attr] = (m.pending[attr] ?? 0) + pts;
               }
-              const res = settleMarket(m, nowHour);
+              const res = settleMarket(m, nowDay);
               gaxMarket = m;
 
               // The auditor only files a report for a proper absence.
@@ -2113,7 +2114,7 @@ export const useGameStore = create<GameState>()(
                   audit.push({
                     attr,
                     soldPoints: Math.round(soldPoints),
-                    multiplier: attrMultiplier(m, nowHour, attr),
+                    multiplier: attrMultiplier(m, nowDay, attr),
                     outcome: res.admitted.includes(attr) ? "replaced" : sat > 0 ? "flooded" : "starved",
                   });
                 }
@@ -2133,9 +2134,9 @@ export const useGameStore = create<GameState>()(
 
                 const activeDef = m.event ? GAX_EVENTS_BY_ID[m.event.defId] : null;
                 gaxOfflineReport = {
-                  hoursAway: marketHoursAway,
+                  daysAway: marketDaysAway,
                   activeEvent: m.event && activeDef
-                    ? { headline: activeDef.headline, day: eventDayNumber(m.event, nowHour), phase: eventPhase(m.event, nowHour) }
+                    ? { headline: activeDef.headline, day: eventDayNumber(m.event, nowDay), phase: eventPhase(m.event, nowDay) }
                     : null,
                   endedEventHeadline: res.eventEnded
                     ? GAX_EVENTS_BY_ID[res.eventEnded]?.headline ?? null
@@ -2470,7 +2471,11 @@ export const useGameStore = create<GameState>()(
           tutorial_step: p.tutorial_step ?? 0,
           has_completed_tutorial: p.has_completed_tutorial ?? isExistingSave,
           gaxUnlocked: p.gaxUnlocked ?? false,
-          gaxMarket: p.gaxMarket ?? emptyMarket(now()),
+          // Market clock moved from hours to days: old-shape snapshots
+          // (lastSettledHour) reset to a fresh baseline market.
+          gaxMarket: p.gaxMarket && typeof p.gaxMarket.lastSettledDay === "number"
+            ? p.gaxMarket
+            : emptyMarket(now()),
           gaxOfflineReport: null,
           unlocked_achievements: p.unlocked_achievements ?? [],
           // Pre-fix saves auto-granted rewards on unlock: mark those unlocked

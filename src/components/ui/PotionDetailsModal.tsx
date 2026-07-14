@@ -1,11 +1,84 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../../util/format";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
 import { masteryLevel, masteryXpProgress, potionMasteryReductionPct } from "../../data/masteryTrees";
+import { ATTR_EMOJI, attrLabel, gaxDayIndex, gaxPotionQuote } from "../../engine/gax";
 import IngredientSvg from "../art/IngredientSvg";
 import PotionIcon from "../art/PotionIcon";
+import type { Attributes } from "../../types";
+
+/**
+ * The lazy financial breakdown — computed ONLY when a potion's detail modal is
+ * actually open (never across the global potion list): base value, the active
+ * attributes' market rates, and the resulting "price right now".
+ */
+function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attributes }) {
+  const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
+  const gaxMarket = useGameStore((s) => s.gaxMarket);
+  const settleGax = useGameStore((s) => s.settleGax);
+
+  // Opening a detail view is a lazy settle trigger.
+  useEffect(() => { if (gaxUnlocked) settleGax(); }, [gaxUnlocked, settleGax]);
+
+  const quote = useMemo(
+    () => (gaxUnlocked ? gaxPotionQuote(gaxMarket, gaxDayIndex(Date.now()), stats) : null),
+    [gaxUnlocked, gaxMarket, stats]
+  );
+  if (!quote) return null;
+
+  const sellNow = Math.round(baseValue * quote.mult);
+  const pct = Math.round(quote.mult * 100);
+  // Only surface attributes actually moving the price; the rest trade at par.
+  const movers = quote.rows.filter((r) => Math.abs(r.rate - 1) >= 0.01).slice(0, 6);
+  const REASON_LABEL: Record<string, string> = {
+    event: "Market event",
+    flooded: "Saturated",
+    starved: "Local shortage",
+    dormant: "",
+  };
+
+  return (
+    <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-950/15 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wider text-amber-600">🏛 Market value</p>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          pct > 100 ? "bg-emerald-900/60 text-emerald-300" : pct < 100 ? "bg-rose-900/60 text-rose-300" : "bg-slate-800 text-slate-400"
+        }`}>
+          {pct}% of base
+        </span>
+      </div>
+      <div className="space-y-1 text-[11px]">
+        <div className="flex justify-between text-slate-400">
+          <span>Base value</span>
+          <span className="font-semibold text-slate-300">🪙 {fmt(baseValue)}</span>
+        </div>
+        {movers.map((r) => {
+          const d = Math.round((r.rate - 1) * 100);
+          return (
+            <div key={r.attr} className="flex justify-between">
+              <span className="text-slate-400">
+                {ATTR_EMOJI[r.attr]} {attrLabel(r.attr)}
+                <span className="ml-1 text-[10px] text-slate-500">({REASON_LABEL[r.reason]})</span>
+              </span>
+              <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                {d > 0 ? "+" : ""}{d}%
+              </span>
+            </div>
+          );
+        })}
+        {movers.length === 0 && (
+          <div className="text-slate-500">All of this potion's markets are trading at par.</div>
+        )}
+        <div className="mt-1.5 flex justify-between border-t border-amber-800/30 pt-1.5 font-semibold text-amber-800">
+          <span>×{quote.mult.toFixed(2)} — selling for</span>
+          <span>🪙 {fmt(sellNow)} each</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Universal potion modal. Open it either:
@@ -123,6 +196,9 @@ export default function PotionDetailsModal({
             </div>
           </div>
         )}
+
+        {/* GAX financial breakdown — lazily computed only while this modal is open */}
+        <MarketBreakdown baseValue={potion.value} stats={potion.stats} />
 
         {/* Mastery info */}
         {(() => {

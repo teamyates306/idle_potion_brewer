@@ -3,6 +3,7 @@ import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarCha
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
+import GameClock from "./components/ui/GameClock";
 import { attrLabel } from "./engine/gax";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
@@ -106,7 +107,8 @@ export default function App() {
       <Atmosphere />
 
       {/* HUD — floats above the scene so Workshop atmosphere covers the full viewport */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex justify-end px-3 py-2">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex items-center justify-between px-3 py-2">
+        <GameClock />
         <div className="pointer-events-auto flex items-center gap-2">
           <CoinCounter />
           <button

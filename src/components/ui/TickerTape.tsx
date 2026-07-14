@@ -6,7 +6,7 @@ import {
   attrMultiplier,
   eventDayNumber,
   eventPhase,
-  gaxHourIndex,
+  gaxDayIndex,
 } from "../../engine/gax";
 
 /**
@@ -31,14 +31,14 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
 
   const segments = useMemo(() => {
     if (!gaxUnlocked) return [];
-    const hour = gaxHourIndex(Date.now());
+    const today = gaxDayIndex(Date.now());
     const out: { text: string; tone: "news" | "up" | "down" | "flat" }[] = [];
 
     if (gaxMarket.event) {
       const def = GAX_EVENTS_BY_ID[gaxMarket.event.defId];
       if (def) {
-        const phase = eventPhase(gaxMarket.event, hour);
-        const day = eventDayNumber(gaxMarket.event, hour);
+        const phase = eventPhase(gaxMarket.event, today);
+        const day = eventDayNumber(gaxMarket.event, today);
         const tag =
           phase === "forecast" ? "FORECAST — markets react tomorrow" :
           phase === "peak" ? `DAY ${day} — MARKETS GRIPPED` :
@@ -56,7 +56,7 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
     }
 
     const movers = gaxMarket.board
-      .map((attr) => ({ attr, mult: attrMultiplier(gaxMarket, hour, attr) }))
+      .map((attr) => ({ attr, mult: attrMultiplier(gaxMarket, today, attr) }))
       .filter((x) => Math.abs(x.mult - 1) >= 0.02)
       .sort((a, b) => Math.abs(b.mult - 1) - Math.abs(a.mult - 1))
       .slice(0, 8);
