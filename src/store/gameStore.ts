@@ -1581,14 +1581,18 @@ export const useGameStore = create<GameState>()(
 
       // ---- The Grand Alchemical Exchange -----------------------------------
 
+      // NOTE: satiation tracking runs continuously from game start, whether or
+      // not the Exchange is chartered — only the PRICE IMPACT and the player-
+      // facing UI (ticker, dashboard, welcome-back audit) are gated behind
+      // gaxUnlocked. That way the board reflects real sales history the
+      // instant a player charters it, instead of starting from a blank slate.
+
       unlockGax: () => {
         set((s) => {
           if (s.gaxUnlocked || s.coins < GAX_UNLOCK_COST) return {};
-          return {
-            coins: s.coins - GAX_UNLOCK_COST,
-            gaxUnlocked: true,
-            gaxMarket: emptyMarket(now()),
-          };
+          // Market state (satiation/board/noise) is left exactly as it is —
+          // it's been tracking quietly since the game began.
+          return { coins: s.coins - GAX_UNLOCK_COST, gaxUnlocked: true };
         });
         if (get().gaxUnlocked) {
           pushToast("🏛 The Grand Alchemical Exchange is open! Watch the ticker — the market watches you.", "amber");
@@ -1597,13 +1601,13 @@ export const useGameStore = create<GameState>()(
 
       settleGax: () => {
         const s = get();
-        if (!s.gaxUnlocked) return;
         const day = gaxDayIndex(now());
         if (day <= s.gaxMarket.lastSettledDay) return; // nothing due — stay lazy
         const m = cloneMarket(s.gaxMarket);
         const res = settleMarket(m, day);
         set({ gaxMarket: m });
-        if (res.eventStarted) {
+        // Forecast toasts are a player-facing GAX feature — stay silent pre-unlock.
+        if (s.gaxUnlocked && res.eventStarted) {
           const def = GAX_EVENTS_BY_ID[res.eventStarted.defId];
           if (def && eventPhase(res.eventStarted, day) === "forecast") {
             pushToast(`📰 GAX Forecast: ${def.headline}`, "amber");
@@ -1613,12 +1617,14 @@ export const useGameStore = create<GameState>()(
 
       gaxPriceAndRecord: (stats, count) => {
         const s = get();
-        if (!s.gaxUnlocked) return 1;
         const day = gaxDayIndex(now());
         const m = cloneMarket(s.gaxMarket);
         // Bulk-sale trigger: settle any elapsed market days before pricing.
         if (day > m.lastSettledDay) settleMarket(m, day);
-        const mult = potionPriceMultiplier(m, day, stats);
+        // Satiation always accrues; the price only actually MOVES once the
+        // Exchange is chartered (pre-unlock sales still shape the board so
+        // it's accurate the moment the player unlocks it).
+        const mult = s.gaxUnlocked ? potionPriceMultiplier(m, day, stats) : 1;
         recordSale(m, stats, count);
         set({ gaxMarket: m });
         return mult;
@@ -1995,6 +2001,8 @@ export const useGameStore = create<GameState>()(
             const isAutoSold = (s.autoSellHashes ?? []).includes(potion.hash);
             // GAX: offline sales settle at the last posted prices (the Guild
             // Auditor charges yesterday's board); volumes accrue for the audit.
+            // Price impact stays gated behind gaxUnlocked, but the sold volume
+            // itself is tracked regardless (see gaxPriceAndRecord for why).
             const gaxMult = s.gaxUnlocked && isAutoSold
               ? potionPriceMultiplier(s.gaxMarket, s.gaxMarket.lastSettledDay, potion.stats)
               : 1;
@@ -2025,11 +2033,11 @@ export const useGameStore = create<GameState>()(
                 const valueMult = 1 + masteryFx.potion_value_pct / 100;
                 const sellMult  = 1 + masteryFx.sell_price_pct  / 100;
                 coins += Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
-                if (s.gaxUnlocked) {
-                  for (const k of Object.keys(potion.stats) as (keyof Attributes)[]) {
-                    const v = potion.stats[k];
-                    if (v > 0) offlineGaxSold[k] = (offlineGaxSold[k] ?? 0) + v * outputs;
-                  }
+                // Satiation volume accrues whether or not the Exchange is
+                // chartered yet — the board should be accurate on unlock.
+                for (const k of Object.keys(potion.stats) as (keyof Attributes)[]) {
+                  const v = potion.stats[k];
+                  if (v > 0) offlineGaxSold[k] = (offlineGaxSold[k] ?? 0) + v * outputs;
                 }
               } else {
                 potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
@@ -2091,9 +2099,11 @@ export const useGameStore = create<GameState>()(
             : machinesSim;
 
           // ---- GAX catch-up: exponential-decay settle + Guild Auditor report -
+          // Satiation always settles while away, chartered or not; only the
+          // Guild Auditor's welcome-back report is a post-unlock feature.
           let gaxMarket = s.gaxMarket;
           let gaxOfflineReport = s.gaxOfflineReport;
-          if (s.gaxUnlocked) {
+          {
             const nowDay = gaxDayIndex(now());
             const marketDaysAway = nowDay - s.gaxMarket.lastSettledDay;
             if (marketDaysAway > 0) {
@@ -2105,8 +2115,9 @@ export const useGameStore = create<GameState>()(
               const res = settleMarket(m, nowDay);
               gaxMarket = m;
 
-              // The auditor only files a report for a proper absence.
-              if (isLongOffline) {
+              // The auditor only files a report for a proper absence, and
+              // only once the player has actually chartered the Exchange.
+              if (isLongOffline && s.gaxUnlocked) {
                 const audit: GaxAuditRow[] = [];
                 for (const [attr, soldPoints] of Object.entries(offlineGaxSold)) {
                   if (soldPoints < 200) continue;
