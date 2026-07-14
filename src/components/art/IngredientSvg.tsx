@@ -11,14 +11,17 @@ interface Props {
 const KNOWN = new Set(["root", "petal", "fungus", "crystal", "essence", "bone"]);
 
 // Per-rarity flair: glow strength (px @ size 30), particle count, and the
-// legendary-only light sweep. Common gets nothing so lists stay calm and rarity
-// reads as visual hierarchy.
+// top-tier light sweep. Common gets nothing so lists stay calm and rarity
+// reads as visual hierarchy across the 8 brackets.
 const RARITY_FX: Record<Rarity, { glow: number; particles: number; shimmer: boolean }> = {
-  common:    { glow: 0, particles: 0, shimmer: false },
-  uncommon:  { glow: 2, particles: 0, shimmer: false },
-  rare:      { glow: 4, particles: 0, shimmer: false },
-  epic:      { glow: 5, particles: 2, shimmer: false },
-  legendary: { glow: 7, particles: 3, shimmer: true },
+  common:    { glow: 0,   particles: 0, shimmer: false },
+  uncommon:  { glow: 1.5, particles: 0, shimmer: false },
+  scarce:    { glow: 2.5, particles: 0, shimmer: false },
+  rare:      { glow: 4,   particles: 0, shimmer: false },
+  exotic:    { glow: 4.5, particles: 1, shimmer: false },
+  epic:      { glow: 5,   particles: 2, shimmer: false },
+  fabled:    { glow: 6,   particles: 3, shimmer: true },
+  legendary: { glow: 7,   particles: 3, shimmer: true },
 };
 
 // Centre points (fraction of size) for sparkle particles; first N are used.

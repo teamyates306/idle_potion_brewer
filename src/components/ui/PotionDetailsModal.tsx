@@ -3,7 +3,7 @@ import { fmt } from "../../util/format";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
-import { masteryLevel, masteryXpProgress } from "../../data/masteryTrees";
+import { masteryLevel, masteryXpProgress, potionMasteryReductionPct } from "../../data/masteryTrees";
 import IngredientSvg from "../art/IngredientSvg";
 import PotionIcon from "../art/PotionIcon";
 
@@ -130,7 +130,7 @@ export default function PotionDetailsModal({
           if (!entry) return null;
           const level = masteryLevel(entry.xp);
           const progress = entry ? masteryXpProgress(entry.xp) : null;
-          const speedBuff = level * 10;
+          const speedBuff = potionMasteryReductionPct(level);
           return (
             <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-950/20 p-3">
               <div className="mb-2 flex items-center justify-between">
@@ -157,7 +157,13 @@ export default function PotionDetailsModal({
               )}
               {speedBuff > 0 && (
                 <p className="mt-2 text-[11px] text-emerald-700">
-                  Brew speed bonus: <span className="font-semibold">+{speedBuff}%</span> for this potion
+                  Brew time reduced <span className="font-semibold">−{speedBuff.toFixed(1)}%</span> for this potion
+                  {level >= 10 ? "" : " (up to −15% at Lv 10)"}
+                </p>
+              )}
+              {level < 10 && speedBuff === 0 && (
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Brewing this potion builds mastery — up to −15% brew time at Lv 10, plus a ✨ Mastery Token.
                 </p>
               )}
             </div>

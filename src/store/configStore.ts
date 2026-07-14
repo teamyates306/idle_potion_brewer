@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { Attributes, Ingredient, Location } from "../types";
+import type { Attributes, Ingredient, Location, Settlement } from "../types";
+import { rarityForValue } from "../types";
 import { makeGeneratedIngredients, buildLocations } from "../data/worldgen";
+import { buildSettlements } from "../data/regions";
 
 // ---- Static registry (see Master Spec §2 configStore + §6 base formulas) ----
 // Live-tweakable at runtime via the Dev Dashboard.
@@ -419,11 +421,15 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
 };
 
 // Full registry: hand-authored base (Tiers 1-5) + procedural generation up to
-// 100 stat-budgeted ingredients (worldgen.ts).
-export const INGREDIENTS: Record<string, Ingredient> = {
-  ...BASE_INGREDIENTS,
-  ...makeGeneratedIngredients(Object.keys(BASE_INGREDIENTS)),
-};
+// 100 stat-budgeted ingredients (worldgen.ts). Every ingredient's rarity is
+// re-bracketed from its base_value into the 8-rarity scale (see rarityForValue)
+// so hand-authored rarity fields never drift from the value distribution.
+export const INGREDIENTS: Record<string, Ingredient> = Object.fromEntries(
+  Object.entries({
+    ...BASE_INGREDIENTS,
+    ...makeGeneratedIngredients(Object.keys(BASE_INGREDIENTS)),
+  }).map(([id, ing]) => [id, { ...ing, rarity: rarityForValue(ing.base_value) }])
+);
 
 // 30 locations on the travel curve: round-trip gather time runs geometrically
 // from 5s at the Hollow to 1800s (30 min) at the Riftscar, with danger, unlock
@@ -431,9 +437,13 @@ export const INGREDIENTS: Record<string, Ingredient> = {
 // ingredient pool by tier. See data/worldgen.ts.
 export const LOCATIONS: Record<string, Location> = buildLocations(INGREDIENTS);
 
+// 10 settlement trade hubs interleaved along the same distance curve.
+export const SETTLEMENTS: Record<string, Settlement> = buildSettlements(INGREDIENTS);
+
 interface ConfigState {
   ingredients: Record<string, Ingredient>;
   locations: Record<string, Location>;
+  settlements: Record<string, Settlement>;
   formulas: BaseFormulas;
   setFormula: <K extends keyof BaseFormulas>(key: K, value: BaseFormulas[K]) => void;
   setIngredientValue: (id: string, value: number) => void;
@@ -504,6 +514,7 @@ export const useConfigStore = create<ConfigState>()(
     (set) => ({
   ingredients: clone(INGREDIENTS),
   locations: clone(LOCATIONS),
+  settlements: clone(SETTLEMENTS),
   formulas: { ...DEFAULT_FORMULAS },
   setFormula: (key, value) =>
     set((s) => ({ formulas: { ...s.formulas, [key]: value } })),
@@ -550,15 +561,16 @@ export const useConfigStore = create<ConfigState>()(
     set({
       ingredients: clone(INGREDIENTS),
       locations: clone(LOCATIONS),
+      settlements: clone(SETTLEMENTS),
       formulas: { ...DEFAULT_FORMULAS },
     }),
     }),
     {
-      // Bumped to -v2 with the 100-ingredient / 30-location world + brew-time
-      // redesign so stale persisted config (old locations/formulas) is dropped.
+      // Bumped to -v4 with the 8-rarity re-bracketing + 10-tier potion prefixes
+      // so stale persisted config (old rarities/thresholds) is dropped.
       // This store holds no player progress (that lives in gameStore), so a
       // fresh rehydrate from code defaults is safe.
-      name: "ipb-config-v3",
+      name: "ipb-config-v4",
       storage: safeStorage,
       // Merge saved formulas over defaults so new formula keys added in code still appear
       merge: (persisted: unknown, current: ConfigState): ConfigState => {
@@ -570,6 +582,7 @@ export const useConfigStore = create<ConfigState>()(
           // existing entries are preserved.
           ingredients: { ...current.ingredients, ...(p.ingredients ?? {}) },
           locations: { ...current.locations, ...(p.locations ?? {}) },
+          settlements: { ...current.settlements, ...(p.settlements ?? {}) },
           formulas: { ...current.formulas, ...(p.formulas ?? {}) },
         };
       },

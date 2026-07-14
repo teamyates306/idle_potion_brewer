@@ -20,7 +20,7 @@ export interface Quest {
 export const DIFFICULTIES: QuestDifficulty[] = ["Easy", "Medium", "Challenging"];
 
 const RARITY_WEIGHT: Record<Rarity, number> = {
-  common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5,
+  common: 1, uncommon: 1.5, scarce: 2, rare: 2.5, exotic: 3, epic: 3.5, fabled: 4.25, legendary: 5,
 };
 
 const DIFFICULTY_BONUS: Record<QuestDifficulty, number> = {

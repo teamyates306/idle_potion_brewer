@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
-import { computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
+import { applyMasteryToBrewTime, computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
 import { describePotion } from "../engine/potions";
 import type { BrewingMachine, Worker } from "../types";
 
@@ -25,14 +25,24 @@ const WALK_SECS = 3;
 
 function workerTripSecondsFor(w: Worker): number {
   const cfg = useConfigStore.getState();
-  const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
-  if (!loc) return 0;
+  // Settlement trade runs use the same distance/speed math as gather trips.
+  const distance = w.assigned_settlement
+    ? cfg.settlements[w.assigned_settlement]?.distance ?? 0
+    : w.assigned_location
+    ? cfg.locations[w.assigned_location]?.distance ?? 0
+    : 0;
+  if (!distance) return 0;
   const fx = computeMasteryEffects(useGameStore.getState().masteryUnlocks);
   const isGatherer = w.specialization === "explorer" || w.specialization === "caravan" || w.specialization === "none";
   const speedMult = (1 + fx.worker_speed_pct / 100) * (isGatherer ? 1 + fx.gatherer_speed_pct / 100 : 1);
-  return gatherRoundTrip(loc.distance, w.gather_speed * speedMult);
+  return gatherRoundTrip(distance, w.gather_speed * speedMult);
 }
 
+/**
+ * The single source of truth for a machine's FINAL brew time: pre-mastery time
+ * (speed × complexity × toxicity) with the combined additive mastery reduction
+ * (tree % + potion %, hard-capped) applied. All UI must display this value.
+ */
 export function machineBrewSecondsFor(machine: BrewingMachine): number {
   const cfg = useConfigStore.getState();
   const ids = machine.recipe_slots
@@ -49,11 +59,11 @@ export function machineBrewSecondsFor(machine: BrewingMachine): number {
     const entry = state.potionMastery[potion.name];
     if (entry) potionMasteryLvl = masteryLevel(entry.xp);
   }
-  return base / ((1 + fx.brew_speed_pct / 100) * (1 + potionMasteryLvl * 0.1));
+  return applyMasteryToBrewTime(base, fx.brew_speed_pct, potionMasteryLvl);
 }
 
 function workerPhaseFor(w: Worker, now: number): WorkerLoopState {
-  if (!w.assigned_location || !w.trip_started_at) {
+  if ((!w.assigned_location && !w.assigned_settlement) || !w.trip_started_at) {
     return { workerProgress: 0, workerPhase: "idle" };
   }
   const total = workerTripSecondsFor(w);
@@ -134,19 +144,29 @@ export function useGameLoop(): LoopProgress {
 
       // ---- workers ----
       const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {
-        if (!w.assigned_location || !w.trip_started_at) {
+        if ((!w.assigned_location && !w.assigned_settlement) || !w.trip_started_at) {
           return { workerProgress: 0, workerPhase: "idle" as const };
         }
         const total = workerTripSecondsFor(w);
         const elapsed = (now - w.trip_started_at) / 1000;
+        const isTrade = !!w.assigned_settlement;
 
         if (total > 0 && elapsed >= total) {
-          g.completeTrip(idx);
+          if (isTrade) g.completeTradeTrip(idx);
+          else g.completeTrip(idx);
           return { workerProgress: 0, workerPhase: "idle" as const };
         } else if (total > 0) {
           const walkSecs = Math.min(WALK_SECS, total * 0.4);
-          const storePhase = elapsed / total < 0.5 ? "outbound" : "inbound";
-          if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
+          const pastHalf = elapsed / total >= 0.5;
+          // Trades: the inputs are formally handed over exactly at the half-way
+          // point (arrival at the settlement); markTradeConsumed also flips the
+          // trip phase to inbound.
+          if (isTrade) {
+            if (pastHalf && w.trade && !w.trade.consumed) g.markTradeConsumed(idx);
+          } else {
+            const storePhase = pastHalf ? "inbound" : "outbound";
+            if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
+          }
 
           if (elapsed < walkSecs) {
             return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" as const };

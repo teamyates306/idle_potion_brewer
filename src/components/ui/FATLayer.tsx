@@ -10,8 +10,9 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
     return () => clearTimeout(t);
   }, []);
 
+  // Silkscreen renders chunky — sizes run slightly smaller than the old serif.
   const fontSize =
-    item.size === "sm" ? 11 : item.size === "lg" ? (item.glow ? 26 : 20) : 15;
+    item.size === "sm" ? 9 : item.size === "lg" ? (item.glow ? 22 : 17) : 13;
 
   const animDuration = item.glow
     ? `${totalDuration}ms`
@@ -25,8 +26,8 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
           left: item.x,
           top: item.y,
           fontSize,
-          fontWeight: 800,
-          fontFamily: "'Georgia', 'Times New Roman', serif",
+          fontWeight: 700,
+          fontFamily: "'Silkscreen', monospace",
           color: item.color,
           pointerEvents: "none",
           userSelect: "none",
@@ -38,6 +39,9 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
             ? `0 0 20px ${item.color}, 0 0 40px ${item.color}, 0 0 6px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.95)`
             : "0 1px 8px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.7)",
           zIndex: 9999,
+          // Keep each floating text on its own compositor layer so heavy
+          // late-game bursts don't trigger layout/paint on the page.
+          willChange: "transform, opacity",
           "--fat-arc": `${item.arcX ?? 0}px`,
           animationName: item.glow ? "fat-float-long" : "fat-float",
           animationDuration: animDuration,
@@ -59,7 +63,10 @@ export default function FATLayer() {
   useEffect(() => {
     return subscribeFAT((item) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
-      setItems((prev) => [...prev, item]);
+      // Hard cap on concurrent floating texts — when a lot is happening late
+      // game, unbounded DOM nodes (each with its own animation + text shadow)
+      // are the main source of jitter. Oldest entries are dropped first.
+      setItems((prev) => (prev.length >= 48 ? [...prev.slice(prev.length - 47), item] : [...prev, item]));
     });
   }, []);
 

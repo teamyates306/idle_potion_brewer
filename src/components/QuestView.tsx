@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ScrollText, Check, Hourglass, FlaskConical } from "lucide-react";
+import { ScrollText, Check, Hourglass, FlaskConical, RotateCcw } from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
@@ -75,6 +75,8 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   const discovered = useGameStore((s) => s.discovered);
   const discoveryBounty = useGameStore((s) => s.discoveryBounty);
   const claimDiscoveryBounty = useGameStore((s) => s.claimDiscoveryBounty);
+  const rerollDiscoveryBounty = useGameStore((s) => s.rerollDiscoveryBounty);
+  const coins = useGameStore((s) => s.coins);
   const [detailName, setDetailName] = useState<string | null>(null);
 
   // 1s tick so countdowns update live and elapsed cooldowns regenerate.
@@ -132,8 +134,24 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
               <div className="rounded-xl border border-purple-700/40 bg-purple-950/40 p-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs font-semibold text-purple-900 italic">"{discoveryBounty.targetName}"</span>
-                  <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">
-                    🪙 {fmt(discoveryBounty.reward)}
+                  <span className="flex items-center gap-2">
+                    {!discoveryBounty.readyToClaim && (
+                      <button
+                        onClick={rerollDiscoveryBounty}
+                        disabled={coins < Math.floor(discoveryBounty.reward / 2)}
+                        className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition active:scale-95 ${
+                          coins >= Math.floor(discoveryBounty.reward / 2)
+                            ? "border-slate-600 bg-slate-800/70 text-slate-300 hover:border-purple-500/60 hover:text-purple-800"
+                            : "cursor-not-allowed border-slate-800 bg-slate-900/50 text-slate-600"
+                        }`}
+                        title="Post a different bounty (costs half this bounty's reward)"
+                      >
+                        <RotateCcw size={11} /> 🪙 {fmt(Math.floor(discoveryBounty.reward / 2))}
+                      </button>
+                    )}
+                    <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">
+                      🪙 {fmt(discoveryBounty.reward)}
+                    </span>
                   </span>
                 </div>
                 <p className="mb-3 text-[11px] text-slate-400">
@@ -198,9 +216,13 @@ function QuestCard({
 }) {
   const potionInv = useGameStore((s) => s.potionInv);
   const completeQuest = useGameStore((s) => s.completeQuest);
+  const rerollQuest = useGameStore((s) => s.rerollQuest);
+  const coins = useGameStore((s) => s.coins);
   const cfg = useConfigStore();
   const { have, complete } = questProgress(quest, potionInv, cfg.ingredients, cfg.formulas);
   const style = DIFF_STYLE[quest.difficulty];
+  const rerollCost = Math.floor(quest.reward / 2);
+  const canReroll = coins >= rerollCost;
 
   const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -212,7 +234,21 @@ function QuestCard({
     <div className={`rounded-xl border p-3 ${style.bg}`}>
       <div className="mb-2 flex items-center justify-between">
         <span className={`text-xs font-bold uppercase tracking-wider ${style.text}`}>{quest.difficulty}</span>
-        <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">🪙 {fmt(quest.reward)}</span>
+        <span className="flex items-center gap-2">
+          <button
+            onClick={() => rerollQuest(quest.id)}
+            disabled={!canReroll}
+            className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition active:scale-95 ${
+              canReroll
+                ? "border-slate-600 bg-slate-800/70 text-slate-300 hover:border-amber-500/60 hover:text-amber-700"
+                : "cursor-not-allowed border-slate-800 bg-slate-900/50 text-slate-600"
+            }`}
+            title={`Swap for a new ${quest.difficulty.toLowerCase()} commission (costs half its reward)`}
+          >
+            <RotateCcw size={11} /> 🪙 {fmt(rerollCost)}
+          </button>
+          <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">🪙 {fmt(quest.reward)}</span>
+        </span>
       </div>
 
       <div className="space-y-2">

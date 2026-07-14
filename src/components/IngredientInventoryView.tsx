@@ -8,7 +8,7 @@ import IngredientModal from "./IngredientModal";
 import { RARITY_COLOR } from "../util/format";
 
 const RARITY_ORDER: Record<string, number> = {
-  common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4,
+  common: 0, uncommon: 1, scarce: 2, rare: 3, exotic: 4, epic: 5, fabled: 6, legendary: 7,
 };
 
 // Group ingredients by their type, in a stable display order.

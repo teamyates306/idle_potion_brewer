@@ -58,9 +58,17 @@ export interface PotionDescriptor {
   volatility: number;
 }
 
-export const VALUE_PREFIXES = ["Lesser", "Common", "Greater", "Potent", "Grand", "Mythic"];
-// Thresholds: Lesser<30, Common≥30, Greater≥80, Potent≥180, Grand≥350, Mythic≥700
-export const VALUE_THRESHOLDS = [30, 80, 180, 350, 700];
+// 10 value tiers. Thresholds were derived from a full enumeration/sampling of
+// the 122M-recipe space (scripts/tierAnalysis.ts): Mythic (≥45k) demands massed
+// epic-or-better stacks (a 0-fabled/legendary recipe tops out ~78k only with
+// five near-perfect epics); Transcendent (≥650k) clears the best possible
+// 3-fabled/legendary recipe (~636k), so it hard-requires 4-5 fabled/legendary
+// ingredients — the true endgame chase.
+export const VALUE_PREFIXES = [
+  "Diluted", "Lesser", "Common", "Refined", "Greater",
+  "Superior", "Potent", "Exalted", "Mythic", "Transcendent",
+];
+export const VALUE_THRESHOLDS = [15, 40, 100, 250, 700, 2000, 6000, 45000, 650000];
 
 export const CATEGORY_TYPE: Record<string, string> = {
   root: "Tonic",
@@ -70,15 +78,6 @@ export const CATEGORY_TYPE: Record<string, string> = {
   essence: "Draught",
   bone: "Decoction",
 };
-
-function strHash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return Math.abs(h);
-}
 
 /** Returns [dominantKey, secondaryKey | null] for the two largest absolute attr values. */
 function dominantAttrs(stats: Attributes): [keyof Attributes, keyof Attributes | null] {
@@ -141,9 +140,9 @@ export function describePotion(
   }, 1);
   const value = Math.max(1, Math.round(baseValue * attrBonus));
 
-  const h = strHash(hash);
+  // Prefix is purely value-driven so tier names always reflect actual worth.
   const prefixIdx = VALUE_THRESHOLDS.filter((t) => value >= t).length;
-  const prefix = VALUE_PREFIXES[Math.max(prefixIdx, h % 2)];
+  const prefix = VALUE_PREFIXES[prefixIdx];
 
   // Dominant category by summed base_value
   const categoryTotals: Record<string, number> = {};

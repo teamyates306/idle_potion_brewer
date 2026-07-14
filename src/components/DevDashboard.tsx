@@ -9,10 +9,11 @@ import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from
 
 type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations";
 
-const RARITIES: Rarity[] = ["common", "uncommon", "rare", "epic", "legendary"];
+const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone"];
 const RARITY_COLOR: Record<Rarity, string> = {
-  common: "#94a3b8", uncommon: "#4ade80", rare: "#60a5fa", epic: "#c084fc", legendary: "#fbbf24",
+  common: "#94a3b8", uncommon: "#4ade80", scarce: "#2dd4bf", rare: "#60a5fa",
+  exotic: "#fb923c", epic: "#c084fc", fabled: "#f472b6", legendary: "#fbbf24",
 };
 
 const ATTR_GROUPS: { label: string; keys: (keyof import("../types").Attributes)[] }[] = [

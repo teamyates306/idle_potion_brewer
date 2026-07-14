@@ -126,7 +126,7 @@ function makeBurstDots(count: number): BrewBurstDot[] {
 // ── Trough pile ──────────────────────────────────────────────────────────────
 
 const RARITY_RANK: Record<Rarity, number> = {
-  legendary: 5, epic: 4, rare: 3, uncommon: 2, common: 1,
+  legendary: 8, fabled: 7, epic: 6, exotic: 5, rare: 4, scarce: 3, uncommon: 2, common: 1,
 };
 // Each layer: x-range narrows as you go up, so higher items always have a base
 // beneath them and nothing floats. Capacities sum to MAX_TROUGH_PILE (20).
@@ -390,8 +390,13 @@ const MachineColumn = React.memo(function MachineColumn({
   useEffect(() => {
     const ids: number[] = [];
     machineWorkers.forEach(({ w }, order) => {
-      const period = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
-      const power  = autoClickPower(w.click_power_level);
+      const clickPeriod = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
+      // Fast clickers late-game would spawn several floating texts per second
+      // per worker — a major jitter source. Aggregate: emit at most one text
+      // per 700ms per worker, showing the summed reduction for that window.
+      const visualPeriod = Math.max(700, clickPeriod);
+      const clicksPerVisual = visualPeriod / clickPeriod;
+      const power  = autoClickPower(w.click_power_level) * clicksPerVisual;
       const id = window.setInterval(() => {
         const g = useGameStore.getState();
         const m = g.machines.find((m) => m.id === machine.id);
@@ -401,7 +406,7 @@ const MachineColumn = React.memo(function MachineColumn({
         const rect = cauldronRef.current.getBoundingClientRect();
         const { x, y } = machineWorkerScreenPos(order, rect);
         spawnFAT({ x, y, text: `-${power.toFixed(2)}s`, color: "#86efac", size: "sm", arcX: (Math.random() - 0.5) * 22 });
-      }, period);
+      }, visualPeriod);
       ids.push(id);
     });
     return () => ids.forEach((id) => clearInterval(id));
@@ -784,6 +789,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const [flyingParticles, setFlyingParticles] = useState<FlyingParticle[]>([]);
 
   const handleBrewStart = useCallback((cauldronRect: DOMRect, categories: string[]) => {
+    // Battery-saver / low-quality mode skips decorative fly-ins entirely.
+    if (useGameStore.getState().graphics.throttle_animations) return;
     const trough = troughRef.current;
     if (!trough || categories.length === 0) return;
     const troughRect = trough.getBoundingClientRect();
@@ -806,7 +813,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         duration: 700,
       };
     });
-    setFlyingParticles((prev) => [...prev, ...particles]);
+    // Cap concurrent flying particles — when all brewers churn at once the
+    // unbounded DOM/animation churn was a visible jitter source late game.
+    setFlyingParticles((prev) => (prev.length > 40 ? prev : [...prev, ...particles]));
     const maxEnd = Math.max(...particles.map((p) => p.delay + p.duration)) + 200;
     const ids = new Set(particles.map((p) => p.id));
     setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => !ids.has(p.id))), maxEnd);
@@ -815,8 +824,11 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const [brewBursts, setBrewBursts] = useState<BrewBurst[]>([]);
   const burstIdRef = useRef(0);
   const handleBrewBurst = useCallback((cx: number, cy: number, color: string) => {
+    if (useGameStore.getState().graphics.throttle_animations) return;
     const id = burstIdRef.current++;
-    setBrewBursts(prev => [...prev, { id, cx, cy, color, dots: makeBurstDots(22) }]);
+    // Cap concurrent bursts (22 dots each) — five brewers finishing together
+    // used to stack 100+ animated dots.
+    setBrewBursts(prev => (prev.length >= 4 ? prev : [...prev, { id, cx, cy, color, dots: makeBurstDots(22) }]));
     setTimeout(() => setBrewBursts(prev => prev.filter(b => b.id !== id)), 950);
   }, []);
 
@@ -837,7 +849,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       color: potionColor,
       delay: 0, duration: POTION_FLY_MS,
     };
-    setFlyingParticles((prev) => [...prev, particle]);
+    setFlyingParticles((prev) => (prev.length > 40 ? prev : [...prev, particle]));
     setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => p.id !== particle.id)), POTION_FLY_MS + 260);
   }, []);
 
@@ -1244,6 +1256,7 @@ function FlyingParticleEl({ p }: { p: FlyingParticle }) {
         left: p.x,
         top: p.y,
         transform: "translate(-50%, -50%)",
+        willChange: "transform, opacity",
         "--fly-dx": `${p.dx}px`,
         "--fly-dy": `${p.dy}px`,
         "--fly-arc-x": `${p.arcX}px`,

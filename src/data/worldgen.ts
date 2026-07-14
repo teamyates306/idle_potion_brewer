@@ -208,7 +208,7 @@ export function buildLocations(allIngredients: Record<string, Ingredient>): Reco
   const weightFor = (id: string) => {
     const ing = allIngredients[id];
     const base = Math.max(5, Math.round(50 - Math.sqrt(ing.base_value) * 3)); // cheaper = more common
-    const isRare = ing.rarity === "epic" || ing.rarity === "legendary";
+    const isRare = ing.rarity === "epic" || ing.rarity === "fabled" || ing.rarity === "legendary";
     return isRare ? Math.max(1, Math.round(base * 0.5)) : base;
   };
 

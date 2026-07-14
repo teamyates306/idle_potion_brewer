@@ -15,9 +15,12 @@ export function fmtDuration(seconds: number): string {
 }
 
 export const RARITY_COLOR: Record<string, string> = {
-  common: "#94a3b8",
-  uncommon: "#4ade80",
-  rare: "#38bdf8",
-  epic: "#c084fc",
-  legendary: "#fbbf24",
+  common: "#94a3b8",     // slate grey
+  uncommon: "#4ade80",   // green
+  scarce: "#2dd4bf",     // teal
+  rare: "#38bdf8",       // sky blue
+  exotic: "#fb923c",     // amber-orange
+  epic: "#c084fc",       // purple
+  fabled: "#f472b6",     // rose-pink
+  legendary: "#fbbf24",  // gold
 };

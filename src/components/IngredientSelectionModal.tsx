@@ -6,7 +6,7 @@ import { describePotion } from "../engine/potions";
 import IngredientSvg from "./art/IngredientSvg";
 import { RARITY_COLOR, fmt } from "../util/format";
 
-const RARITY_ORDER: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+const RARITY_ORDER: Record<string, number> = { common: 0, uncommon: 1, scarce: 2, rare: 3, exotic: 4, epic: 5, fabled: 6, legendary: 7 };
 const CATEGORY_ORDER = ["root", "petal", "fungus", "crystal", "essence", "bone"];
 const CATEGORY_LABEL: Record<string, string> = {
   root: "Roots", petal: "Petals", fungus: "Fungi", crystal: "Crystals", essence: "Essences", bone: "Bones",

@@ -20,8 +20,11 @@ export function gatherYield(worker: Worker): number {
 export const RARITY_WEIGHT: Record<string, number> = {
   common: 1,
   uncommon: 2,
+  scarce: 3,
   rare: 5,
+  exotic: 8,
   epic: 12,
+  fabled: 20,
   legendary: 30,
 };
 

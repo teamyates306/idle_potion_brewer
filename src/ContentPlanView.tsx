@@ -67,8 +67,8 @@ const TRIGGER_LABEL: Record<string, string> = {
 };
 
 const PREFIX_BANDS = [
-  "potion value < 30", "value 30–79", "value 80–179",
-  "value 180–349", "value 350–699", "value ≥ 700",
+  "potion value < 15", "value 15–39", "value 40–99", "value 100–249", "value 250–699",
+  "value 700–1,999", "value 2,000–5,999", "value 6,000–44,999", "value 45,000–649,999", "value ≥ 650,000",
 ];
 
 const DANGER_COLORS = ["#4ade80", "#a3e635", "#facc15", "#fb923c", "#f87171", "#e879f9", "#c084fc"];

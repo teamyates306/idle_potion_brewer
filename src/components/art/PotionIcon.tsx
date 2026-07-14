@@ -1,4 +1,4 @@
-import { parsePotionVisuals, getPotionTypeData } from "../../util/potionVisuals";
+import { parsePotionVisuals, getPotionTypeData, TIER_LIQUID_STYLE } from "../../util/potionVisuals";
 
 interface Props {
   /** Full potion name, e.g. "Greater Elixir of Flameburst" */
@@ -7,14 +7,18 @@ interface Props {
   size?: number;
 }
 
-// Glow / particle strength per prefix tier
+// Glow / particle strength per prefix tier (0 Diluted … 9 Transcendent)
 const TIER_FX = [
-  { glow: 0, particles: 0, shimmer: false },  // 0 Lesser
-  { glow: 2, particles: 0, shimmer: false },  // 1 Common
-  { glow: 4, particles: 0, shimmer: false },  // 2 Greater
-  { glow: 5, particles: 2, shimmer: false },  // 3 Potent
-  { glow: 6, particles: 3, shimmer: false },  // 4 Grand
-  { glow: 7, particles: 3, shimmer: true  },  // 5 Mythic
+  { glow: 0,   particles: 0, shimmer: false },  // 0 Diluted — flat, murky
+  { glow: 0,   particles: 0, shimmer: false },  // 1 Lesser
+  { glow: 1.5, particles: 0, shimmer: false },  // 2 Common
+  { glow: 2.5, particles: 0, shimmer: false },  // 3 Refined
+  { glow: 4,   particles: 0, shimmer: false },  // 4 Greater
+  { glow: 4.5, particles: 1, shimmer: false },  // 5 Superior
+  { glow: 5,   particles: 2, shimmer: false },  // 6 Potent
+  { glow: 6,   particles: 3, shimmer: false },  // 7 Exalted
+  { glow: 7,   particles: 3, shimmer: true  },  // 8 Mythic
+  { glow: 8,   particles: 3, shimmer: true  },  // 9 Transcendent (+ prismatic liquid)
 ];
 
 const PARTICLE_SPOTS = [
@@ -33,18 +37,29 @@ export default function PotionIcon({ name, size = 20 }: Props) {
   const { liquidColor, prefixTier, potionType } = parsePotionVisuals(name);
   const { sprite, liquidPoints } = getPotionTypeData(potionType);
   const fx = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)];
+  const liq = TIER_LIQUID_STYLE[Math.min(prefixTier, TIER_LIQUID_STYLE.length - 1)];
 
   const g = fx.glow > 0 ? Math.max(1, +(fx.glow * (size / 30)).toFixed(1)) : 0;
-  const filter = g
-    ? `drop-shadow(0 0 ${g}px ${liquidColor})${fx.glow >= 5 ? ` drop-shadow(0 0 ${+(g * 1.8).toFixed(1)}px ${liquidColor})` : ""}`
-    : undefined;
+  const filterParts: string[] = [];
+  if (liq.saturate !== 1 || liq.brightness !== 1) {
+    filterParts.push(`saturate(${liq.saturate}) brightness(${liq.brightness})`);
+  }
+  if (g) {
+    filterParts.push(`drop-shadow(0 0 ${g}px ${liquidColor})`);
+    if (fx.glow >= 5) filterParts.push(`drop-shadow(0 0 ${+(g * 1.8).toFixed(1)}px ${liquidColor})`);
+  }
+  const filter = filterParts.length ? filterParts.join(" ") : undefined;
 
   const pSize = Math.max(2, size * 0.13);
 
   return (
     <span
       className="ing-sprite"
-      style={{ width: size, height: size, position: "relative", display: "inline-block" }}
+      style={{
+        width: size, height: size, position: "relative", display: "inline-block",
+        // Transcendent: slow prismatic hue cycle over the whole icon
+        ...(liq.prismatic ? { animation: "potion-prismatic 4s linear infinite" } : {}),
+      }}
     >
       <svg
         width={size}

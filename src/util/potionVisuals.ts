@@ -75,19 +75,43 @@ export function getPotionTypeData(potionType: string) {
   return POTION_TYPE_DATA[potionType] ?? POTION_TYPE_DATA.Tonic;
 }
 
-// Prefix → visual effect tier (0 = none, 5 = maximum)
+// Prefix → visual effect tier (0 = dull/desaturated, 9 = maximum spectacle).
+// "Grand" kept as a legacy alias (old saves may hold quest text with old names).
 export const PREFIX_TIERS: Record<string, number> = {
-  Lesser:  0,
-  Common:  1,
-  Greater: 2,
-  Potent:  3,
-  Grand:   4,
-  Mythic:  5,
+  Diluted:      0,
+  Lesser:       1,
+  Common:       2,
+  Refined:      3,
+  Greater:      4,
+  Superior:     5,
+  Potent:       6,
+  Exalted:      7,
+  Grand:        7, // legacy
+  Mythic:       8,
+  Transcendent: 9,
 };
+
+/**
+ * Per-tier liquid treatment. Diluted potions read as murky and washed-out;
+ * each step up gets cleaner and brighter; Mythic/Transcendent glow with an
+ * otherworldly sheen (Transcendent adds a prismatic hue-shift animation).
+ */
+export const TIER_LIQUID_STYLE: { saturate: number; brightness: number; prismatic: boolean }[] = [
+  { saturate: 0.25, brightness: 0.80, prismatic: false }, // 0 Diluted — dull, muddy
+  { saturate: 0.55, brightness: 0.90, prismatic: false }, // 1 Lesser
+  { saturate: 0.80, brightness: 0.95, prismatic: false }, // 2 Common
+  { saturate: 1.00, brightness: 1.00, prismatic: false }, // 3 Refined — true colour
+  { saturate: 1.10, brightness: 1.02, prismatic: false }, // 4 Greater
+  { saturate: 1.20, brightness: 1.05, prismatic: false }, // 5 Superior
+  { saturate: 1.30, brightness: 1.08, prismatic: false }, // 6 Potent
+  { saturate: 1.40, brightness: 1.12, prismatic: false }, // 7 Exalted
+  { saturate: 1.55, brightness: 1.18, prismatic: false }, // 8 Mythic
+  { saturate: 1.70, brightness: 1.25, prismatic: true  }, // 9 Transcendent — prismatic
+];
 
 export interface PotionVisuals {
   liquidColor: string;
-  prefixTier:  number; // 0-5
+  prefixTier:  number; // 0-9
   potionType:  string; // e.g. "Tonic", "Elixir"
 }
 

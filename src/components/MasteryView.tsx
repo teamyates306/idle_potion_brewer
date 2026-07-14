@@ -10,7 +10,7 @@ import {
 } from "../data/masteryTrees";
 
 const EFFECT_LABELS: Record<string, string> = {
-  brew_speed_pct: "Brew speed",
+  brew_speed_pct: "Brew time",
   worker_speed_pct: "Worker speed",
   gatherer_speed_pct: "Gatherer speed",
   caravan_size_pct: "Retrieval size",
@@ -19,6 +19,12 @@ const EFFECT_LABELS: Record<string, string> = {
   potion_value_pct: "Potion value",
   mastery_xp_pct: "Mastery XP",
 };
+
+/** Brew-time nodes are reductions; everything else is a bonus. */
+function formatEffect(type: string, value: number): string {
+  const label = EFFECT_LABELS[type] ?? type;
+  return type === "brew_speed_pct" ? `${label} −${value}%` : `${label} +${value}%`;
+}
 
 type PendingNode = { node: MasteryNodeDef; tree: MasteryTreeDef };
 
@@ -174,7 +180,7 @@ function NodeConfirmModal({
             className="mb-3 rounded-lg px-3 py-2 text-sm font-semibold"
             style={{ background: `${tree.accentColor}20`, color: tree.accentColor }}
           >
-            {EFFECT_LABELS[node.effect.type] ?? node.effect.type} +{node.effect.value}%
+            {formatEffect(node.effect.type, node.effect.value)}
           </div>
 
           {/* Cost */}
@@ -262,7 +268,7 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
               <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                 {activeEffects.map(([type, val]) => (
                   <span key={type} className="text-[10px] text-emerald-400">
-                    {EFFECT_LABELS[type] ?? type} +{val}%
+                    {formatEffect(type, val)}
                   </span>
                 ))}
               </div>
@@ -270,9 +276,18 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
+        {/* What mastery is — always visible so the screen explains itself */}
+        <div className="mb-3 rounded-lg border border-slate-700/60 bg-slate-800/40 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
+          <span className="font-semibold text-amber-800">How Mastery works:</span>{" "}
+          Every brew builds that potion's <span className="text-purple-800 font-medium">Potion Mastery</span> —
+          each level shaves up to <span className="font-medium">15% off its brew time</span> at Lv 10, which also awards
+          a <span className="text-amber-700 font-medium">✨ Mastery Token</span>. Spend tokens below on permanent
+          <span className="font-medium"> Mastery Tree</span> bonuses. Tree and potion bonuses add together
+          (capped at −80% brew time).
+        </div>
         {masteryTokens === 0 && masteryUnlocks.length === 0 && (
           <p className="mb-3 rounded-lg bg-slate-800/60 px-3 py-2 text-center text-xs text-slate-500">
-            Master a potion (brew it 275 times) to earn your first token.
+            Reach mastery level 10 on any potion (roughly 12 hours of brewing it) to earn your first token.
           </p>
         )}
 

@@ -27,9 +27,30 @@ export interface MasteryTreeDef {
   nodes: MasteryNodeDef[];
 }
 
-// Cumulative XP required to reach each level (1–10)
-export const MASTERY_XP_THRESHOLDS = [50, 150, 300, 500, 750, 1050, 1400, 1800, 2250, 2750];
-export const MASTERY_BASE_XP_PER_BREW = 10;
+// Cumulative XP required to reach each level (1–10).
+// Mastery XP = seconds of (pre-mastery) brew time per completed brew cycle, so
+// fast cheap potions no longer race to mastery by sheer count. Level 5 lands
+// after ~1h of dedicated brewing; level 10 (the token) takes ~12.5h of brewing
+// that specific potion — a long-haul goal rather than an AFK-hour freebie.
+export const MASTERY_XP_THRESHOLDS = [120, 360, 900, 1800, 3600, 7200, 12600, 20700, 31500, 45000];
+
+// ── Brew-time mastery math (additive, hard-capped) ───────────────────────────
+// Mastery Tree % and Potion Mastery % stack ADDITIVELY as a flat reduction off
+// the pre-mastery brew time:  final = pre × (1 − min(tree% + potion%, CAP)).
+export const MASTERY_REDUCTION_CAP = 0.80;
+/** Potion mastery reduction: level 1 = 0%, scaling linearly to 15% at level 10. */
+export function potionMasteryReductionPct(level: number): number {
+  if (level <= 1) return 0;
+  return (Math.min(level, 10) - 1) * (15 / 9);
+}
+/** Combined (tree + potion) mastery reduction as a 0..MASTERY_REDUCTION_CAP fraction. */
+export function combinedMasteryReduction(treePct: number, potionLevel: number): number {
+  return Math.min((treePct + potionMasteryReductionPct(potionLevel)) / 100, MASTERY_REDUCTION_CAP);
+}
+/** final brew time = pre-mastery time × (1 − combined reduction) */
+export function applyMasteryToBrewTime(preMasterySecs: number, treePct: number, potionLevel: number): number {
+  return preMasterySecs * (1 - combinedMasteryReduction(treePct, potionLevel));
+}
 
 export function masteryLevel(xp: number): number {
   let level = 0;
@@ -61,16 +82,16 @@ export const MASTERY_TREES: MasteryTreeDef[] = [
     description: "Increase the speed and flow of the brewing process",
     accentColor: "#f59e0b",
     nodes: [
-      nd("alch_1",  "Apprentice's Rhythm",  "Brew speed +3%",  "🕯️", null,     "brew_speed_pct", 3),
-      nd("alch_2",  "Measured Pour",         "Brew speed +4%",  "⚖️", "alch_1", "brew_speed_pct", 4),
-      nd("alch_3",  "Efficient Still",       "Brew speed +5%",  "🔥", "alch_2", "brew_speed_pct", 5),
-      nd("alch_4",  "Quickened Boil",        "Brew speed +6%",  "💧", "alch_3", "brew_speed_pct", 6),
-      nd("alch_5",  "Master's Tempo",        "Brew speed +7%",  "⏱️", "alch_4", "brew_speed_pct", 7),
-      nd("alch_6",  "Volatile Catalyst",     "Brew speed +8%",  "⚡", "alch_5", "brew_speed_pct", 8),
-      nd("alch_7",  "Grand Alchemist",       "Brew speed +9%",  "🧪", "alch_6", "brew_speed_pct", 9),
-      nd("alch_8",  "Eternal Flame",         "Brew speed +10%", "🌡️", "alch_7", "brew_speed_pct", 10),
-      nd("alch_9",  "Time Distortion",       "Brew speed +12%", "🌀", "alch_8", "brew_speed_pct", 12),
-      nd("alch_10", "Alchemical Mastery",    "Brew speed +16%", "✨", "alch_9", "brew_speed_pct", 16),
+      nd("alch_1",  "Apprentice's Rhythm",  "Brew time -3%",  "🕯️", null,     "brew_speed_pct", 3),
+      nd("alch_2",  "Measured Pour",         "Brew time -4%",  "⚖️", "alch_1", "brew_speed_pct", 4),
+      nd("alch_3",  "Efficient Still",       "Brew time -5%",  "🔥", "alch_2", "brew_speed_pct", 5),
+      nd("alch_4",  "Quickened Boil",        "Brew time -6%",  "💧", "alch_3", "brew_speed_pct", 6),
+      nd("alch_5",  "Master's Tempo",        "Brew time -7%",  "⏱️", "alch_4", "brew_speed_pct", 7),
+      nd("alch_6",  "Volatile Catalyst",     "Brew time -8%",  "⚡", "alch_5", "brew_speed_pct", 8),
+      nd("alch_7",  "Grand Alchemist",       "Brew time -9%",  "🧪", "alch_6", "brew_speed_pct", 9),
+      nd("alch_8",  "Eternal Flame",         "Brew time -10%", "🌡️", "alch_7", "brew_speed_pct", 10),
+      nd("alch_9",  "Time Distortion",       "Brew time -12%", "🌀", "alch_8", "brew_speed_pct", 12),
+      nd("alch_10", "Alchemical Mastery",    "Brew time -16%", "✨", "alch_9", "brew_speed_pct", 16),
     ],
   },
   {

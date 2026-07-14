@@ -38,10 +38,10 @@ const ALL_POSITIONS: [number, number][] = (() => {
 
 const MAX_SHOWN = ALL_POSITIONS.length;
 
-// Glow strength per prefix tier (px blur radius)
-const TIER_GLOW = [0, 1.5, 3, 4, 5.5, 7];
-// Particle count per tier (tier 0-2 = none, 3 = 2, 4-5 = 3)
-const TIER_PARTICLES = [0, 0, 0, 2, 3, 3];
+// Glow strength per prefix tier (px blur radius) — 0 Diluted … 9 Transcendent
+const TIER_GLOW = [0, 0, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5];
+// Particle count per tier
+const TIER_PARTICLES = [0, 0, 0, 0, 0, 1, 2, 3, 3, 3];
 // Particle spawn spots — start above the bottle neck (y < -13) so they rise clear of the sprite
 const PARTICLE_SPOTS = [
   { dx:  0, dy: -14, delay: 0   },

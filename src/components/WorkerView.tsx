@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
-  CheckSquare, Square, X, Minus, Plus,
+  CheckSquare, Square, X, Store,
 } from "lucide-react";
+import SettlementModal, { SettlementPickerModal } from "./SettlementModal";
+import type { Settlement } from "../types";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, planTokenSpend } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { HIRE_COST_BASE } from "../engine/economyConstants";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
@@ -38,67 +40,6 @@ function getWorkerGroup(w: Worker): WorkerGroup {
   return "standard";
 }
 
-const UPGRADES_FOR_GROUP: Record<WorkerGroup, { key: "speed" | "size" | "clkspd" | "clkpow"; label: string }[]> = {
-  unclassed: [
-    { key: "speed",  label: "Gather Speed" },
-    { key: "size",   label: "Carry Size" },
-    { key: "clkspd", label: "Click Speed" },
-    { key: "clkpow", label: "Click Power" },
-  ],
-  gatherer: [
-    { key: "speed", label: "Gather Speed" },
-    { key: "size",  label: "Carry Size" },
-  ],
-  brewer: [
-    { key: "clkspd", label: "Click Speed" },
-    { key: "clkpow", label: "Click Power" },
-  ],
-  standard: [
-    { key: "speed",  label: "Gather Speed" },
-    { key: "size",   label: "Carry Size" },
-    { key: "clkspd", label: "Click Speed" },
-    { key: "clkpow", label: "Click Power" },
-  ],
-};
-
-/** For unclassed workers, cap tokens at the pre-class limit to prevent stat-stacking before specialization. */
-function preClassTokenCap(w: Worker): number {
-  // tokens earned before level 10 threshold = max(0, 10 - tokensAlreadySpent)
-  // tokensSpent = (level - 1) - upgrade_tokens (tokens earned minus unspent)
-  const tokensSpent = Math.max(0, (w.level - 1) - (w.upgrade_tokens ?? 0));
-  return Math.max(0, 10 - tokensSpent);
-}
-
-function maxBulkCount(workers: Worker[], selectedIndices: Set<number>, group: WorkerGroup): number {
-  const selected = [...selectedIndices].map((i) => workers[i]).filter(Boolean);
-  if (selected.length === 0) return 0;
-  return selected.reduce((min, w) => {
-    const available = w.upgrade_tokens ?? 0;
-    const cap = group === "unclassed" ? Math.min(available, preClassTokenCap(w)) : available;
-    return Math.min(min, cap);
-  }, Infinity) as number;
-}
-
-function computeBulkCost(
-  workers: Worker[],
-  selectedIndices: Set<number>,
-  upgradeType: "speed" | "size" | "clkspd" | "clkpow",
-  count: number,
-  formulas: ReturnType<typeof import("../store/configStore").useConfigStore.getState>["formulas"],
-): number {
-  let total = 0;
-  for (const idx of selectedIndices) {
-    const w = workers[idx];
-    if (!w) continue;
-    const level =
-      upgradeType === "speed"  ? w.speed_upgrades :
-      upgradeType === "size"   ? w.size_upgrades :
-      upgradeType === "clkspd" ? autoClickSpeedLevel(w.auto_click_speed) :
-      w.click_power_level;
-    for (let i = 0; i < count; i++) total += upgradeCost(level + i, formulas);
-  }
-  return total;
-}
 
 // ── Single worker row ─────────────────────────────────────────────────────────
 interface WorkerRowProps {
@@ -165,7 +106,6 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const hireWorker = useGameStore((s) => s.hireWorker);
   const unlockedLocations = useGameStore((s) => s.unlockedLocations);
   const bulkAssign = useGameStore((s) => s.bulkAssign);
-  const bulkSpendTokens = useGameStore((s) => s.bulkSpendTokens);
   const cfg = useConfigStore();
   // Re-render at ~8fps so trip progress bars animate — no second game loop needed
   const [, setTick] = useState(0);
@@ -181,8 +121,6 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [activeGroup, setActiveGroup] = useState<WorkerGroup | null>(null);
   const [bulkDest, setBulkDest] = useState("");
-  const [bulkUpgrade, setBulkUpgrade] = useState<"speed" | "size" | "clkspd" | "clkpow" | "">("");
-  const [bulkCount, setBulkCount] = useState(1);
 
   const hireCost = HIRE_COST_BASE * Math.pow(workers.length, 2);
   const canAffordHire = coins >= hireCost;
@@ -198,15 +136,30 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   type Row = { w: Worker; i: number };
   type Section = { key: string; title: string; kind: "main" | "header" | "sub"; count: number; items: Row[] };
   const sections = useMemo<Section[]>(() => {
-    const idle = ordered.filter((o) => !o.w.assigned_location && o.w.assigned_machine_id == null);
+    const idle = ordered.filter((o) => !o.w.assigned_location && o.w.assigned_machine_id == null && !o.w.assigned_settlement);
     const gathering = ordered.filter((o) => !!o.w.assigned_location);
+    const trading = ordered.filter((o) => !!o.w.assigned_settlement);
     const brewing = ordered.filter((o) => o.w.assigned_machine_id != null);
     const out: Section[] = [];
 
     if (idle.length) out.push({ key: "idle", title: "Idle", kind: "main", count: idle.length, items: idle });
 
+    if (trading.length) {
+      out.push({ key: "trade", title: "Trading at Settlements", kind: "header", count: trading.length, items: [] });
+      const bySt = new Map<string, Row[]>();
+      for (const o of trading) {
+        const name = cfg.settlements[o.w.assigned_settlement!]?.name ?? o.w.assigned_settlement!;
+        const list = bySt.get(name) ?? [];
+        list.push(o);
+        bySt.set(name, list);
+      }
+      for (const [name, items] of [...bySt.entries()].sort((a, b) => a[0].localeCompare(b[0])))
+        out.push({ key: "st:" + name, title: name, kind: "sub", count: items.length, items });
+    }
+
     if (gathering.length) {
       out.push({ key: "gath", title: "Gathering at Locations", kind: "header", count: gathering.length, items: [] });
+      // (settlement traders are grouped above)
       const byLoc = new Map<string, Row[]>();
       for (const o of gathering) {
         const name = cfg.locations[o.w.assigned_location!]?.name ?? o.w.assigned_location!;
@@ -231,7 +184,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         out.push({ key: "m:" + name, title: name, kind: "sub", count: items.length, items });
     }
     return out;
-  }, [ordered, cfg.locations, machines]);
+  }, [ordered, cfg.locations, cfg.settlements, machines]);
 
   const toggleSel = (idx: number) => {
     const group = getWorkerGroup(workers[idx]);
@@ -264,26 +217,12 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
     setActiveGroup(null);
   };
 
-  const applyBulkTokens = () => {
-    if (selected.size === 0 || !bulkUpgrade || bulkCount < 1) return;
-    bulkSpendTokens([...selected], bulkUpgrade, bulkCount);
-    setSelected(new Set());
-    setSelectMode(false);
-    setBulkUpgrade("");
-    setBulkCount(1);
-    setActiveGroup(null);
-  };
-
-  // Max tokens spendable without exceeding any selected worker's cap
-  const maxCount = activeGroup ? maxBulkCount(workers, selected, activeGroup) : 0;
-  const upgradeOptions = activeGroup ? UPGRADES_FOR_GROUP[activeGroup] : UPGRADES_FOR_GROUP.unclassed;
-  const bulkCost = bulkUpgrade && bulkCount > 0
-    ? computeBulkCost(workers, selected, bulkUpgrade, bulkCount, cfg.formulas)
-    : 0;
-  const canAffordBulk = coins >= bulkCost;
-
   const renderRow = ({ w: worker, i: idx, isTutTarget }: { w: Worker; i: number; isTutTarget?: boolean }) => {
-    const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+    const loc = worker.assigned_location
+      ? cfg.locations[worker.assigned_location]
+      : worker.assigned_settlement
+      ? cfg.settlements[worker.assigned_settlement]
+      : null;
     const totalMs = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) * 1000 : 0;
     const elapsedMs = worker.trip_started_at ? Date.now() - worker.trip_started_at : 0;
     const tripPct = totalMs > 0 && elapsedMs > 0 ? Math.min(100, (elapsedMs / totalMs) * 100) : 0;
@@ -326,17 +265,18 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             </button>
           ))}
           <button
-            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); setActiveGroup(null); setBulkUpgrade(""); setBulkCount(1); }}
+            onClick={() => { setSelectMode((m) => !m); setSelected(new Set()); setActiveGroup(null); }}
             className={`ml-auto rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
               selectMode ? "bg-slate-300 text-white" : "bg-slate-800 text-slate-300 hover:text-slate-200"
             }`}
+            title="Select workers to move them in bulk"
           >
-            {selectMode ? "Cancel" : "Select"}
+            {selectMode ? "Cancel" : "Move…"}
           </button>
         </div>
 
-        {/* Pending tokens quick-spend */}
-        <PendingTokensPanel workers={workers} coins={coins} formulas={cfg.formulas} onSpend={bulkSpendTokens} />
+        {/* One-tap bulk token spending */}
+        <PendingTokensPanel workers={workers} coins={coins} formulas={cfg.formulas} />
 
         {/* Roster — auto-grouped by status */}
         <div className="space-y-1.5">
@@ -396,62 +336,6 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
               </button>
             </div>
 
-            {/* Row 2: Bulk token spend — only when workers with tokens are selected */}
-            {selected.size > 0 && maxCount > 0 && (
-              <div className="rounded-lg border border-yellow-700/40 bg-yellow-950/20 p-2 space-y-2">
-                <div className="text-[10px] uppercase tracking-wider text-yellow-600">Spend upgrade tokens</div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={bulkUpgrade}
-                    onChange={(e) => { setBulkUpgrade(e.target.value as typeof bulkUpgrade); setBulkCount(1); }}
-                    className="min-w-0 flex-1 rounded-lg bg-slate-800 px-2.5 py-2 text-sm text-slate-200 focus:outline-none"
-                  >
-                    <option value="">Choose upgrade…</option>
-                    {upgradeOptions.map((o) => (
-                      <option key={o.key} value={o.key}>{o.label}</option>
-                    ))}
-                  </select>
-                  {/* Counter */}
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => setBulkCount((c) => Math.max(1, c - 1))}
-                      disabled={bulkCount <= 1}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition"
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <span className="w-8 text-center text-sm font-semibold text-slate-100">{bulkCount}</span>
-                    <button
-                      onClick={() => setBulkCount((c) => Math.min(maxCount, c + 1))}
-                      disabled={bulkCount >= maxCount}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 disabled:opacity-40 hover:bg-slate-700 transition"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <button
-                    onClick={applyBulkTokens}
-                    disabled={!bulkUpgrade || bulkCount < 1 || !canAffordBulk}
-                    className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                      bulkUpgrade && bulkCount >= 1 && canAffordBulk ? "bg-yellow-600 text-white hover:bg-yellow-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
-                    }`}
-                  >
-                    Spend
-                  </button>
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-slate-500">
-                  <span>
-                    Max {maxCount} token{maxCount !== 1 ? "s" : ""} per worker
-                    {activeGroup === "unclassed" && <span className="ml-1 text-yellow-700/80">· capped pre-class</span>}
-                  </span>
-                  {bulkUpgrade && (
-                    <span className={canAffordBulk ? "text-amber-700 font-medium" : "text-rose-500 font-medium"}>
-                      🪙 {fmt(bulkCost)}{!canAffordBulk && " — can't afford"}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -492,20 +376,25 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
 }
 
 const PENDING_TYPES = [
-  { key: "speed"  as const, label: "Gather Speed", Icon: Gauge,   blocked: new Set(["pounder", "manic"]) },
-  { key: "size"   as const, label: "Carry Size",   Icon: Package, blocked: new Set(["pounder", "manic"]) },
-  { key: "clkspd" as const, label: "Click Speed",  Icon: Timer,   blocked: new Set(["explorer", "caravan"]) },
-  { key: "clkpow" as const, label: "Click Power",  Icon: Zap,     blocked: new Set(["explorer", "caravan"]) },
+  { key: "speed"  as const, label: "Gather Speed", Icon: Gauge },
+  { key: "size"   as const, label: "Carry Size",   Icon: Package },
+  { key: "clkspd" as const, label: "Click Speed",  Icon: Timer },
+  { key: "clkpow" as const, label: "Click Power",  Icon: Zap },
 ];
 
+/**
+ * One-tap bulk upgrading: each chip previews exactly how many tokens the
+ * greedy cheapest-first plan can afford right now across ALL workers, and a
+ * single tap spends them. No select mode, no counters, no dropdowns.
+ */
 function PendingTokensPanel({
-  workers, coins, formulas, onSpend,
+  workers, coins, formulas,
 }: {
   workers: Worker[];
   coins: number;
   formulas: ReturnType<typeof import("../store/configStore").useConfigStore.getState>["formulas"];
-  onSpend: (indices: number[], type: "speed" | "size" | "clkspd" | "clkpow", count: number) => void;
 }) {
+  const spendAllTokens = useGameStore((s) => s.spendAllTokens);
   const totalTokens = workers.reduce((s, w) => s + (w.upgrade_tokens ?? 0), 0);
   if (totalTokens === 0) return null;
 
@@ -513,47 +402,35 @@ function PendingTokensPanel({
     <div className="mb-3 rounded-xl border border-yellow-700/40 bg-yellow-950/20 p-3 space-y-2">
       <div className="text-xs font-bold text-yellow-700">
         ✦ {totalTokens} upgrade token{totalTokens !== 1 ? "s" : ""} ready
-        <span className="ml-2 text-[10px] font-normal text-slate-500">spend by type across all workers</span>
+        <span className="ml-2 text-[10px] font-normal text-slate-500">one tap upgrades every worker</span>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {PENDING_TYPES.map(({ key, label, Icon, blocked }) => {
-          const eligibleIdx: number[] = [];
-          let uniformMax = Infinity;
-          for (let i = 0; i < workers.length; i++) {
-            const w = workers[i];
-            const spec = w.specialization ?? "none";
-            if ((w.upgrade_tokens ?? 0) === 0 || blocked.has(spec)) continue;
-            eligibleIdx.push(i);
-            const avail = w.upgrade_tokens ?? 0;
-            uniformMax = Math.min(uniformMax, spec === "none" ? Math.min(avail, preClassTokenCap(w)) : avail);
-          }
-          const count = isFinite(uniformMax) ? uniformMax : 0;
-          if (eligibleIdx.length === 0 || count === 0) return null;
-          const cost = computeBulkCost(workers, new Set(eligibleIdx), key, count, formulas);
-          const canAfford = coins >= cost;
+      <div className="grid grid-cols-2 gap-2">
+        {PENDING_TYPES.map(({ key, label, Icon }) => {
+          const plan = planTokenSpend(workers, coins, key, formulas);
+          if (plan.totalTokens === 0) return null;
+          const workerCount = Object.keys(plan.perWorker).length;
           return (
             <button
               key={key}
-              onClick={() => onSpend(eligibleIdx, key, count)}
-              disabled={!canAfford}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition active:scale-95 ${
-                canAfford
-                  ? "bg-yellow-700/40 text-yellow-950 hover:bg-yellow-700/60"
-                  : "cursor-not-allowed bg-slate-800/60 text-slate-500"
-              }`}
+              onClick={() => spendAllTokens(key)}
+              className="flex items-center gap-1.5 rounded-lg bg-yellow-700/40 px-2.5 py-2 text-left text-xs font-medium text-yellow-950 transition hover:bg-yellow-700/60 active:scale-95"
+              title={`Spend ${plan.totalTokens} token${plan.totalTokens !== 1 ? "s" : ""} on ${label} across ${workerCount} worker${workerCount !== 1 ? "s" : ""} (cheapest upgrades first)`}
             >
-              <Icon size={12} />
-              <span>{label}</span>
-              <span className={`rounded px-1 text-[10px] font-semibold ${canAfford ? "bg-yellow-600/40 text-yellow-950" : "bg-slate-700 text-slate-500"}`}>
-                ×{eligibleIdx.length}
-              </span>
-              <span className={`text-[10px] ${canAfford ? "text-amber-700" : "text-slate-600"}`}>
-                🪙{fmt(cost)}
+              <Icon size={13} className="shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold leading-tight">{label}</span>
+                <span className="block text-[10px] text-amber-800">
+                  ✦{plan.totalTokens} · {workerCount} worker{workerCount !== 1 ? "s" : ""} · 🪙{fmt(plan.totalCost)}
+                </span>
               </span>
             </button>
           );
         })}
       </div>
+      <p className="text-[10px] text-slate-500">
+        Spends each worker's own tokens, cheapest upgrades first, until coins run out.
+        Fine-tune a single worker from their detail card.
+      </p>
     </div>
   );
 }
@@ -578,15 +455,23 @@ function WorkerDetailModal({
   const buyClickSpeed = useGameStore((s) => s.buyClickSpeed);
   const buyClickPower = useGameStore((s) => s.buyClickPower);
   const specializeWorker = useGameStore((s) => s.specializeWorker);
+  const cancelTrade = useGameStore((s) => s.cancelTrade);
   const cfg = useConfigStore();
   const [pickBrewer, setPickBrewer] = useState(false);
+  const [pickSettlement, setPickSettlement] = useState(false);
+  const [tradeSettlement, setTradeSettlement] = useState<Settlement | null>(null);
 
   const spec = worker.specialization ?? "none";
   const awaitingSpec = worker.level >= 10 && spec === "none";
 
   const loc = worker.assigned_location ? cfg.locations[worker.assigned_location] : null;
+  const settlement = worker.assigned_settlement ? cfg.settlements[worker.assigned_settlement] : null;
   const onMachine = worker.assigned_machine_id != null;
-  const trip = loc ? gatherRoundTrip(loc.distance, worker.gather_speed) : 0;
+  const trip = loc
+    ? gatherRoundTrip(loc.distance, worker.gather_speed)
+    : settlement
+    ? gatherRoundTrip(settlement.distance, worker.gather_speed)
+    : 0;
   const speedCost = upgradeCost(worker.speed_upgrades, cfg.formulas);
   const sizeCost = upgradeCost(worker.size_upgrades, cfg.formulas);
   const xpNeed = xpRequired(worker.level, cfg.formulas);
@@ -660,6 +545,12 @@ function WorkerDetailModal({
               <Hammer size={15} className="shrink-0 text-amber-400" />
               <span className="text-slate-100">Working the Cauldron</span>
               <span className="ml-auto shrink-0 text-xs text-amber-700">−{reductionPerSec.toFixed(2)}s/s</span>
+            </>
+          ) : settlement ? (
+            <>
+              <Store size={15} className="shrink-0 text-amber-600" />
+              <span className="text-slate-100">Trading at {settlement.name}</span>
+              <span className="ml-auto shrink-0 text-xs text-slate-400">{fmtDuration(trip)} round trip</span>
             </>
           ) : loc ? (
             <>
@@ -749,9 +640,13 @@ function WorkerDetailModal({
 
         {/* Assignment controls — specialization restricts valid targets */}
         <div className="flex flex-col gap-2">
-          {(onMachine || loc) && (
+          {(onMachine || loc || settlement) && (
             <button
-              onClick={() => { onMachine ? assignToMachine(workerIndex, null) : assignToLocation(workerIndex, null); }}
+              onClick={() => {
+                if (onMachine) assignToMachine(workerIndex, null);
+                else if (settlement) cancelTrade(workerIndex);
+                else assignToLocation(workerIndex, null);
+              }}
               className="w-full rounded-lg bg-rose-700/80 py-2 text-sm font-semibold text-white hover:bg-rose-600"
             >
               Recall to Workshop
@@ -764,7 +659,15 @@ function WorkerDetailModal({
                 onClick={() => onOpenMap(workerIndex)}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-cyan-700 py-2.5 font-semibold text-white hover:bg-cyan-600"
               >
-                <MapPin size={16} /> Assign to Location
+                <MapPin size={16} /> Location
+              </button>
+            )}
+            {spec !== "pounder" && spec !== "manic" && (
+              <button
+                onClick={() => setPickSettlement(true)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-700 py-2.5 font-semibold text-white hover:bg-emerald-600"
+              >
+                <Store size={16} /> Trade
               </button>
             )}
             {spec !== "explorer" && spec !== "caravan" && (
@@ -772,7 +675,7 @@ function WorkerDetailModal({
                 onClick={() => setPickBrewer(true)}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-600 py-2.5 font-semibold text-white hover:bg-amber-500"
               >
-                <Hammer size={16} /> Assign to Brewer
+                <Hammer size={16} /> Brewer
               </button>
             )}
           </div>
@@ -784,6 +687,19 @@ function WorkerDetailModal({
           workerName={worker.name}
           onPick={(mid) => { assignToMachine(workerIndex, mid); setPickBrewer(false); onClose(); }}
           onClose={() => setPickBrewer(false)}
+        />
+      )}
+      {pickSettlement && (
+        <SettlementPickerModal
+          onPick={(st) => { setPickSettlement(false); setTradeSettlement(st); }}
+          onClose={() => setPickSettlement(false)}
+        />
+      )}
+      {tradeSettlement && (
+        <SettlementModal
+          settlement={tradeSettlement}
+          lockedWorkerIndex={workerIndex}
+          onClose={() => { setTradeSettlement(null); onClose(); }}
         />
       )}
     </div>

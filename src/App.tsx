@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles } from "lucide-react";
+import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark } from "lucide-react";
+import HelpModal from "./components/HelpModal";
+import GaxDashboard from "./components/GaxDashboard";
+import TickerTape from "./components/ui/TickerTape";
+import { attrLabel } from "./engine/gax";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
 import UpgradesView from "./components/UpgradesView";
@@ -26,7 +30,7 @@ import { masteryLevel } from "./data/masteryTrees";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | null;
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -55,6 +59,10 @@ export default function App() {
     masteryUnlocks.length > 0 ||
     Object.values(potionMastery).some((e) => masteryLevel(e.xp) >= 10);
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
+  const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
+  const gaxOfflineReport = useGameStore((s) => s.gaxOfflineReport);
+  const settleGax = useGameStore((s) => s.settleGax);
+  const [welcomeTab, setWelcomeTab] = useState<"summary" | "market">("summary");
   const [panel, setPanel] = useState<Panel>(null);
   const [machineTabId, setMachineTabId] = useState(1);
   const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
@@ -86,10 +94,12 @@ export default function App() {
       if (!document.hidden) {
         useGameStore.setState({ lastSeen: Date.now() });
         refreshQuests();
+        // Lazy GAX settle — no-ops instantly unless a market hour rolled over.
+        settleGax();
       }
     }, 5000);
     return () => clearInterval(id);
-  }, [refreshQuests]);
+  }, [refreshQuests, settleGax]);
 
   return (
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
@@ -157,6 +167,24 @@ export default function App() {
             )}
           </button>
         )}
+        {gaxUnlocked && (
+          <button
+            onClick={() => setPanel("gax")}
+            className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+            title="Grand Alchemical Exchange"
+          >
+            <Landmark size={18} className="text-amber-700" />
+            <span>GAX</span>
+          </button>
+        )}
+        <button
+          onClick={() => setPanel("help")}
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+          title="How to Play"
+        >
+          <HelpCircle size={18} className="text-teal-800" />
+          <span>Help</span>
+        </button>
         {hasAbacus && (
           <button
             onClick={() => setPanel("supply")}
@@ -169,14 +197,17 @@ export default function App() {
         )}
       </div>
 
-      {/* Hidden dev toggle */}
+      {/* Hidden dev toggle — lifted above the ticker tape when the GAX is open */}
       <button
         onClick={() => setPanel("dev")}
-        className="absolute bottom-2 left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100"
+        className={`absolute left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
         title="Dev Dashboard"
       >
         <Settings2 size={16} />
       </button>
+
+      {/* GAX ticker tape — global marquee, only once the Exchange is unlocked */}
+      <TickerTape onOpen={() => setPanel("gax")} />
 
       {/* Panels */}
       {panel === "inventory" && <IngredientInventoryView onClose={() => setPanel(null)} />}
@@ -193,6 +224,8 @@ export default function App() {
       {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
       {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
       {panel === "mastery"  && <MasteryView  onClose={() => setPanel(null)} />}
+      {panel === "help"     && <HelpModal    onClose={() => setPanel(null)} />}
+      {panel === "gax"      && <GaxDashboard onClose={() => setPanel(null)} />}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
 
       {/* Onboarding + achievement surfacing */}
@@ -206,47 +239,137 @@ export default function App() {
 
       {welcomeBack && (
         <Modal title="Welcome Back, Brewmaster" onClose={dismissWelcome} accent="#22d3ee">
-          <p className="mb-4 text-sm italic text-slate-400">
+          <p className="mb-3 text-sm italic text-slate-400">
             You were away for{" "}
             <span className="font-semibold text-cyan-800 not-italic">{fmtDuration(welcomeBack.seconds)}</span>.
             The guild kept busy.
           </p>
 
-          <div className="space-y-2">
-            <StatRow
-              label="Ingredients gathered"
-              value={welcomeBack.gathers.toLocaleString()}
-              color="text-green-800"
-            />
-            {welcomeBack.potionsBrewedCount > 0 && (
+          {/* Tabs — the Market Events audit only exists once the GAX is open */}
+          {gaxOfflineReport && (
+            <div className="mb-3 flex rounded-lg bg-slate-800 p-1">
+              <button
+                onClick={() => setWelcomeTab("summary")}
+                className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
+                  welcomeTab === "summary" ? "bg-cyan-700 text-white" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Summary
+              </button>
+              <button
+                onClick={() => setWelcomeTab("market")}
+                className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
+                  welcomeTab === "market" ? "bg-cyan-700 text-white" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                📈 Market Events
+              </button>
+            </div>
+          )}
+
+          {welcomeTab === "market" && gaxOfflineReport ? (
+            <div className="space-y-3">
+              <p className="text-[11px] italic leading-relaxed text-slate-500">
+                "Per Exchange bylaws, the Guild Auditor hereby summarises all market
+                activity conducted in your name while you were, ahem, resting."
+              </p>
+
+              {/* Global news */}
+              <div>
+                <p className="mb-1.5 text-[10px] uppercase tracking-wider text-amber-700">Global news</p>
+                {gaxOfflineReport.activeEvent || gaxOfflineReport.endedEventHeadline ? (
+                  <div className="space-y-2">
+                    {gaxOfflineReport.activeEvent && (
+                      <div className="rounded-lg border border-amber-700/40 bg-amber-950/25 px-3 py-2 text-xs">
+                        <span className="text-amber-900">{gaxOfflineReport.activeEvent.headline}</span>
+                        <span className="mt-1 block text-[10px] text-slate-500">
+                          Currently day {gaxOfflineReport.activeEvent.day} of the wave
+                          {gaxOfflineReport.activeEvent.phase === "forecast" && " — prices move tomorrow, there's still time to pivot"}
+                          {gaxOfflineReport.activeEvent.phase === "peak" && " — prices are locked at the event rate"}
+                          {gaxOfflineReport.activeEvent.phase === "trailing" && " — the wave is breaking, prices easing"}
+                        </span>
+                      </div>
+                    )}
+                    {gaxOfflineReport.endedEventHeadline && (
+                      <div className="rounded-lg bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
+                        While you were away: <span className="text-slate-300">{gaxOfflineReport.endedEventHeadline}</span>
+                        <span className="block text-[10px] text-slate-500">…rose, peaked and fully blew over. You missed it entirely.</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-slate-800/40 px-3 py-2 text-xs text-slate-500">
+                    No anomalies while you were gone. The ticker had to fill airtime with weather.
+                  </p>
+                )}
+              </div>
+
+              {/* Internal audit */}
+              <div>
+                <p className="mb-1.5 text-[10px] uppercase tracking-wider text-amber-700">Internal audit</p>
+                {gaxOfflineReport.audit.length === 0 ? (
+                  <p className="rounded-lg bg-slate-800/40 px-3 py-2 text-xs text-slate-500">
+                    Your trickle sales stayed under the market's natural drain — no
+                    economies were harmed by your absence.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {gaxOfflineReport.audit.map((row) => (
+                      <div key={row.attr} className="flex items-center gap-2 rounded-lg bg-slate-800/50 px-3 py-2 text-xs">
+                        <span className="w-20 shrink-0 font-semibold text-slate-200">{attrLabel(row.attr)}</span>
+                        <span className="min-w-0 flex-1 text-[11px] text-slate-400">
+                          {row.outcome === "flooded" && `Your auto-sales dumped ${row.soldPoints.toLocaleString()} points of supply — the bottom fell out.`}
+                          {row.outcome === "replaced" && `A surge of ${row.soldPoints.toLocaleString()} points barged onto the exchange board, evicting a quieter market.`}
+                          {row.outcome === "starved" && (row.soldPoints > 0
+                            ? `You sold ${row.soldPoints.toLocaleString()} points into a starving market — well played.`
+                            : "Utterly neglected. Scarcity did your negotiating for you.")}
+                        </span>
+                        <span className={`shrink-0 font-bold tabular-nums ${row.multiplier >= 1 ? "text-emerald-700" : "text-rose-600"}`}>
+                          ×{row.multiplier.toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
               <StatRow
-                label="Potions brewed"
-                value={welcomeBack.potionsBrewedCount.toLocaleString()}
-                color="text-purple-800"
+                label="Ingredients gathered"
+                value={welcomeBack.gathers.toLocaleString()}
+                color="text-green-800"
               />
-            )}
-            {welcomeBack.coinsEarned > 0 && (
-              <StatRow
-                label="Coins earned"
-                value={`🪙 ${welcomeBack.coinsEarned.toLocaleString()}`}
-                color="text-amber-700"
-              />
-            )}
-            {welcomeBack.workerXpEarned > 0 && (
-              <StatRow
-                label="Worker XP earned"
-                value={welcomeBack.workerXpEarned.toLocaleString()}
-                color="text-cyan-800"
-              />
-            )}
-            {welcomeBack.machineXpEarned > 0 && (
-              <StatRow
-                label="Machine XP earned"
-                value={welcomeBack.machineXpEarned.toLocaleString()}
-                color="text-amber-800"
-              />
-            )}
-          </div>
+              {welcomeBack.potionsBrewedCount > 0 && (
+                <StatRow
+                  label="Potions brewed"
+                  value={welcomeBack.potionsBrewedCount.toLocaleString()}
+                  color="text-purple-800"
+                />
+              )}
+              {welcomeBack.coinsEarned > 0 && (
+                <StatRow
+                  label="Coins earned"
+                  value={`🪙 ${welcomeBack.coinsEarned.toLocaleString()}`}
+                  color="text-amber-700"
+                />
+              )}
+              {welcomeBack.workerXpEarned > 0 && (
+                <StatRow
+                  label="Worker XP earned"
+                  value={welcomeBack.workerXpEarned.toLocaleString()}
+                  color="text-cyan-800"
+                />
+              )}
+              {welcomeBack.machineXpEarned > 0 && (
+                <StatRow
+                  label="Machine XP earned"
+                  value={welcomeBack.machineXpEarned.toLocaleString()}
+                  color="text-amber-800"
+                />
+              )}
+            </div>
+          )}
 
           <button
             onClick={dismissWelcome}

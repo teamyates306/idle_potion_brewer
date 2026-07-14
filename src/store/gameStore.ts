@@ -1,22 +1,40 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
+  ActiveTrade,
   BrewingMachine,
   DiscoveryBounty,
   Ingredient,
   IngredientInventory,
   PotionInventory,
   PotionMasteryEntry,
+  TradeInput,
   Worker,
   WorkerSpecialization,
 } from "../types";
+import { REGIONS_BY_ID, regionOfDistance } from "../data/regions";
 import {
-  MASTERY_BASE_XP_PER_BREW,
+  GAX_EVENTS_BY_ID,
+  type GaxEventState,
+  type GaxMarketState,
+  attrMultiplier,
+  emptyMarket,
+  eventDayNumber,
+  eventPhase,
+  gaxHourIndex,
+  potionPriceMultiplier,
+  recordSale,
+  satiationMultiplier,
+  settleMarket,
+} from "../engine/gax";
+import type { Attributes } from "../types";
+import {
   MASTERY_TREES,
+  applyMasteryToBrewTime,
   computeMasteryEffects,
   masteryLevel,
 } from "../data/masteryTrees";
-import { useConfigStore } from "./configStore";
+import { LOCATIONS, useConfigStore } from "./configStore";
 import {
   applyLevels,
   brewTime,
@@ -53,6 +71,38 @@ import { pushAchievementToast } from "../util/achievementToast";
 
 // Re-exported for existing UI importers (MachineView, WorkerView).
 export { MACHINE_COSTS };
+
+// ---- The Grand Alchemical Exchange -----------------------------------------
+export const GAX_UNLOCK_COST = 25_000;
+
+/** One entry in the Guild Auditor's offline market report. */
+export interface GaxAuditRow {
+  attr: string;
+  soldPoints: number;
+  multiplier: number;
+  outcome: "flooded" | "starved" | "replaced";
+}
+
+export interface GaxOfflineReport {
+  hoursAway: number;
+  /** Event active on return (headline + wave day), if any. */
+  activeEvent: { headline: string; day: number; phase: string } | null;
+  /** Headline of an event that fully played out while away, if any. */
+  endedEventHeadline: string | null;
+  audit: GaxAuditRow[];
+}
+
+// Immutable-update helper: shallow-clone the market so engine mutations never
+// touch the object already committed to the store.
+function cloneMarket(m: GaxMarketState): GaxMarketState {
+  return {
+    ...m,
+    satiation: { ...m.satiation },
+    pending: { ...m.pending },
+    board: [...m.board],
+    event: m.event ? { ...m.event } : null,
+  };
+}
 
 const UNIQUE_NAMES_TO_UNLOCK_QUESTS = 5;
 export const QUEST_COOLDOWN_MS = 60 * 60 * 1000;
@@ -148,6 +198,44 @@ function statusFor(phase: Worker["trip_phase"], danger: number): string {
   return pick(STATUS_TRAVEL[danger] ?? STATUS_TRAVEL[0]);
 }
 
+/** Does an ingredient satisfy a trade slot's flexible input requirement? */
+export function ingredientMatchesTradeInput(ing: Ingredient, input: TradeInput): boolean {
+  if (ing.rarity !== input.rarity) return false;
+  if (input.category && ing.category !== input.category) return false;
+  return true;
+}
+
+/** Human label for a trade input, e.g. "3× any Uncommon Fungus". */
+export function tradeInputLabel(input: TradeInput): string {
+  const rarity = input.rarity.charAt(0).toUpperCase() + input.rarity.slice(1);
+  const cat = input.category ? ` ${input.category.charAt(0).toUpperCase() + input.category.slice(1)}` : " ingredient";
+  return `${input.count}× any ${rarity}${cat}`;
+}
+
+/** Per-region unlock requirement check (pure — usable by UI and store). */
+export function regionRequirementsStatus(
+  regionId: string,
+  s: Pick<GameState, "coins" | "discoveredPotions" | "potionMastery" | "unlockedLocations">
+): { met: boolean; coins: boolean; potions: boolean; mastered: boolean; locations: boolean; masteredCount: number } {
+  const region = REGIONS_BY_ID[regionId];
+  if (!region) return { met: false, coins: false, potions: false, mastered: false, locations: false, masteredCount: 0 };
+  const masteredCount = Object.values(s.potionMastery).filter(
+    (e) => masteryLevel(e.xp) >= region.constraints.recipesMasteredLevel
+  ).length;
+  const coins = s.coins >= region.unlockCost;
+  const potions = s.discoveredPotions.length >= region.constraints.potionsDiscovered;
+  const mastered = masteredCount >= region.constraints.recipesMastered;
+  const locations = s.unlockedLocations.length >= region.constraints.totalLocationsUnlocked;
+  return { met: coins && potions && mastered && locations, coins, potions, mastered, locations, masteredCount };
+}
+
+// Returns the inventory patch refunding a worker's withdrawn-but-unconsumed
+// trade inputs (recall before the halfway point). Consumed goods are gone.
+function refundUnconsumedTrade(w: Worker, inv: IngredientInventory): IngredientInventory {
+  if (!w.trade || w.trade.consumed) return inv;
+  return { ...inv, [w.trade.inputIngredientId]: (inv[w.trade.inputIngredientId] ?? 0) + w.trade.inputCount };
+}
+
 function pickDrop(drops: { ingredientId: string; weight: number }[]): string {
   const total = drops.reduce((a, d) => a + d.weight, 0);
   let r = Math.random() * total;
@@ -175,6 +263,8 @@ function newWorker(index = 0): Worker {
     retrieval_size: 2.0,
     assigned_location: null,
     assigned_machine_id: null,
+    assigned_settlement: null,
+    trade: null,
     auto_click_speed: 1.0,
     click_power_level: 0,
     flavor_status: pick(STATUS_IDLE),
@@ -186,6 +276,79 @@ function newWorker(index = 0): Worker {
     specialization: "none",
     click_power_mult: 1.0,
   };
+}
+
+export type WorkerUpgradeType = "speed" | "size" | "clkspd" | "clkpow";
+
+/** Specs that can't use a given upgrade type at all. */
+const UPGRADE_BLOCKED: Record<WorkerUpgradeType, Set<WorkerSpecialization>> = {
+  speed:  new Set(["pounder", "manic"]),
+  size:   new Set(["pounder", "manic"]),
+  clkspd: new Set(["explorer", "caravan"]),
+  clkpow: new Set(["explorer", "caravan"]),
+};
+
+/** Unclassed workers may only spend the tokens earned before the level-10
+ *  class choice, so they can't stat-stack pre-specialization. */
+function preClassTokenCap(w: Worker): number {
+  const tokensSpent = Math.max(0, (w.level - 1) - (w.upgrade_tokens ?? 0));
+  return Math.max(0, 10 - tokensSpent);
+}
+
+function upgradeLevelFor(w: Worker, type: WorkerUpgradeType): number {
+  return type === "speed" ? w.speed_upgrades
+    : type === "size" ? w.size_upgrades
+    : type === "clkspd" ? autoClickSpeedLevel(w.auto_click_speed)
+    : w.click_power_level;
+}
+
+export interface TokenSpendPlan {
+  totalTokens: number;
+  totalCost: number;
+  perWorker: Record<number, number>; // worker index → upgrades bought
+}
+
+/**
+ * Greedy cheapest-first plan for "spend all tokens on this stat": every
+ * eligible worker's tokens are spent from the cheapest next upgrade upward
+ * until coins run out. Pure — used for both the UI preview and the action.
+ */
+export function planTokenSpend(
+  workers: Worker[],
+  coins: number,
+  type: WorkerUpgradeType,
+  formulas: ReturnType<typeof useConfigStore.getState>["formulas"],
+): TokenSpendPlan {
+  interface Cursor { idx: number; tokens: number; level: number }
+  const cursors: Cursor[] = [];
+  workers.forEach((w, idx) => {
+    const spec = w.specialization ?? "none";
+    if (UPGRADE_BLOCKED[type].has(spec)) return;
+    const avail = w.upgrade_tokens ?? 0;
+    const tokens = spec === "none" ? Math.min(avail, preClassTokenCap(w)) : avail;
+    if (tokens <= 0) return;
+    cursors.push({ idx, tokens, level: upgradeLevelFor(w, type) });
+  });
+
+  const plan: TokenSpendPlan = { totalTokens: 0, totalCost: 0, perWorker: {} };
+  let budget = coins;
+  for (;;) {
+    let best: Cursor | null = null;
+    let bestCost = Infinity;
+    for (const c of cursors) {
+      if (c.tokens <= 0) continue;
+      const cost = upgradeCost(c.level, formulas);
+      if (cost < bestCost) { bestCost = cost; best = c; }
+    }
+    if (!best || bestCost > budget) break;
+    budget -= bestCost;
+    best.tokens -= 1;
+    best.level += 1;
+    plan.totalTokens += 1;
+    plan.totalCost += bestCost;
+    plan.perWorker[best.idx] = (plan.perWorker[best.idx] ?? 0) + 1;
+  }
+  return plan;
 }
 
 // Return the effective multiplier for a given upgrade type based on specialization.
@@ -260,6 +423,7 @@ interface GameState {
   discoveredAttributes: string[];
   unlockedLocations: string[];
   exploredLocations: string[];
+  unlockedRegions: string[];
   /** Per-location: which of its drops a worker has actually brought back (rest render as ???). */
   discovered_location_drops: Record<string, string[]>;
   // onboarding
@@ -268,6 +432,9 @@ interface GameState {
   // achievements
   unlocked_achievements: string[];
   collected_achievements: string[];  // achievement ids where reward has been collected
+  /** Migration flag: saves from before rewards became collect-only had rewards
+   *  auto-granted on unlock, so their unlocked achievements count as collected. */
+  achv_rewards_v2: boolean;
   total_brews: number;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
@@ -281,14 +448,34 @@ interface GameState {
   // discovery bounty
   discoveryBounty: DiscoveryBounty | null;
 
+  // The Grand Alchemical Exchange
+  gaxUnlocked: boolean;
+  gaxMarket: GaxMarketState;
+  gaxOfflineReport: GaxOfflineReport | null;
+  unlockGax: () => void;
+  /** Lazy settle: advances the market to the current hour if it rolled over. */
+  settleGax: () => void;
+  /** Sale hook: settles if due, prices the potion against the live market and
+   *  records the sold volume. Returns the price multiplier (1 when locked). */
+  gaxPriceAndRecord: (stats: Attributes, count: number) => number;
+
   // workers
   assignWorker: (workerIndex: number, locationId: string | null) => void;
   assignWorkerToMachine: (workerIndex: number, machineId: number | null) => void;
   specializeWorker: (workerIndex: number, choice: WorkerSpecialization) => void;
   bulkAssign: (workerIndices: number[], locationId: string | null, machineId: number | null) => void;
   bulkSpendTokens: (workerIndices: number[], upgradeType: "speed" | "size" | "clkspd" | "clkpow", count: number) => void;
+  /** One-tap: spend every affordable token across all eligible workers on one stat. */
+  spendAllTokens: (upgradeType: WorkerUpgradeType) => void;
   completeTrip: (workerIndex: number) => void;
   setTripPhase: (workerIndex: number, phase: Worker["trip_phase"]) => void;
+  // settlement trades
+  assignWorkerToTrade: (workerIndex: number, settlementId: string, slotId: string, inputIngredientId: string) => void;
+  markTradeConsumed: (workerIndex: number) => void;
+  completeTradeTrip: (workerIndex: number) => void;
+  cancelTrade: (workerIndex: number) => void;
+  // regions
+  unlockRegion: (regionId: string) => void;
   hireWorker: () => void;
   renameWorker: (workerIndex: number, name: string) => void;
   renameMachine: (machineId: number, name: string) => void;
@@ -319,8 +506,12 @@ interface GameState {
   // quests
   refreshQuests: () => void;
   completeQuest: (questId: string) => void;
+  /** Pay half the quest's reward to swap it for a fresh one of the same difficulty. */
+  rerollQuest: (questId: string) => void;
   refreshDiscoveryBounty: () => void;
   claimDiscoveryBounty: () => void;
+  /** Pay half the bounty's reward to roll a new discovery target immediately. */
+  rerollDiscoveryBounty: () => void;
 
   // upgrades
   buyWorkerSpeed: (workerIndex?: number) => void;
@@ -394,24 +585,18 @@ function getMachineIdx(machines: BrewingMachine[], machineId: number): number {
   return machines.findIndex((m) => m.id === machineId);
 }
 
-// Build the state patch for unlocking a set of achievements: marks them unlocked,
-// applies their (coin / token) rewards, and fires an "Achievement Unlocked" toast.
+// Build the state patch for unlocking a set of achievements: marks them
+// unlocked and fires an "Achievement Unlocked" toast. Rewards are NOT granted
+// here — they are only paid out when the player explicitly collects them in
+// the Achievements modal (collectAchievementReward).
 function applyAchievementUnlocks(s: GameState, list: typeof ACHIEVEMENTS): Partial<GameState> {
   const unlocked = new Set(s.unlocked_achievements);
-  let coins = s.coins;
-  let tokenBonus = 0;
   for (const a of list) {
     if (unlocked.has(a.id)) continue;
     unlocked.add(a.id);
-    for (const r of a.rewards) {
-      if (r.type === "coins") coins += r.amount;
-      else tokenBonus += r.amount;
-    }
     pushAchievementToast(a.name, a.description);
   }
-  const patch: Partial<GameState> = { unlocked_achievements: Array.from(unlocked), coins };
-  if (tokenBonus > 0) patch.workers = s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + tokenBonus }));
-  return patch;
+  return { unlocked_achievements: Array.from(unlocked) };
 }
 
 export const useGameStore = create<GameState>()(
@@ -429,11 +614,13 @@ export const useGameStore = create<GameState>()(
       discoveredAttributes: [],
       unlockedLocations: ["hollow"],
       exploredLocations: ["hollow"],
+      unlockedRegions: ["region_home_vale"],
       discovered_location_drops: { hollow: ["rootmoss"] },
       tutorial_step: 0,
       has_completed_tutorial: false,
       unlocked_achievements: [],
       collected_achievements: [],
+      achv_rewards_v2: true,
       total_brews: 0,
       lastSeen: now(),
       welcomeBack: null,
@@ -441,6 +628,9 @@ export const useGameStore = create<GameState>()(
       activeQuests: [],
       questCooldowns: {},
       discoveryBounty: null,
+      gaxUnlocked: false,
+      gaxMarket: emptyMarket(now()),
+      gaxOfflineReport: null,
       player_click_power_level: 0,
       unlocked_globals: [],
       graphics: { ...DEFAULT_GRAPHICS },
@@ -462,9 +652,11 @@ export const useGameStore = create<GameState>()(
           const cfg = useConfigStore.getState();
           const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
           const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
+          const ingredientInv = refundUnconsumedTrade(w, s.ingredientInv);
           const workers = s.workers.map((wk, i) =>
             i === workerIndex
               ? { ...wk, assigned_location: locationId, assigned_machine_id: null,
+                  assigned_settlement: null, trade: null,
                   trip_phase: phase,
                   trip_started_at: locationId ? now() : null,
                   flavor_status: statusFor(phase, danger) }
@@ -474,7 +666,7 @@ export const useGameStore = create<GameState>()(
             locationId && !s.exploredLocations.includes(locationId)
               ? [...s.exploredLocations, locationId]
               : s.exploredLocations;
-          return { workers, exploredLocations };
+          return { workers, exploredLocations, ingredientInv };
         });
         if (locationId) get().advanceTutorial(3); // tutorial: sent a worker to the map
       },
@@ -487,16 +679,18 @@ export const useGameStore = create<GameState>()(
           if (machineId != null && (w.specialization === "explorer" || w.specialization === "caravan")) {
             return {};
           }
+          const ingredientInv = refundUnconsumedTrade(w, s.ingredientInv);
           const workers = s.workers.map((wk, i) =>
             i === workerIndex
               ? { ...wk, assigned_machine_id: machineId,
-                  assigned_location: null, trip_started_at: null, trip_phase: "idle" as const,
+                  assigned_location: null, assigned_settlement: null, trade: null,
+                  trip_started_at: null, trip_phase: "idle" as const,
                   flavor_status: machineId
                     ? `Hammering ${s.machines.find((m) => m.id === machineId)?.name ?? "the cauldron"} with great enthusiasm.`
                     : pick(STATUS_IDLE) }
               : wk
           );
-          return { workers };
+          return { workers, ingredientInv };
         }),
 
       bulkAssign: (workerIndices, locationId, machineId) => {
@@ -507,13 +701,16 @@ export const useGameStore = create<GameState>()(
           const machineName = machineId
             ? s.machines.find((m) => m.id === machineId)?.name ?? "the cauldron"
             : null;
+          let ingredientInv = s.ingredientInv;
           const workers = s.workers.map((w, i) => {
             if (!idxSet.has(i)) return w;
             const spec = w.specialization ?? "none";
             if (machineId != null) {
               // explorer/caravan cannot be assigned to machines
               if (spec === "explorer" || spec === "caravan") return w;
+              ingredientInv = refundUnconsumedTrade(w, ingredientInv);
               return { ...w, assigned_machine_id: machineId, assigned_location: null,
+                assigned_settlement: null, trade: null,
                 trip_started_at: null, trip_phase: "idle" as const,
                 flavor_status: `Hammering ${machineName} with great enthusiasm.` };
             }
@@ -524,11 +721,13 @@ export const useGameStore = create<GameState>()(
             const danger = locationId ? cfg.locations[locationId]?.danger ?? 0 : 0;
             const phase: Worker["trip_phase"] = locationId ? "outbound" : "idle";
             if (locationId) exploredSet.add(locationId);
+            ingredientInv = refundUnconsumedTrade(w, ingredientInv);
             return { ...w, assigned_location: locationId, assigned_machine_id: null,
+              assigned_settlement: null, trade: null,
               trip_phase: phase, trip_started_at: locationId ? now() : null,
               flavor_status: statusFor(phase, danger) };
           });
-          return { workers, exploredLocations: Array.from(exploredSet) };
+          return { workers, exploredLocations: Array.from(exploredSet), ingredientInv };
         });
         if (locationId) get().advanceTutorial(3); // tutorial: sent workers to the map
       },
@@ -573,6 +772,35 @@ export const useGameStore = create<GameState>()(
           });
           return { coins: s.coins - totalCoinCost, workers };
         }),
+
+      spendAllTokens: (upgradeType) => {
+        set((s) => {
+          const cfg = useConfigStore.getState();
+          const plan = planTokenSpend(s.workers, s.coins, upgradeType, cfg.formulas);
+          if (plan.totalTokens === 0) return {};
+          const workers = s.workers.map((w, idx) => {
+            const count = plan.perWorker[idx];
+            if (!count) return w;
+            const spec = w.specialization ?? "none";
+            let patch: Partial<Worker> = { upgrade_tokens: (w.upgrade_tokens ?? 0) - count };
+            if (upgradeType === "speed") {
+              patch = { ...patch, gather_speed: w.gather_speed + 0.25 * specMult(spec, "speed") * count, speed_upgrades: w.speed_upgrades + count };
+            } else if (upgradeType === "size") {
+              patch = { ...patch, retrieval_size: w.retrieval_size + 0.5 * specMult(spec, "size") * count, size_upgrades: w.size_upgrades + count };
+            } else if (upgradeType === "clkspd") {
+              patch = { ...patch, auto_click_speed: w.auto_click_speed + CLICK_SPEED_STEP * specMult(spec, "clkspd") * count };
+            } else {
+              patch = { ...patch, click_power_level: w.click_power_level + count };
+            }
+            return { ...w, ...patch };
+          });
+          return { coins: s.coins - plan.totalCost, workers };
+        });
+        if (upgradeType === "clkspd") {
+          const sp = Math.max(0, ...get().workers.map((w) => w.auto_click_speed));
+          get().checkAchievements("worker_click_speed", sp);
+        }
+      },
 
       buyClickSpeed: (workerIndex) => {
         set((s) => {
@@ -784,6 +1012,144 @@ export const useGameStore = create<GameState>()(
         }
       },
 
+      // ---- Settlement trades --------------------------------------------------
+
+      assignWorkerToTrade: (workerIndex, settlementId, slotId, inputIngredientId) => {
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w) return {};
+          // Trades are travel — brewer-only specs can't run them.
+          if (w.specialization === "pounder" || w.specialization === "manic") return {};
+          const cfg = useConfigStore.getState();
+          const settlement = cfg.settlements[settlementId];
+          const slot = settlement?.slots.find((sl) => sl.id === slotId);
+          const ing = cfg.ingredients[inputIngredientId];
+          if (!settlement || !slot || !ing) return {};
+          // Region gate: the settlement must sit in an unlocked region.
+          if (!s.unlockedRegions.includes(regionOfDistance(settlement.distance).id)) return {};
+          if (!ingredientMatchesTradeInput(ing, slot.input)) return {};
+          // Refund any previous unconsumed trade, then withdraw the new inputs.
+          let inv = refundUnconsumedTrade(w, s.ingredientInv);
+          if ((inv[inputIngredientId] ?? 0) < slot.input.count) return {};
+          inv = { ...inv, [inputIngredientId]: inv[inputIngredientId] - slot.input.count };
+          const trade: ActiveTrade = {
+            settlementId,
+            slotId,
+            inputIngredientId,
+            inputCount: slot.input.count,
+            outputIngredientId: slot.output.ingredientId,
+            outputCount: slot.output.count,
+            consumed: false,
+          };
+          const workers = s.workers.map((wk, i) =>
+            i === workerIndex
+              ? { ...wk,
+                  assigned_settlement: settlementId, trade,
+                  assigned_location: null, assigned_machine_id: null,
+                  trip_phase: "outbound" as const, trip_started_at: now(),
+                  flavor_status: `Hauling ${slot.input.count} ${ing.name} to ${settlement.name}.` }
+              : wk
+          );
+          return { workers, ingredientInv: inv };
+        });
+      },
+
+      markTradeConsumed: (workerIndex) =>
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w?.trade || w.trade.consumed) return {};
+          const cfg = useConfigStore.getState();
+          const settlement = w.assigned_settlement ? cfg.settlements[w.assigned_settlement] : null;
+          const workers = s.workers.map((wk, i) =>
+            i === workerIndex
+              ? { ...wk, trade: { ...wk.trade!, consumed: true }, trip_phase: "inbound" as const,
+                  flavor_status: `Trading at ${settlement?.name ?? "the settlement"}. Haggling politely.` }
+              : wk
+          );
+          return { workers };
+        }),
+
+      completeTradeTrip: (workerIndex) => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        const w = s.workers[workerIndex];
+        const trade = w?.trade;
+        const settlement = w?.assigned_settlement ? cfg.settlements[w.assigned_settlement] : null;
+        if (!w || !trade || !settlement) return;
+        const slot = settlement.slots.find((sl) => sl.id === trade.slotId);
+
+        // Deposit the fixed output.
+        const inv = { ...s.ingredientInv };
+        inv[trade.outputIngredientId] = (inv[trade.outputIngredientId] ?? 0) + trade.outputCount;
+        const discovered = s.discovered.includes(trade.outputIngredientId)
+          ? s.discovered
+          : [...s.discovered, trade.outputIngredientId];
+        const discoveredAttributes = unlockAttributes(trade.outputIngredientId, s.discoveredAttributes, cfg);
+
+        // Trip XP mirrors gathering (distance-scaled).
+        const gained = Math.round(5 + settlement.distance);
+        const leveled = applyLevels(w.level, w.xp + gained, cfg.formulas);
+        const levelsGained = leveled.level - w.level;
+
+        // Auto-repeat while the stash can still cover the inputs; otherwise the
+        // worker stands down at the workshop.
+        const canRepeat = !!slot && (inv[trade.inputIngredientId] ?? 0) >= trade.inputCount;
+        if (canRepeat) inv[trade.inputIngredientId] -= trade.inputCount;
+
+        const outName = cfg.ingredients[trade.outputIngredientId]?.name ?? trade.outputIngredientId;
+        const workers = s.workers.map((wk, i) =>
+          i === workerIndex
+            ? canRepeat
+              ? { ...wk, xp: leveled.xp, level: leveled.level,
+                  gather_speed: wk.gather_speed + levelsGained * 0.05,
+                  upgrade_tokens: (wk.upgrade_tokens ?? 0) + levelsGained,
+                  trade: { ...trade, consumed: false },
+                  trip_phase: "outbound" as const, trip_started_at: now(),
+                  flavor_status: `Back out to ${settlement.name} with another load.` }
+              : { ...wk, xp: leveled.xp, level: leveled.level,
+                  gather_speed: wk.gather_speed + levelsGained * 0.05,
+                  upgrade_tokens: (wk.upgrade_tokens ?? 0) + levelsGained,
+                  assigned_settlement: null, trade: null,
+                  trip_phase: "idle" as const, trip_started_at: null,
+                  flavor_status: "Back from market. Out of goods to trade." }
+            : wk
+        );
+
+        set({ ingredientInv: inv, discovered, discoveredAttributes, workers });
+        pushGameEvent("trough", `+${trade.outputCount} ${outName}`);
+      },
+
+      cancelTrade: (workerIndex) =>
+        set((s) => {
+          const w = s.workers[workerIndex];
+          if (!w || !w.assigned_settlement) return {};
+          const ingredientInv = refundUnconsumedTrade(w, s.ingredientInv);
+          const workers = s.workers.map((wk, i) =>
+            i === workerIndex
+              ? { ...wk, assigned_settlement: null, trade: null,
+                  trip_phase: "idle" as const, trip_started_at: null,
+                  flavor_status: pick(STATUS_IDLE) }
+              : wk
+          );
+          return { workers, ingredientInv };
+        }),
+
+      // ---- Regions ------------------------------------------------------------
+
+      unlockRegion: (regionId) => {
+        set((s) => {
+          if (s.unlockedRegions.includes(regionId)) return {};
+          const region = REGIONS_BY_ID[regionId];
+          if (!region) return {};
+          const status = regionRequirementsStatus(regionId, s);
+          if (!status.met) return {};
+          return {
+            coins: s.coins - region.unlockCost,
+            unlockedRegions: [...s.unlockedRegions, regionId],
+          };
+        });
+      },
+
       // Custom names: trimmed, 1–18 chars. Empty input is a no-op so a stray
       // save on a blank field can never wipe a name.
       renameWorker: (workerIndex, name) =>
@@ -925,15 +1291,21 @@ export const useGameStore = create<GameState>()(
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
         const potion = describePotion(ingredients, cfg.formulas);
         const masteryFx = computeMasteryEffects(s.masteryUnlocks);
+        // Global mastery multi-brew is additive ON TOP of the brewer's own %.
         const multiBonus = masteryFx.multi_brew_pct / 100;
         const outputs = rollMultiBrew(effectiveMultiBrew(machine, potion.volatility, cfg.formulas) + multiBonus);
+        // Mastery XP = the pre-mastery brew seconds of this recipe (one cycle).
+        const preMasteryBrewSecs = brewTime(machine, potion.toxicity, cfg.formulas, ingredients);
         const valueMult = 1 + masteryFx.potion_value_pct / 100;
         const sellMult = 1 + masteryFx.sell_price_pct / 100;
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
         if ((s.autoSellHashes ?? []).includes(potion.hash)) {
-          coins += Math.round(potion.value * valueMult * sellMult) * outputs;
+          // GAX: trickle auto-sales are priced against the live market and
+          // accumulate satiation (the velocity gate absorbs small volumes).
+          const gaxMult = get().gaxPriceAndRecord(potion.stats, outputs);
+          coins += Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
         } else {
           potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
         }
@@ -968,8 +1340,9 @@ export const useGameStore = create<GameState>()(
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
 
-        // Award mastery XP for the brewed potion (per output)
-        get().awardPotionBrewXP(potion.name, MASTERY_BASE_XP_PER_BREW * outputs);
+        // Award mastery XP for the completed brew cycle (time-invested based,
+        // NOT multiplied by multi-brew outputs).
+        get().awardPotionBrewXP(potion.name, preMasteryBrewSecs);
 
         // Auto-advance tutorial: step 1 is "click to speed up" — close it when first brew completes
         const tutState = get();
@@ -1057,7 +1430,12 @@ export const useGameStore = create<GameState>()(
         if (have <= 0) { set({ autoSellHashes }); return; }
         const cfg = useConfigStore.getState();
         const ings = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
-        const earned = ings.length ? describePotion(ings, cfg.formulas).value * have : 0;
+        let earned = 0;
+        if (ings.length) {
+          const d = describePotion(ings, cfg.formulas);
+          const gaxMult = get().gaxPriceAndRecord(d.stats, have);
+          earned = Math.round(d.value * gaxMult) * have;
+        }
         const potionInv = { ...s.potionInv };
         delete potionInv[hash];
         set({ autoSellHashes, potionInv, coins: s.coins + earned });
@@ -1083,7 +1461,8 @@ export const useGameStore = create<GameState>()(
         const n = Math.min(count, have);
         const fx = computeMasteryEffects(s.masteryUnlocks);
         const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
-        const earned = Math.round(potion.value * sellMult) * n;
+        const gaxMult = get().gaxPriceAndRecord(potion.stats, n);
+        const earned = Math.round(potion.value * sellMult * gaxMult) * n;
         const potionInv = { ...s.potionInv };
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
@@ -1106,7 +1485,11 @@ export const useGameStore = create<GameState>()(
         for (const [hash, count] of Object.entries(s.potionInv)) {
           const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
           if (ingredients.length === 0) continue;
-          const earned = Math.round(describePotion(ingredients, cfg.formulas).value * sellMult) * count;
+          const d = describePotion(ingredients, cfg.formulas);
+          // Bulk sale: each name is priced against the market, and the dumped
+          // volume floods its attributes' buckets.
+          const gaxMult = get().gaxPriceAndRecord(d.stats, count);
+          const earned = Math.round(d.value * sellMult * gaxMult) * count;
           coins += earned;
           totalEarned += earned;
         }
@@ -1193,6 +1576,84 @@ export const useGameStore = create<GameState>()(
         set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
         get().checkAchievements("coins", s.coins + quest.reward);
+      },
+
+      // ---- The Grand Alchemical Exchange -----------------------------------
+
+      unlockGax: () => {
+        set((s) => {
+          if (s.gaxUnlocked || s.coins < GAX_UNLOCK_COST) return {};
+          return {
+            coins: s.coins - GAX_UNLOCK_COST,
+            gaxUnlocked: true,
+            gaxMarket: emptyMarket(now()),
+          };
+        });
+        if (get().gaxUnlocked) {
+          pushToast("🏛 The Grand Alchemical Exchange is open! Watch the ticker — the market watches you.", "amber");
+        }
+      },
+
+      settleGax: () => {
+        const s = get();
+        if (!s.gaxUnlocked) return;
+        const hour = gaxHourIndex(now());
+        if (hour <= s.gaxMarket.lastSettledHour) return; // nothing due — stay lazy
+        const m = cloneMarket(s.gaxMarket);
+        const res = settleMarket(m, hour);
+        set({ gaxMarket: m });
+        if (res.eventStarted) {
+          const def = GAX_EVENTS_BY_ID[res.eventStarted.defId];
+          if (def && eventPhase(res.eventStarted, hour) === "forecast") {
+            pushToast(`📰 GAX Forecast: ${def.headline}`, "amber");
+          }
+        }
+      },
+
+      gaxPriceAndRecord: (stats, count) => {
+        const s = get();
+        if (!s.gaxUnlocked) return 1;
+        const hour = gaxHourIndex(now());
+        const m = cloneMarket(s.gaxMarket);
+        // Bulk-sale trigger: settle any elapsed hours before pricing.
+        if (hour > m.lastSettledHour) settleMarket(m, hour);
+        const mult = potionPriceMultiplier(m, hour, stats);
+        recordSale(m, stats, count);
+        set({ gaxMarket: m });
+        return mult;
+      },
+
+      rerollQuest: (questId) => {
+        const s = get();
+        const cfg = useConfigStore.getState();
+        const quest = s.activeQuests.find((q) => q.id === questId);
+        if (!quest) return;
+        const cost = Math.floor(quest.reward / 2);
+        if (s.coins < cost) return;
+        const groups = uniqueNameGroups(s.discoveredPotions, cfg);
+        if (groups.length === 0) return;
+        const fresh = generateQuest(quest.difficulty, groups, cfg.ingredients, s.ingredientInv);
+        set({
+          coins: s.coins - cost,
+          activeQuests: s.activeQuests.map((q) => (q.id === questId ? fresh : q)),
+        });
+      },
+
+      rerollDiscoveryBounty: () => {
+        const s = get();
+        const b = s.discoveryBounty;
+        // Only an active (unclaimed, not cooling down) bounty can be re-rolled.
+        if (!b || b.readyToClaim || b.cooldownUntil !== null) return;
+        const cost = Math.floor(b.reward / 2);
+        if (s.coins < cost) return;
+        const cfg = useConfigStore.getState();
+        const maxComboSize = Math.max(...s.machines.map((m) => m.unlocked_slots));
+        const fresh = generateDiscoveryBounty(s.discovered, s.discoveredPotions, cfg.ingredients, cfg.formulas, maxComboSize);
+        if (!fresh) return;
+        set({
+          coins: s.coins - cost,
+          discoveryBounty: { ...fresh, readyToClaim: false, cooldownUntil: null },
+        });
       },
 
       refreshDiscoveryBounty: () => {
@@ -1339,6 +1800,8 @@ export const useGameStore = create<GameState>()(
           const cfg = useConfigStore.getState();
           const loc = cfg.locations[locationId];
           if (!loc || s.coins < loc.unlockCost) return {};
+          // Region gate: the enclosing region must be unlocked first.
+          if (!s.unlockedRegions.includes(regionOfDistance(loc.distance).id)) return {};
           return {
             coins: s.coins - loc.unlockCost,
             unlockedLocations: [...s.unlockedLocations, locationId],
@@ -1395,6 +1858,57 @@ export const useGameStore = create<GameState>()(
               };
             }
 
+            // ---- Settlement trade catch-up -----------------------------------
+            if (w.assigned_settlement && w.trade && w.trip_started_at) {
+              const settlement = cfg.settlements[w.assigned_settlement];
+              if (!settlement) return w;
+              const tripSecs = gatherRoundTrip(settlement.distance, w.gather_speed);
+              const elapsedTrip = (now() - w.trip_started_at) / 1000;
+              let trips = Math.floor(elapsedTrip / tripSecs);
+              let trade = w.trade;
+              let xpGained = 0;
+              let stillAssigned = true;
+              let tripStart = w.trip_started_at;
+              while (trips > 0) {
+                // Complete this run: deposit the output.
+                inv[trade.outputIngredientId] = (inv[trade.outputIngredientId] ?? 0) + trade.outputCount;
+                discovered.add(trade.outputIngredientId);
+                discoveredAttributes = unlockAttributes(trade.outputIngredientId, discoveredAttributes, cfg);
+                xpGained += Math.round(5 + settlement.distance);
+                tripStart += tripSecs * 1000;
+                trips -= 1;
+                // Re-provision for the next run, or stand down.
+                if ((inv[trade.inputIngredientId] ?? 0) >= trade.inputCount) {
+                  inv[trade.inputIngredientId] -= trade.inputCount;
+                  trade = { ...trade, consumed: false };
+                } else {
+                  stillAssigned = false;
+                  break;
+                }
+              }
+              // Mid-trip halfway consumption for the in-flight run.
+              if (stillAssigned && ((now() - tripStart) / 1000) >= tripSecs / 2 && !trade.consumed) {
+                trade = { ...trade, consumed: true };
+              }
+              if (xpGained === 0 && stillAssigned) return { ...w, trade };
+              totalWorkerXp += xpGained;
+              const leveled = applyLevels(w.level, w.xp + xpGained, cfg.formulas);
+              const levelsGained = leveled.level - w.level;
+              if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) workerFirstToken = true;
+              anyGathered = anyGathered || xpGained > 0;
+              return stillAssigned
+                ? { ...w, xp: leveled.xp, level: leveled.level,
+                    gather_speed: w.gather_speed + levelsGained * 0.05,
+                    upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+                    trade, trip_started_at: tripStart, trip_phase: "outbound" as const }
+                : { ...w, xp: leveled.xp, level: leveled.level,
+                    gather_speed: w.gather_speed + levelsGained * 0.05,
+                    upgrade_tokens: (w.upgrade_tokens ?? 0) + levelsGained,
+                    assigned_settlement: null, trade: null,
+                    trip_phase: "idle" as const, trip_started_at: null,
+                    flavor_status: "Back from market. Out of goods to trade." };
+            }
+
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
             if (!loc || !w.trip_started_at) return w;
 
@@ -1445,7 +1959,9 @@ export const useGameStore = create<GameState>()(
           let discoveredPotions = [...new Set(s.discoveredPotions ?? [])];
           let totalPotionsBrewedCount = 0;
           let totalMachineXp = 0;
-          const offlinePotionBrews: Record<string, number> = {}; // potionName → total outputs
+          const offlineMasteryXp: Record<string, number> = {}; // potionName → accumulated mastery XP (pre-mastery brew secs)
+          const offlineGaxSold: Record<string, number> = {};   // attr → attribute-points auto-sold while away
+          const masteryFx = computeMasteryEffects(s.masteryUnlocks);
 
           const machinesSim = s.machines.map((machine) => {
             if (!machine.running || !machine.brew_started_at) return machine;
@@ -1469,8 +1985,6 @@ export const useGameStore = create<GameState>()(
             let stalled = false;
             let machineSim = { ...machine };
 
-            let currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
-
             // Loop-invariant work hoisted: the recipe (and thus the potion and
             // per-brew ingredient needs) never changes across catch-up iterations.
             const need: Record<string, number> = {};
@@ -1478,6 +1992,16 @@ export const useGameStore = create<GameState>()(
             const needEntries = Object.entries(need);
             const potion = describePotion(ingredients, cfg.formulas);
             const isAutoSold = (s.autoSellHashes ?? []).includes(potion.hash);
+            // GAX: offline sales settle at the last posted prices (the Guild
+            // Auditor charges yesterday's board); volumes accrue for the audit.
+            const gaxMult = s.gaxUnlocked && isAutoSold
+              ? potionPriceMultiplier(s.gaxMarket, s.gaxMarket.lastSettledHour, potion.stats)
+              : 1;
+            // Same additive mastery reduction as the live loop (tree % + potion
+            // mastery %, capped) so offline and online brew rates match.
+            const potionLvl = masteryLevel(s.potionMastery[potion.name]?.xp ?? 0);
+            let preMasterySecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+            let currentBrewSecs = applyMasteryToBrewTime(preMasterySecs, masteryFx.brew_speed_pct, potionLvl);
 
             while (brewElapsedSecs >= currentBrewSecs) {
               let hasAll = true;
@@ -1488,15 +2012,24 @@ export const useGameStore = create<GameState>()(
 
               for (const [id, n] of needEntries) inv[id] = (inv[id] ?? 0) - n;
 
-              const outputs = rollMultiBrew(effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas));
+              // Global mastery multi-brew is additive on top of the brewer's %.
+              const outputs = rollMultiBrew(
+                effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas) + masteryFx.multi_brew_pct / 100
+              );
 
               totalPotionsBrewedCount += outputs;
-              offlinePotionBrews[potion.name] = (offlinePotionBrews[potion.name] ?? 0) + outputs;
+              // Mastery XP: pre-mastery seconds per completed cycle (not per output).
+              offlineMasteryXp[potion.name] = (offlineMasteryXp[potion.name] ?? 0) + preMasterySecs;
               if (isAutoSold) {
-                const offlineFx = computeMasteryEffects(s.masteryUnlocks);
-                const valueMult = 1 + offlineFx.potion_value_pct / 100;
-                const sellMult  = 1 + offlineFx.sell_price_pct  / 100;
-                coins += Math.round(potion.value * valueMult * sellMult) * outputs;
+                const valueMult = 1 + masteryFx.potion_value_pct / 100;
+                const sellMult  = 1 + masteryFx.sell_price_pct  / 100;
+                coins += Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
+                if (s.gaxUnlocked) {
+                  for (const k of Object.keys(potion.stats) as (keyof Attributes)[]) {
+                    const v = potion.stats[k];
+                    if (v > 0) offlineGaxSold[k] = (offlineGaxSold[k] ?? 0) + v * outputs;
+                  }
+                }
               } else {
                 potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
               }
@@ -1515,7 +2048,8 @@ export const useGameStore = create<GameState>()(
               if (levelsGained > 0 && (machine.upgrade_tokens ?? 0) === 0) machineFirstToken = true;
 
               if (levelsGained > 0) {
-                currentBrewSecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+                preMasterySecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+                currentBrewSecs = applyMasteryToBrewTime(preMasterySecs, masteryFx.brew_speed_pct, potionLvl);
               }
 
               if (!discoveredPotions.includes(potion.hash)) {
@@ -1555,13 +2089,71 @@ export const useGameStore = create<GameState>()(
             ? machinesSim.map((m) => ({ ...m, brew_started_at: m.running ? now() : null }))
             : machinesSim;
 
+          // ---- GAX catch-up: exponential-decay settle + Guild Auditor report -
+          let gaxMarket = s.gaxMarket;
+          let gaxOfflineReport = s.gaxOfflineReport;
+          if (s.gaxUnlocked) {
+            const nowHour = gaxHourIndex(now());
+            const marketHoursAway = nowHour - s.gaxMarket.lastSettledHour;
+            if (marketHoursAway > 0) {
+              const m = cloneMarket(s.gaxMarket);
+              const hadEvent = m.event;
+              for (const [attr, pts] of Object.entries(offlineGaxSold)) {
+                m.pending[attr] = (m.pending[attr] ?? 0) + pts;
+              }
+              const res = settleMarket(m, nowHour);
+              gaxMarket = m;
+
+              // The auditor only files a report for a proper absence.
+              if (isLongOffline) {
+                const audit: GaxAuditRow[] = [];
+                for (const [attr, soldPoints] of Object.entries(offlineGaxSold)) {
+                  if (soldPoints < 200) continue;
+                  const sat = m.satiation[attr] ?? 0;
+                  audit.push({
+                    attr,
+                    soldPoints: Math.round(soldPoints),
+                    multiplier: attrMultiplier(m, nowHour, attr),
+                    outcome: res.admitted.includes(attr) ? "replaced" : sat > 0 ? "flooded" : "starved",
+                  });
+                }
+                // Note the best scarcity bonuses earned through pure neglect.
+                const starved = m.board
+                  .filter((attr) => !(attr in offlineGaxSold) && (m.satiation[attr] ?? 0) < 0)
+                  .map((attr) => ({
+                    attr,
+                    soldPoints: 0,
+                    multiplier: satiationMultiplier(m.satiation[attr] ?? 0),
+                    outcome: "starved" as const,
+                  }))
+                  .sort((a, b) => b.multiplier - a.multiplier)
+                  .slice(0, 3);
+                audit.push(...starved);
+                audit.sort((a, b) => Math.abs(b.multiplier - 1) - Math.abs(a.multiplier - 1));
+
+                const activeDef = m.event ? GAX_EVENTS_BY_ID[m.event.defId] : null;
+                gaxOfflineReport = {
+                  hoursAway: marketHoursAway,
+                  activeEvent: m.event && activeDef
+                    ? { headline: activeDef.headline, day: eventDayNumber(m.event, nowHour), phase: eventPhase(m.event, nowHour) }
+                    : null,
+                  endedEventHeadline: res.eventEnded
+                    ? GAX_EVENTS_BY_ID[res.eventEnded]?.headline ?? null
+                    : hadEvent && !m.event
+                    ? GAX_EVENTS_BY_ID[hadEvent.defId]?.headline ?? null
+                    : null,
+                  audit: audit.slice(0, 8),
+                };
+              }
+            }
+          }
+
           // Apply mastery XP for all offline brews
-          const fx = computeMasteryEffects(s.masteryUnlocks);
-          const xpMult = 1 + fx.mastery_xp_pct / 100;
+          const xpMult = 1 + masteryFx.mastery_xp_pct / 100;
           let potionMastery = { ...s.potionMastery };
           let masteryTokens = s.masteryTokens;
-          for (const [potionName, outputs] of Object.entries(offlinePotionBrews)) {
-            const xpGained = Math.round(MASTERY_BASE_XP_PER_BREW * outputs * xpMult);
+          for (const [potionName, xpAccum] of Object.entries(offlineMasteryXp)) {
+            const xpGained = Math.round(xpAccum * xpMult);
             const entry = potionMastery[potionName] ?? { xp: 0, tokenAwarded: false };
             const newXp = entry.xp + xpGained;
             const justMastered = masteryLevel(newXp) >= 10 && !entry.tokenAwarded;
@@ -1586,6 +2178,8 @@ export const useGameStore = create<GameState>()(
             workers: workersSim,
             machines,
             welcomeBack,
+            gaxMarket,
+            gaxOfflineReport,
             lastSeen: now(),
           };
         });
@@ -1605,7 +2199,7 @@ export const useGameStore = create<GameState>()(
         g.checkAchievements("coins", g.coins);
       },
 
-      dismissWelcome: () => set({ welcomeBack: null }),
+      dismissWelcome: () => set({ welcomeBack: null, gaxOfflineReport: null }),
 
       downgradeGraphics: () =>
         set((s) => {
@@ -1684,11 +2278,13 @@ export const useGameStore = create<GameState>()(
           autoSellHashes: [],
           unlockedLocations: ["hollow"],
           exploredLocations: ["hollow"],
+          unlockedRegions: ["region_home_vale"],
           discovered_location_drops: { hollow: ["rootmoss"] },
           tutorial_step: 0,
           has_completed_tutorial: false,
           unlocked_achievements: [],
           collected_achievements: [],
+          achv_rewards_v2: true,
           total_brews: 0,
           lastSeen: now(),
           welcomeBack: null,
@@ -1696,6 +2292,9 @@ export const useGameStore = create<GameState>()(
           activeQuests: [],
           questCooldowns: {},
           discoveryBounty: null,
+          gaxUnlocked: false,
+          gaxMarket: emptyMarket(now()),
+          gaxOfflineReport: null,
           player_click_power_level: 0,
           unlocked_globals: [],
           potionMastery: {},
@@ -1737,12 +2336,7 @@ export const useGameStore = create<GameState>()(
           (a) => a.trigger_type === trigger && !unlocked.has(a.id) && value >= a.target_value
         );
         if (newly.length === 0) return;
-        const patch = applyAchievementUnlocks(s, newly);
-        set(patch);
-        // A coin reward can itself cross a coin milestone — cascade once.
-        if (trigger !== "coins" && patch.coins !== undefined && patch.coins !== s.coins) {
-          get().checkAchievements("coins", patch.coins);
-        }
+        set(applyAchievementUnlocks(s, newly));
       },
       unlockAchievement: (id) => {
         const s = get();
@@ -1769,6 +2363,8 @@ export const useGameStore = create<GameState>()(
         };
         if (tokenBonus > 0) patch.workers = s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + tokenBonus }));
         set(patch);
+        // Collected coins can themselves cross a coin milestone.
+        if (coins !== s.coins) get().checkAchievements("coins", coins);
       },
       reconcileAchievements: () =>
         set((s) => {
@@ -1807,16 +2403,20 @@ export const useGameStore = create<GameState>()(
         autoSellHashes: s.autoSellHashes,
         unlockedLocations: s.unlockedLocations,
         exploredLocations: s.exploredLocations,
+        unlockedRegions: s.unlockedRegions,
         discovered_location_drops: s.discovered_location_drops,
         tutorial_step: s.tutorial_step,
         has_completed_tutorial: s.has_completed_tutorial,
         unlocked_achievements: s.unlocked_achievements,
         collected_achievements: s.collected_achievements,
+        achv_rewards_v2: s.achv_rewards_v2,
         total_brews: s.total_brews,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
         discoveryBounty: s.discoveryBounty,
+        gaxUnlocked: s.gaxUnlocked,
+        gaxMarket: s.gaxMarket,
         player_click_power_level: s.player_click_power_level,
         unlocked_globals: s.unlocked_globals,
         lastSeen: s.lastSeen,
@@ -1832,6 +2432,8 @@ export const useGameStore = create<GameState>()(
           return {
             ...w,
             assigned_machine_id: wp.assigned_machine_id ?? null,
+            assigned_settlement: wp.assigned_settlement ?? null,
+            trade: wp.trade ?? null,
             auto_click_speed: wp.auto_click_speed ?? 1.0,
             click_power_level: wp.click_power_level ?? 0,
             specialization: wp.specialization ?? "none",
@@ -1850,6 +2452,15 @@ export const useGameStore = create<GameState>()(
         // Existing saves (any persisted keys) skip the tutorial; only a genuinely
         // fresh player (no persisted state) sees onboarding.
         const isExistingSave = Object.keys(p).length > 0;
+        // Mastery XP migration: thresholds moved from a 2,750-XP scale to a
+        // 45,000-XP (time-based) scale. Potions that already awarded their token
+        // keep their MASTERED status by pinning xp to the new level-10 threshold.
+        const migratedMastery: Record<string, PotionMasteryEntry> = {};
+        for (const [name, entry] of Object.entries(p.potionMastery ?? {})) {
+          migratedMastery[name] = entry.tokenAwarded && entry.xp < 45000
+            ? { ...entry, xp: 45000 }
+            : entry;
+        }
         return {
           ...current,
           ...p,
@@ -1858,11 +2469,28 @@ export const useGameStore = create<GameState>()(
           discovered_location_drops: p.discovered_location_drops ?? {},
           tutorial_step: p.tutorial_step ?? 0,
           has_completed_tutorial: p.has_completed_tutorial ?? isExistingSave,
+          gaxUnlocked: p.gaxUnlocked ?? false,
+          gaxMarket: p.gaxMarket ?? emptyMarket(now()),
+          gaxOfflineReport: null,
           unlocked_achievements: p.unlocked_achievements ?? [],
+          // Pre-fix saves auto-granted rewards on unlock: mark those unlocked
+          // achievements as already collected so they can't be double-dipped.
+          collected_achievements: p.achv_rewards_v2
+            ? (p.collected_achievements ?? [])
+            : Array.from(new Set([...(p.collected_achievements ?? []), ...(p.unlocked_achievements ?? [])])),
+          achv_rewards_v2: true,
           total_brews: p.total_brews ?? 0,
           player_click_power_level: p.player_click_power_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
-          potionMastery: p.potionMastery ?? {},
+          // Region migration: existing saves grandfather in every region that
+          // already contains one of their unlocked locations.
+          unlockedRegions: p.unlockedRegions ?? Array.from(new Set([
+            "region_home_vale",
+            ...(p.unlockedLocations ?? [])
+              .map((id) => LOCATIONS[id] ? regionOfDistance(LOCATIONS[id].distance).id : null)
+              .filter((x): x is string => !!x),
+          ])),
+          potionMastery: migratedMastery,
           masteryTokens: p.masteryTokens ?? 0,
           masteryUnlocks: p.masteryUnlocks ?? [],
           seenHints: p.seenHints ?? [],

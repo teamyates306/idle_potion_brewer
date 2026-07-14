@@ -1,31 +1,34 @@
-import { useRef, useState, useMemo, useLayoutEffect } from "react";
-import { MapPin, Lock, Footprints, HelpCircle, CheckSquare, Square } from "lucide-react";
+import { useRef, useState, useMemo, useLayoutEffect, useEffect } from "react";
+import { MapPin, Lock, Footprints, HelpCircle, CheckSquare, Square, Store, Check, X, Landmark } from "lucide-react";
 import Modal from "./ui/Modal";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, regionRequirementsStatus, GAX_UNLOCK_COST } from "../store/gameStore";
+import GaxDashboard from "./GaxDashboard";
 import { useConfigStore } from "../store/configStore";
 import { fmt, fmtDuration, RARITY_COLOR } from "../util/format";
 import { gatherRoundTrip } from "../engine/formulas";
+import { REGIONS, regionOfDistance, type RegionDef } from "../data/regions";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
-import type { Location } from "../types";
+import SettlementModal from "./SettlementModal";
+import type { Location, Settlement } from "../types";
 
-// ── Spatial layout ────────────────────────────────────────────────────────────
-// Every location is placed on a single winding trail in progression order
-// (sorted by travel distance), snaking 3-per-row down the parchment. This keeps
-// neighbouring locations close together and makes the unlock order readable at
-// a glance — previously only 7 landmarks were hand-placed and the other 25 were
-// stacked one-per-row in a ~4,400px column.
-// Canvas fits the modal width (no horizontal panning) — the trail only scrolls
-// vertically, two locations per row. Actual width is measured from the viewport.
-const FALLBACK_CANVAS_W = 400;
-const ROW_H = 145;
-const TOP = 80;
+// ── Radial "bloom" layout ─────────────────────────────────────────────────────
+// The workshop sits at the centre of the map; every location and settlement
+// blooms outward around it on its region's ring. Distance from the centre still
+// tracks travel distance / cost, but there is deliberately no trail — nothing
+// implies a fixed order, and any node in an unlocked region can be opened next.
+const CANVAS = 1160;
+const CENTER = CANVAS / 2;
+const RING_RADII = [120, 205, 290, 375, 460, 540];
 const VIEWPORT_H = 420;
-const TRAIL_COLS = [0.26, 0.74];
 
 // Muted, earthy danger ramp (safe moss → deep oxblood) — no neon.
 const DANGER_COLOR = ["#6f8a4a", "#b08a33", "#bf7b3a", "#a8472f", "#7d3b4a"];
 
-interface PlacedNode { loc: Location; x: number; y: number }
+type MapEntry =
+  | { kind: "location"; loc: Location; distance: number }
+  | { kind: "settlement"; settlement: Settlement; distance: number };
+
+interface PlacedNode { entry: MapEntry; x: number; y: number; region: RegionDef; regionIdx: number }
 
 /** Small deterministic hash so each node gets a stable organic jitter. */
 function idHash(s: string): number {
@@ -37,49 +40,130 @@ function idHash(s: string): number {
   return Math.abs(h);
 }
 
-function buildLayout(locations: Location[], width: number): { nodes: PlacedNode[]; height: number } {
-  const ordered = [...locations].sort(
-    (a, b) => a.distance - b.distance || a.id.localeCompare(b.id),
-  );
-  const nodes: PlacedNode[] = ordered.map((loc, i) => {
-    const row = Math.floor(i / TRAIL_COLS.length);
-    const within = i % TRAIL_COLS.length;
-    // Serpentine: even rows read left→right, odd rows right→left, so the trail
-    // is continuous instead of jumping back across the map.
-    const col = row % 2 === 0 ? TRAIL_COLS[within] : TRAIL_COLS[TRAIL_COLS.length - 1 - within];
-    const h = idHash(loc.id);
-    const jx = ((h % 100) / 100 - 0.5) * 24;          // ±12px organic drift
-    const jy = (((h >> 7) % 100) / 100 - 0.5) * 28;   // ±14px
-    return { loc, x: col * width + jx, y: TOP + row * ROW_H + jy };
-  });
-  const rows = Math.max(1, Math.ceil(ordered.length / TRAIL_COLS.length));
-  return { nodes, height: TOP + (rows - 1) * ROW_H + 130 };
+function buildLayout(locations: Location[], settlements: Settlement[]): PlacedNode[] {
+  const entries: MapEntry[] = [
+    ...locations.map((loc) => ({ kind: "location" as const, loc, distance: loc.distance })),
+    ...settlements.map((settlement) => ({ kind: "settlement" as const, settlement, distance: settlement.distance })),
+  ];
+  const byRegion = new Map<number, MapEntry[]>();
+  for (const e of entries) {
+    const idx = REGIONS.findIndex((r) => e.distance >= r.minDist && e.distance < r.maxDist);
+    const ri = idx < 0 ? REGIONS.length - 1 : idx;
+    const list = byRegion.get(ri) ?? [];
+    list.push(e);
+    byRegion.set(ri, list);
+  }
+
+  const nodes: PlacedNode[] = [];
+  for (const [ri, members] of byRegion) {
+    members.sort((a, b) => a.distance - b.distance || idOf(a).localeCompare(idOf(b)));
+    const base = RING_RADII[ri] ?? RING_RADII[RING_RADII.length - 1];
+    const n = members.length;
+    members.forEach((entry, j) => {
+      const h = idHash(idOf(entry));
+      // Even angular spread with a small stable jitter; each ring starts at a
+      // different offset so nodes don't line up into visual "spokes".
+      const angle = -Math.PI / 2 + ri * 0.55 + ((j + 0.5) / n) * Math.PI * 2 + ((h % 100) / 100 - 0.5) * (0.5 / n) * Math.PI;
+      const radius = base + (((h >> 7) % 100) / 100 - 0.5) * 34;
+      nodes.push({
+        entry,
+        x: CENTER + Math.cos(angle) * radius,
+        y: CENTER + Math.sin(angle) * radius,
+        region: REGIONS[ri],
+        regionIdx: ri,
+      });
+    });
+  }
+  return nodes;
 }
 
-/** Dashed ink trail linking consecutive locations, drawn beneath the nodes. */
-function TrailPath({ nodes, width, height }: { nodes: PlacedNode[]; width: number; height: number }) {
-  if (nodes.length < 2) return null;
-  const d = nodes
-    .map((n, i) => `${i === 0 ? "M" : "L"} ${Math.round(n.x)} ${Math.round(n.y)}`)
-    .join(" ");
+function idOf(e: MapEntry): string {
+  return e.kind === "location" ? e.loc.id : e.settlement.id;
+}
+
+/** Outer radius of each region band (midpoint between neighbouring rings). */
+const BAND_OUTER = RING_RADII.map((r, i) =>
+  i < RING_RADII.length - 1 ? (r + RING_RADII[i + 1]) / 2 : r + 42
+);
+
+/** Concentric region bands painted beneath the nodes: filled discs, largest
+ *  first, so each band tint shows as an annulus. Locked regions read as grey. */
+function RegionBands({ unlockedRegions }: { unlockedRegions: string[] }) {
   return (
-    <svg
-      className="pointer-events-none absolute inset-0"
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      fill="none"
-    >
-      <path
-        d={d}
-        stroke="#7a5a34"
-        strokeOpacity="0.32"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="1 10"
-      />
+    <svg className="pointer-events-none absolute inset-0" width={CANVAS} height={CANVAS} viewBox={`0 0 ${CANVAS} ${CANVAS}`}>
+      {[...REGIONS].map((region, i) => ({ region, i })).reverse().map(({ region, i }) => {
+        const locked = !unlockedRegions.includes(region.id);
+        return (
+          <circle
+            key={region.id}
+            cx={CENTER}
+            cy={CENTER}
+            r={BAND_OUTER[i]}
+            fill={locked ? "#8a7a5c" : region.color}
+            fillOpacity={locked ? 0.10 : 0.13}
+          />
+        );
+      })}
+      {/* thin separators between bands */}
+      {BAND_OUTER.slice(0, -1).map((r, i) => (
+        <circle key={i} cx={CENTER} cy={CENTER} r={r} fill="none" stroke="#7a5a34" strokeOpacity="0.3" strokeWidth="1.5" />
+      ))}
     </svg>
+  );
+}
+
+/** Region name chips pinned to the top of each band. */
+function RegionLabels({ unlockedRegions, onPick }: { unlockedRegions: string[]; onPick: (r: RegionDef) => void }) {
+  return (
+    <>
+      {REGIONS.map((region, i) => {
+        const locked = !unlockedRegions.includes(region.id);
+        // Pin each label near its band's outer edge, above that band's nodes.
+        const y = CENTER - (RING_RADII[i] + (BAND_OUTER[i] - RING_RADII[i]) * 0.8);
+        return (
+          <button
+            key={region.id}
+            onClick={() => onPick(region)}
+            className={`absolute z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-sm transition active:scale-95 ${
+              locked
+                ? "border-slate-700/70 bg-[#d8c49a] text-slate-500"
+                : "border-transparent text-[#f6eeda]"
+            }`}
+            style={{ left: CENTER, top: y, ...(locked ? {} : { background: region.color }) }}
+          >
+            {locked && <Lock size={9} />}
+            {region.name}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
+/** Unclickable workshop marker at the heart of the map. */
+function WorkshopNode() {
+  return (
+    <div className="pointer-events-none absolute z-10" style={{ left: CENTER, top: CENTER, transform: "translate(-50%, -50%)" }}>
+      <div
+        className="flex items-center justify-center rounded-full border-2"
+        style={{
+          width: 68, height: 68,
+          borderColor: "#7a5a34",
+          background: "radial-gradient(circle at 35% 30%, #fbf3dc, #d9b96f)",
+          boxShadow: "0 3px 10px rgba(70,45,20,0.35)",
+        }}
+      >
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <path d="M3 11 L12 3 L21 11" stroke="#6b4a20" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="#c9a45a" />
+          <rect x="6" y="11" width="12" height="9" fill="#8a6a38" stroke="#6b4a20" strokeWidth="1.6" />
+          <rect x="10" y="14" width="4" height="6" fill="#3a2008" />
+          <circle cx="16" cy="15.5" r="1" fill="#f0c870" />
+        </svg>
+      </div>
+      <div className="mt-1.5 w-24 -translate-x-1/2 text-center text-[11px] font-bold text-amber-950" style={{ marginLeft: 34 }}>
+        Your Workshop
+      </div>
+    </div>
   );
 }
 
@@ -94,6 +178,7 @@ export default function MapView({
   lockedWorkerIndex?: number | null;
 }) {
   const unlocked = useGameStore((s) => s.unlockedLocations);
+  const unlockedRegions = useGameStore((s) => s.unlockedRegions);
   const pushHint = useGameStore((s) => s.pushHint);
   const explored = useGameStore((s) => s.exploredLocations);
   const discoveredDrops = useGameStore((s) => s.discovered_location_drops);
@@ -103,28 +188,27 @@ export default function MapView({
   const hasCompass = unlocked_globals.includes("cartographers_compass");
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
+  const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<RegionDef | null>(null);
+  const [gaxOpen, setGaxOpen] = useState<"unlock" | "dashboard" | null>(null);
 
   const locations = useMemo(() => Object.values(cfg.locations), [cfg.locations]);
+  const settlements = useMemo(() => Object.values(cfg.settlements), [cfg.settlements]);
+  const nodes = useMemo(() => buildLayout(locations, settlements), [locations, settlements]);
+  const firstUnlockedId = nodes.find((n) => n.entry.kind === "location" && unlocked.includes(n.entry.loc.id));
 
-  // ── Drag to pan ─────────────────────────────────────────────────────────────
+  // ── Drag to pan (both axes) ──────────────────────────────────────────────────
   const vpRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ x: 0, y: 0, sl: 0, st: 0, active: false });
+  const moved = useRef(false);
 
-  // Fit the trail to the modal's inner width so it never pans horizontally.
-  const [canvasW, setCanvasW] = useState(FALLBACK_CANVAS_W);
+  // Start centred on the workshop.
   useLayoutEffect(() => {
     const vp = vpRef.current;
     if (!vp) return;
-    const measure = () => setCanvasW(Math.max(320, vp.clientWidth));
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(vp);
-    return () => ro.disconnect();
+    vp.scrollLeft = CENTER - vp.clientWidth / 2;
+    vp.scrollTop = CENTER - vp.clientHeight / 2;
   }, []);
-
-  const { nodes, height } = useMemo(() => buildLayout(locations, canvasW), [locations, canvasW]);
-  const firstUnlockedId = nodes.find((n) => unlocked.includes(n.loc.id))?.loc.id;
-  const drag = useRef({ x: 0, y: 0, sl: 0, st: 0, active: false });
-  const moved = useRef(false);
 
   const onPointerDown = (e: React.PointerEvent) => {
     const vp = vpRef.current;
@@ -148,10 +232,27 @@ export default function MapView({
     if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; }
   };
 
+  const handleNodeTap = (node: PlacedNode) => {
+    const regionLocked = !unlockedRegions.includes(node.region.id);
+    if (regionLocked) {
+      pushHint("map_locked_location");
+      setSelectedRegion(node.region);
+      return;
+    }
+    if (node.entry.kind === "settlement") setSelectedSettlement(node.entry.settlement);
+    else {
+      if (!unlocked.includes(node.entry.loc.id)) pushHint("map_locked_location");
+      setSelected(node.entry.loc);
+    }
+  };
+
   return (
     <>
       <Modal title="The Map" onClose={onClose} accent="#5e7a45">
-        <p className="mb-3 text-xs text-slate-400">Drag to explore. The trail winds deeper — tap a location to send workers or learn more.</p>
+        <p className="mb-3 text-xs text-slate-400">
+          Your workshop sits at the heart of the wilds. Locations bloom outward in
+          all directions — unlock any of them, in any order, region by region.
+        </p>
 
         <div
           ref={vpRef}
@@ -161,13 +262,13 @@ export default function MapView({
           onPointerLeave={endDrag}
           onClickCapture={onClickCapture}
           className="relative cursor-grab touch-none overflow-auto overscroll-contain rounded-xl border border-slate-800 active:cursor-grabbing"
-          style={{ height: VIEWPORT_H }}
+          style={{ height: VIEWPORT_H, scrollbarWidth: "none" } as React.CSSProperties}
         >
           <div
             className="relative"
             style={{
-              width: canvasW,
-              height,
+              width: CANVAS,
+              height: CANVAS,
               // Aged-paper map: warm parchment base, soft sepia blotches, faint ink grid.
               backgroundColor: "#e3cfa0",
               backgroundImage:
@@ -177,23 +278,44 @@ export default function MapView({
               backgroundSize: "auto, auto, 26px 26px",
             }}
           >
-            <TrailPath nodes={nodes} width={canvasW} height={height} />
-            {nodes.map((n) => (
-              <MapNode
-                key={n.loc.id}
-                node={n}
-                isUnlocked={unlocked.includes(n.loc.id)}
-                isExplored={explored.includes(n.loc.id)}
-                canAfford={coins >= n.loc.unlockCost}
-                workerCount={workers.filter((w) => w.assigned_location === n.loc.id).length}
-                workerIds={workers.filter((w) => w.assigned_location === n.loc.id).map((w) => w.id)}
-                ingredients={n.loc.drops}
-                discoveredDrops={discoveredDrops[n.loc.id] ?? []}
-                hasCompass={hasCompass}
-                dataTut={n.loc.id === firstUnlockedId ? "map-location" : undefined}
-                onClick={() => { if (!unlocked.includes(n.loc.id)) pushHint("map_locked_location"); setSelected(n.loc); }}
-              />
-            ))}
+            <RegionBands unlockedRegions={unlockedRegions} />
+            <RegionLabels unlockedRegions={unlockedRegions} onPick={setSelectedRegion} />
+            <WorkshopNode />
+            <GaxNode onClick={() => setGaxOpen(useGameStore.getState().gaxUnlocked ? "dashboard" : "unlock")} />
+            {nodes.map((n) => {
+              const regionLocked = !unlockedRegions.includes(n.region.id);
+              if (n.entry.kind === "settlement") {
+                const st = n.entry.settlement;
+                return (
+                  <SettlementNode
+                    key={st.id}
+                    node={n}
+                    settlement={st}
+                    regionLocked={regionLocked}
+                    workerIds={workers.filter((w) => w.assigned_settlement === st.id).map((w) => w.id)}
+                    onClick={() => handleNodeTap(n)}
+                  />
+                );
+              }
+              const loc = n.entry.loc;
+              return (
+                <MapNode
+                  key={loc.id}
+                  node={n}
+                  loc={loc}
+                  regionLocked={regionLocked}
+                  isUnlocked={unlocked.includes(loc.id)}
+                  isExplored={explored.includes(loc.id)}
+                  canAfford={coins >= loc.unlockCost}
+                  workerIds={workers.filter((w) => w.assigned_location === loc.id).map((w) => w.id)}
+                  ingredients={loc.drops}
+                  discoveredDrops={discoveredDrops[loc.id] ?? []}
+                  hasCompass={hasCompass}
+                  dataTut={firstUnlockedId?.entry.kind === "location" && firstUnlockedId.entry.loc.id === loc.id ? "map-location" : undefined}
+                  onClick={() => handleNodeTap(n)}
+                />
+              );
+            })}
           </div>
         </div>
       </Modal>
@@ -206,17 +328,249 @@ export default function MapView({
           onClose={() => setSelected(null)}
         />
       )}
+      {selectedSettlement && (
+        <SettlementModal
+          settlement={selectedSettlement}
+          lockedWorkerIndex={lockedWorkerIndex}
+          onClose={() => setSelectedSettlement(null)}
+        />
+      )}
+      {selectedRegion && (
+        <RegionUnlockModal region={selectedRegion} onClose={() => setSelectedRegion(null)} />
+      )}
+      {gaxOpen === "unlock" && <GaxUnlockModal onClose={() => setGaxOpen(null)} onUnlocked={() => setGaxOpen("dashboard")} />}
+      {gaxOpen === "dashboard" && <GaxDashboard onClose={() => setGaxOpen(null)} />}
     </>
   );
 }
 
-// ── Single map node ─────────────────────────────────────────────────────────
+// ── The Grand Alchemical Exchange node ───────────────────────────────────────
+// A special institution, not a resource node: workers can't be sent here. It
+// sits just off the Home Vale on the road to the Whispering Woods.
+const GAX_POS = {
+  x: CENTER + Math.cos(Math.PI * 0.86) * 172,
+  y: CENTER + Math.sin(Math.PI * 0.86) * 172,
+};
+
+function GaxNode({ onClick }: { onClick: () => void }) {
+  const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
+  return (
+    <div className="absolute z-10" style={{ left: GAX_POS.x, top: GAX_POS.y, transform: "translate(-50%, -50%)" }}>
+      <button
+        onClick={onClick}
+        className="relative flex items-center justify-center rounded-xl border-2 transition active:scale-95"
+        style={{
+          width: 58,
+          height: 58,
+          borderColor: gaxUnlocked ? "#8a6a1f" : "#b39b6f",
+          background: gaxUnlocked
+            ? "radial-gradient(circle at 35% 30%, #fff3cf, #e2b64e)"
+            : "radial-gradient(circle at 35% 30%, #ece0c0, #d6c096)",
+          boxShadow: gaxUnlocked ? "0 2px 8px rgba(140,100,20,0.45), 0 0 14px rgba(226,182,78,0.35)" : "inset 0 1px 2px rgba(120,90,50,0.25)",
+        }}
+        title="The Grand Alchemical Exchange"
+      >
+        {gaxUnlocked
+          ? <Landmark size={26} className="text-amber-900" />
+          : (
+            <>
+              <Landmark size={24} className="text-slate-400" />
+              <Lock size={13} className="absolute right-1.5 top-1.5 text-slate-500" />
+            </>
+          )}
+      </button>
+      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
+        <div className="text-[11px] font-bold leading-tight text-amber-950">The Grand Alchemical Exchange</div>
+        {!gaxUnlocked && (
+          <span className="mt-0.5 inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-semibold text-slate-300">
+            🪙 {fmt(GAX_UNLOCK_COST)} to charter
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GaxUnlockModal({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () => void }) {
+  const coins = useGameStore((s) => s.coins);
+  const unlockGax = useGameStore((s) => s.unlockGax);
+  const canAfford = coins >= GAX_UNLOCK_COST;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-t-2xl border border-amber-700/60 bg-slate-900 p-4 shadow-2xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #b08a3344" }}>
+          <div>
+            <h2 className="flex items-center gap-1.5 text-lg font-semibold text-amber-900">
+              <Landmark size={17} /> The Grand Alchemical Exchange
+            </h2>
+            <p className="text-xs text-slate-500">Chartered institution · no workers required</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+        </div>
+        <p className="mb-3 text-sm italic text-slate-400">
+          "A marble hall where potion prices are argued into existence. Buy a seat
+          and the market starts caring what you sell — flood it and prices crash,
+          starve it and scarcity pays. The ticker never sleeps."
+        </p>
+        <ul className="mb-4 space-y-1 text-[12px] text-slate-300">
+          <li>• Live sale prices per potion attribute (±50% by supply &amp; demand)</li>
+          <li>• A news ticker with market-shaking world events (−75% to +100%)</li>
+          <li>• The GAX dashboard and a market audit whenever you return</li>
+        </ul>
+        <button
+          onClick={() => { unlockGax(); if (canAfford) onUnlocked(); }}
+          disabled={!canAfford}
+          className={`w-full rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+            canAfford ? "bg-amber-600 text-white hover:bg-amber-500 active:scale-[0.99]" : "cursor-not-allowed bg-slate-800 text-slate-500"
+          }`}
+        >
+          {canAfford ? `Buy a Seat on the Exchange · 🪙 ${fmt(GAX_UNLOCK_COST)}` : `Requires 🪙 ${fmt(GAX_UNLOCK_COST)} — have ${fmt(coins)}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Region requirements / unlock modal ───────────────────────────────────────
+function RegionUnlockModal({ region, onClose }: { region: RegionDef; onClose: () => void }) {
+  const coins = useGameStore((s) => s.coins);
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
+  const potionMastery = useGameStore((s) => s.potionMastery);
+  const unlockedLocations = useGameStore((s) => s.unlockedLocations);
+  const unlockedRegions = useGameStore((s) => s.unlockedRegions);
+  const unlockRegion = useGameStore((s) => s.unlockRegion);
+  const isUnlocked = unlockedRegions.includes(region.id);
+
+  const status = regionRequirementsStatus(region.id, { coins, discoveredPotions, potionMastery, unlockedLocations });
+  const c = region.constraints;
+
+  const Row = ({ ok, label, have }: { ok: boolean; label: string; have: string }) => (
+    <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${ok ? "bg-emerald-950/20 text-emerald-800" : "bg-slate-800/60 text-slate-400"}`}>
+      {ok ? <Check size={15} className="shrink-0 text-emerald-700" /> : <X size={15} className="shrink-0 text-rose-600" />}
+      <span className="min-w-0 flex-1">{label}</span>
+      <span className={`shrink-0 text-xs font-semibold ${ok ? "text-emerald-700" : "text-slate-500"}`}>{have}</span>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div
+        className="w-full max-w-md overflow-y-auto rounded-t-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl sm:rounded-2xl"
+        style={{ maxHeight: "85dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: `inset 0 -2px 0 ${region.color}44` }}>
+          <div>
+            <h2 className="text-lg font-semibold" style={{ color: region.color }}>{region.name}</h2>
+            <p className="text-xs text-slate-500">{isUnlocked ? "Region explored" : "Locked region"}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+        </div>
+
+        <p className="mb-4 text-sm italic text-slate-400">"{region.flavor}"</p>
+
+        {isUnlocked ? (
+          <p className="rounded-lg bg-emerald-950/20 px-3 py-2 text-sm text-emerald-800">
+            <Check size={14} className="mr-1 inline" /> You've opened this region — its locations can be unlocked with coins as usual.
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">To explore this region you need</p>
+            <div className="space-y-1.5">
+              <Row ok={status.coins} label={`🪙 ${fmt(region.unlockCost)} expedition funding`} have={`have ${fmt(coins)}`} />
+              {c.potionsDiscovered > 0 && (
+                <Row ok={status.potions} label={`${c.potionsDiscovered} potions discovered`} have={`${discoveredPotions.length}`} />
+              )}
+              {c.recipesMastered > 0 && (
+                <Row ok={status.mastered} label={`${c.recipesMastered} recipes at mastery Lv ${c.recipesMasteredLevel}+`} have={`${status.masteredCount}`} />
+              )}
+              {c.totalLocationsUnlocked > 0 && (
+                <Row ok={status.locations} label={`${c.totalLocationsUnlocked} locations unlocked`} have={`${unlockedLocations.length}`} />
+              )}
+            </div>
+            <button
+              onClick={() => { unlockRegion(region.id); onClose(); }}
+              disabled={!status.met}
+              className={`mt-4 w-full rounded-lg px-3 py-2.5 text-sm font-semibold transition ${
+                status.met ? "text-white hover:brightness-110 active:scale-[0.99]" : "cursor-not-allowed bg-slate-800 text-slate-500"
+              }`}
+              style={status.met ? { background: region.color } : undefined}
+            >
+              {status.met ? `Fund the Expedition · 🪙 ${fmt(region.unlockCost)}` : "Requirements not yet met"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Settlement node (trade hub) ───────────────────────────────────────────────
+function SettlementNode({
+  node, settlement, regionLocked, workerIds, onClick,
+}: {
+  node: PlacedNode;
+  settlement: Settlement;
+  regionLocked: boolean;
+  workerIds: number[];
+  onClick: () => void;
+}) {
+  return (
+    <div className="absolute" style={{ left: node.x, top: node.y, transform: "translate(-50%, -50%)" }}>
+      {workerIds.length > 0 && (
+        <div className="absolute z-20 flex items-center" style={{ left: 22, top: -34 }}>
+          {workerIds.slice(0, 3).map((id, i) => (
+            <span key={i} className="rounded-full" style={{ marginLeft: i === 0 ? 0 : -8, filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.6))" }}>
+              <WorkerArt size={22} active={false} hueShift={workerHue(id)} />
+            </span>
+          ))}
+        </div>
+      )}
+      <button
+        onClick={onClick}
+        className="relative flex items-center justify-center border-2 transition active:scale-95"
+        style={{
+          width: 48,
+          height: 48,
+          transform: "rotate(45deg)",
+          borderRadius: 10,
+          borderColor: regionLocked ? "#b39b6f" : "#b08a33",
+          background: regionLocked
+            ? "radial-gradient(circle at 35% 30%, #ece0c0, #d6c096)"
+            : "radial-gradient(circle at 35% 30%, #fdf6e0, #e8c977)",
+          boxShadow: regionLocked ? "inset 0 1px 2px rgba(120,90,50,0.25)" : "0 2px 5px rgba(70,45,20,0.30)",
+          opacity: regionLocked ? 0.55 : 1,
+          filter: regionLocked ? "grayscale(0.7)" : undefined,
+        }}
+        title={settlement.name}
+      >
+        <span style={{ transform: "rotate(-45deg)" }}>
+          {regionLocked ? <Lock size={18} className="text-slate-400" /> : <Store size={20} className="text-amber-800" />}
+        </span>
+      </button>
+      <div className="pointer-events-none absolute left-1/2 top-full mt-3 w-28 -translate-x-1/2 text-center">
+        <div className={`text-[11px] font-semibold leading-tight ${regionLocked ? "text-slate-400" : "text-amber-900"}`}>
+          {settlement.name}
+        </div>
+        <span className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold ${regionLocked ? "bg-slate-800 text-slate-500" : "bg-amber-900/80 text-amber-100"}`}>
+          ⚖ Trading Post
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Single location node ─────────────────────────────────────────────────────
 function MapNode({
   node,
+  loc,
+  regionLocked,
   isUnlocked,
   isExplored,
   canAfford,
-  workerCount,
   workerIds,
   ingredients,
   discoveredDrops,
@@ -225,10 +579,11 @@ function MapNode({
   onClick,
 }: {
   node: PlacedNode;
+  loc: Location;
+  regionLocked: boolean;
   isUnlocked: boolean;
   isExplored: boolean;
   canAfford: boolean;
-  workerCount: number;
   workerIds: number[];
   ingredients: { ingredientId: string; weight: number }[];
   discoveredDrops: string[];
@@ -238,8 +593,9 @@ function MapNode({
 }) {
   const cfg = useConfigStore();
   const R = 30;
-  const dangerColor = DANGER_COLOR[Math.min(node.loc.danger, DANGER_COLOR.length - 1)];
-  const dim = !isUnlocked || !isExplored;
+  const workerCount = workerIds.length;
+  const dangerColor = DANGER_COLOR[Math.min(loc.danger, DANGER_COLOR.length - 1)];
+  const dim = regionLocked || !isUnlocked || !isExplored;
 
   return (
     <div className="absolute" style={{ left: node.x, top: node.y, transform: "translate(-50%, -50%)" }}>
@@ -276,11 +632,12 @@ function MapNode({
             ? "radial-gradient(circle at 35% 30%, #ece0c0, #d6c096)"
             : `radial-gradient(circle at 35% 30%, #fbf3dc, ${dangerColor}33)`,
           boxShadow: dim ? "inset 0 1px 2px rgba(120,90,50,0.25)" : "0 2px 5px rgba(70,45,20,0.30)",
-          opacity: dim ? 0.9 : 1,
+          opacity: regionLocked ? 0.5 : dim ? 0.9 : 1,
+          filter: regionLocked ? "grayscale(0.75)" : undefined,
         }}
-        title={node.loc.name}
+        title={loc.name}
       >
-        {!isUnlocked ? (
+        {regionLocked || !isUnlocked ? (
           <Lock size={20} className="text-slate-400" />
         ) : !isExplored ? (
           <HelpCircle size={20} className="text-slate-300" />
@@ -289,13 +646,16 @@ function MapNode({
         )}
       </button>
 
-      {/* Label — wraps so the full name and all ingredient pills stay visible */}
-      <div className="absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
+      {/* Label — wraps so the full name and all ingredient pills stay visible.
+          pointer-events-none so overlapping labels never swallow node clicks. */}
+      <div className="pointer-events-none absolute left-1/2 top-full mt-2 w-32 -translate-x-1/2 text-center">
         <div className={`text-[11px] font-semibold leading-tight ${dim ? "text-slate-400" : "text-slate-100"}`}>
-          {node.loc.name}
+          {loc.name}
         </div>
         <div className="mt-1 flex flex-wrap justify-center gap-0.5">
-          {!isUnlocked ? (
+          {regionLocked ? (
+            <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[9px] text-slate-500">Region locked</span>
+          ) : !isUnlocked ? (
             // Unlock cost right on the node — green when the player can afford it
             <span
               className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
@@ -304,7 +664,7 @@ function MapNode({
                   : "bg-slate-800 text-slate-400"
               }`}
             >
-              🪙 {fmt(node.loc.unlockCost)}
+              🪙 {fmt(loc.unlockCost)}
             </span>
           ) : !isExplored ? (
             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">??? Uncharted</span>
@@ -360,6 +720,7 @@ function LocationDetailModal({
 
   const baseTrip = gatherRoundTrip(loc.distance, 1);
   const lockedWorker = lockedWorkerIndex != null ? workers[lockedWorkerIndex] : null;
+  const region = regionOfDistance(loc.distance);
 
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSel, setBulkSel] = useState<Set<number>>(new Set());
@@ -384,7 +745,9 @@ function LocationDetailModal({
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #4ade8033" }}>
           <div>
             <h2 className="text-lg font-semibold text-green-800">{loc.name}</h2>
-            <p className="flex items-center gap-1 text-xs text-slate-500"><Footprints size={11} /> Distance {loc.distance}</p>
+            <p className="flex items-center gap-1 text-xs text-slate-500">
+              <Footprints size={11} /> Distance {loc.distance} · {region.name}
+            </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
         </div>
@@ -496,7 +859,6 @@ function LocationDetailModal({
               {workers.map((worker, idx) => {
                 const isHere = worker.assigned_location === loc.id;
                 const tripSecs = gatherRoundTrip(loc.distance, worker.gather_speed);
-                const isActive = worker.trip_phase === "outbound" || worker.trip_phase === "inbound";
                 const checked = bulkSel.has(idx);
 
                 return (

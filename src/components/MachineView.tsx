@@ -4,11 +4,17 @@ import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
 import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { upgradeCost, brewTime, xpRequired, SLOT_UNLOCK_COSTS, RARITY_WEIGHT } from "../engine/formulas";
+import { upgradeCost, xpRequired, SLOT_UNLOCK_COSTS, RARITY_WEIGHT } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { describePotion, describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
-import { computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
+import {
+  combinedMasteryReduction,
+  computeMasteryEffects,
+  masteryLevel,
+  potionMasteryReductionPct,
+} from "../data/masteryTrees";
+import { machineBrewSecondsFor } from "../hooks/useGameLoop";
 import { fmt } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
@@ -110,8 +116,10 @@ function MachinePanelBody({
   const buySlot = useGameStore((s) => s.buySlot);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
   const workers = useGameStore((s) => s.workers);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
   const cfg = useConfigStore();
   const hasGloves = unlocked_globals.includes("gloves_of_engineering");
+  const masteryMultiPct = computeMasteryEffects(masteryUnlocks).multi_brew_pct;
 
   const [slotModal, setSlotModal] = useState<number | null>(null);
   const [potionExpanded, setPotionExpanded] = useState(false);
@@ -125,7 +133,9 @@ function MachinePanelBody({
   const preview = ingredients.length ? describePotion(ingredients, cfg.formulas) : null;
   // Only reveal the potion identity after it has been brewed at least once.
   const isKnownPotion = preview ? discoveredPotions.includes(preview.hash) : false;
-  const bt = brewTime(machine, toxicity, cfg.formulas, ingredients);
+  // FINAL brew time (after all mastery reductions) — must match both the actual
+  // brew timer and the Gloves of Engineering breakdown's final line.
+  const bt = machineBrewSecondsFor(machine);
 
   const speedCost = upgradeCost(machine.speed_upgrades, cfg.formulas);
   const multiCost = upgradeCost(machine.multi_upgrades, cfg.formulas);
@@ -179,7 +189,12 @@ function MachinePanelBody({
           <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
             <Copy size={11} /> Multi-Brew
           </div>
-          <div className="text-sm font-semibold text-slate-100">{Math.round(machine.multi_brew_chance * 100)}%</div>
+          <div className="text-sm font-semibold text-slate-100">
+            {Math.round(machine.multi_brew_chance * 100)}%
+            {masteryMultiPct > 0 && (
+              <span className="ml-1 text-[10px] font-medium text-violet-700">+{masteryMultiPct}% mastery</span>
+            )}
+          </div>
         </div>
         <div className="rounded-lg bg-slate-800/60 p-2.5">
           <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-wide text-slate-500">
@@ -517,33 +532,35 @@ function BrewAnalytics({
     : 1;
   const afterComplexity = baseBt * raritySum;
 
-  // Step 3: toxicity penalty
+  // Step 3: toxicity penalty — this is the full PRE-MASTERY brew time
   const toxMult = 1 + Math.max(0, toxicity) * f.toxicity_time_mult;
-  const afterToxicity = afterComplexity * toxMult;
+  const preMasteryTime = afterComplexity * toxMult;
 
-  // Step 4: worker click reduction
+  // Step 4: combined mastery bonus — tree % and potion % stack ADDITIVELY as a
+  // single flat reduction off the pre-mastery time, hard-capped at 80%.
+  const masteryFx = computeMasteryEffects(masteryUnlocks);
+  const treePct = masteryFx.brew_speed_pct;
+  const potionName = ingredients.length > 0 ? describePotion(ingredients, cfg.formulas).name : null;
+  const potionEntry = potionName ? potionMastery[potionName] : undefined;
+  const potionMasteryLvl = potionEntry ? masteryLevel(potionEntry.xp) : 0;
+  const potionPct = potionMasteryReductionPct(potionMasteryLvl);
+  const combinedReduction = combinedMasteryReduction(treePct, potionMasteryLvl);
+  const finalBrewTime = preMasteryTime * (1 - combinedReduction);
+
+  // Worker clicks don't change the brew time — they accelerate the timer live.
   const assigned = workers.filter((w) => w.assigned_machine_id === machine.id);
   const workerReduction = assigned.reduce(
     (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0),
     0
   );
-  const afterWorkers = Math.max(0.1, afterToxicity / (1 + workerReduction));
+  const effectiveBt = Math.max(0.1, finalBrewTime / (1 + workerReduction));
 
-  // Step 5: global mastery brew speed bonus (Alchemy skill tree)
-  const masteryFx = computeMasteryEffects(masteryUnlocks);
-  const globalBrewSpeedPct = masteryFx.brew_speed_pct;
-  const afterGlobalMastery = afterWorkers / (1 + globalBrewSpeedPct / 100);
-
-  // Step 6: per-potion mastery brew speed bonus (+10% per level)
-  const potionName = ingredients.length > 0 ? describePotion(ingredients, cfg.formulas).name : null;
-  const potionEntry = potionName ? potionMastery[potionName] : undefined;
-  const potionMasteryLvl = potionEntry ? masteryLevel(potionEntry.xp) : 0;
-  const potionBrewSpeedPct = potionMasteryLvl * 10;
-  const effectiveBt = afterGlobalMastery / (1 + potionBrewSpeedPct / 100);
-
-  // Step 7: multi-brew
+  // Multi-brew: brewer's own % minus volatility penalty, plus the additive
+  // global mastery bonus on top.
   const volatility = ingredients.reduce((a, ing) => a + (ing.attributes.volatility ?? 0), 0);
-  const multiBrewChance = Math.max(0, machine.multi_brew_chance - volatility * f.volatility_multibrew_penalty);
+  const machineMulti = Math.max(0, machine.multi_brew_chance - volatility * f.volatility_multibrew_penalty);
+  const masteryMulti = masteryFx.multi_brew_pct / 100;
+  const multiBrewChance = machineMulti + masteryMulti;
   const avgPotionsPerCycle = 1 + multiBrewChance;
 
   const cyclesPerSec = 1 / effectiveBt;
@@ -554,37 +571,34 @@ function BrewAnalytics({
       <p className="mb-2 text-[10px] uppercase tracking-wider text-teal-400">True Brew Rate · Gloves of Engineering</p>
       <div className="space-y-1.5 text-[11px]">
         <AnalyticsRow
-          label={`Brew Speed (${f.base_brew_time}s ÷ ${machine.brew_speed.toFixed(2)}×)`}
+          label={`Brew Speed (${f.base_brew_time}s / ${machine.brew_speed.toFixed(2)}×)`}
           value={`${baseBt.toFixed(2)}s`}
         />
         <AnalyticsRow
-          label={`Ingredient Complexity (${ingredients.length} slot${ingredients.length !== 1 ? "s" : ""}, weight ${raritySum})`}
+          label={`Ingredient Complexity (×${raritySum})`}
           value={`${afterComplexity.toFixed(2)}s`}
         />
         {toxicity > 0 && (
           <AnalyticsRow
-            label={`Toxicity Penalty (${toxicity.toFixed(0)} toxicity ×${toxMult.toFixed(3)})`}
-            value={`${afterToxicity.toFixed(2)}s`}
+            label={`Toxicity Penalty (×${toxMult.toFixed(2)})`}
+            value={`${preMasteryTime.toFixed(2)}s`}
           />
         )}
+        {combinedReduction > 0 && (
+          <AnalyticsRow
+            label={`Combined Mastery Bonus (−${(combinedReduction * 100).toFixed(0)}%)`}
+            value={`Tree ${treePct}% + Potion ${potionPct.toFixed(0)}%`}
+            highlight
+          />
+        )}
+        <div className="flex items-baseline justify-between gap-2 border-t border-teal-800/40 pt-1.5 font-semibold text-teal-800">
+          <span className="text-[11px]">Final Brew Time</span>
+          <span className="text-slate-200">{finalBrewTime.toFixed(2)}s</span>
+        </div>
         {workerReduction > 0 && (
           <AnalyticsRow
-            label={`${assigned.length} Worker${assigned.length !== 1 ? "s" : ""} Clicking (${workerReduction.toFixed(2)}s/s)`}
-            value={`${afterWorkers.toFixed(2)}s`}
-            highlight
-          />
-        )}
-        {globalBrewSpeedPct > 0 && (
-          <AnalyticsRow
-            label={`Mastery Tree Brew Speed (+${globalBrewSpeedPct}%)`}
-            value={`${afterGlobalMastery.toFixed(2)}s`}
-            highlight
-          />
-        )}
-        {potionMasteryLvl > 0 && (
-          <AnalyticsRow
-            label={`${potionName} Mastery Lv${potionMasteryLvl} (+${potionBrewSpeedPct}%)`}
-            value={`${effectiveBt.toFixed(2)}s`}
+            label={`${assigned.length} Worker${assigned.length !== 1 ? "s" : ""} Clicking (−${workerReduction.toFixed(2)}s/s)`}
+            value={`≈${effectiveBt.toFixed(2)}s effective`}
             highlight
           />
         )}
@@ -595,7 +609,10 @@ function BrewAnalytics({
           </div>
           {multiBrewChance > 0 && (
             <div className="flex justify-between text-violet-800">
-              <span>Potions out ({(multiBrewChance * 100).toFixed(0)}% multi-brew)</span>
+              <span>
+                Potions out ({(machineMulti * 100).toFixed(0)}% brewer
+                {masteryMulti > 0 ? ` + ${(masteryMulti * 100).toFixed(0)}% mastery` : ""} multi-brew)
+              </span>
               <span>{fmtRate(potionsPerSec)} · {potionsPerSec.toFixed(3)}/s</span>
             </div>
           )}

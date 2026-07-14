@@ -7,8 +7,8 @@ const MIN_COMBO = 2;
 const REWARD_MULTIPLIER = 5;
 
 // Try highest value tier first; fall back if no candidate found after MAX_TRIES_PER_TIER attempts.
-// Thresholds mirror VALUE_THRESHOLDS: Potent ≥ 180, Greater ≥ 80.
-const VALUE_TIERS = [180, 80];
+// Thresholds mirror VALUE_THRESHOLDS: Superior ≥ 700, Greater ≥ 250, Refined ≥ 100.
+const VALUE_TIERS = [700, 250, 100];
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
