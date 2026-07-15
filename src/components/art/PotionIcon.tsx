@@ -1,4 +1,5 @@
-import { parsePotionVisuals, getPotionTypeData, TIER_LIQUID_STYLE } from "../../util/potionVisuals";
+import { useId } from "react";
+import { parsePotionVisuals, getPotionTypeData, TIER_LIQUID_STYLE, liquidClipPath } from "../../util/potionVisuals";
 
 interface Props {
   /** Full potion name, e.g. "Greater Elixir of Flameburst" */
@@ -34,7 +35,8 @@ const VB = "-8 -16 16 16";
  * All visual properties derived from the full potion name string.
  */
 export default function PotionIcon({ name, size = 20 }: Props) {
-  const { liquidColor, prefixTier, potionType } = parsePotionVisuals(name);
+  const gradId = useId();
+  const { liquidColor, prefixTier, potionType, blendColors } = parsePotionVisuals(name);
   const { sprite, liquidPoints } = getPotionTypeData(potionType);
   const fx = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)];
   const liq = TIER_LIQUID_STYLE[Math.min(prefixTier, TIER_LIQUID_STYLE.length - 1)];
@@ -68,7 +70,33 @@ export default function PotionIcon({ name, size = 20 }: Props) {
         fill="none"
         style={filter ? { filter, display: "block" } : { display: "block" }}
       >
-        <polygon points={liquidPoints} fill={liquidColor} opacity="0.8" />
+        {blendColors && blendColors.length === 2 && (
+          <defs>
+            <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor={blendColors[0]} />
+              <stop offset="100%" stopColor={blendColors[1]} />
+            </linearGradient>
+          </defs>
+        )}
+        {blendColors && blendColors.length === 2 ? (
+          <polygon points={liquidPoints} fill={`url(#${gradId})`} opacity="0.8" />
+        ) : blendColors && blendColors.length === 3 ? (
+          <foreignObject x="-8" y="-16" width="16" height="16">
+            <div
+              // 3-attribute combi: a true three-way angular split (conic-gradient),
+              // one 120° wedge per constituent attribute's native colour.
+              style={{
+                width: "100%",
+                height: "100%",
+                opacity: 0.8,
+                clipPath: liquidClipPath(liquidPoints),
+                background: `conic-gradient(from 0deg, ${blendColors[0]} 0deg 120deg, ${blendColors[1]} 120deg 240deg, ${blendColors[2]} 240deg 360deg)`,
+              }}
+            />
+          </foreignObject>
+        ) : (
+          <polygon points={liquidPoints} fill={liquidColor} opacity="0.8" />
+        )}
         <image href={sprite} x="-8" y="-16" width="16" height="16" />
       </svg>
       {fx.shimmer && <span className="ing-shimmer" />}

@@ -1441,11 +1441,13 @@ export const useGameStore = create<GameState>()(
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
+        let autoSellEarned = 0;
         if ((s.autoSellHashes ?? []).includes(potion.hash)) {
           // GAX: trickle auto-sales are priced against the live market and
           // accumulate satiation (the velocity gate absorbs small volumes).
           const gaxMult = get().gaxPriceAndRecord(potion.stats, outputs);
-          coins += Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
+          autoSellEarned = Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
+          coins += autoSellEarned;
         } else {
           potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
         }
@@ -1498,7 +1500,7 @@ export const useGameStore = create<GameState>()(
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
         pushGameEvent("cauldron", label, machineId);
         if (autoSell) {
-          pushGameEvent("pile", `+${(potion.value * outputs).toLocaleString()} 🪙`);
+          pushGameEvent("pile", `+${autoSellEarned.toLocaleString()} 🪙`);
         }
 
         if (!prevDiscovered.includes(potion.hash)) {

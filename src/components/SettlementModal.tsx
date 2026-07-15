@@ -158,6 +158,8 @@ export default function SettlementModal({
             const fromCount = fromIng ? inv[fromIng.id] ?? 0 : 0;
             const isActive = slot.id === activeSlot?.id;
             const short = !!fromIng && fromCount < slot.input.count;
+            const surplus = prosperityEntry.surplus[slot.id] ?? 0;
+            const workerHere = tradingHere.find(({ w }) => w.trade?.slotId === slot.id);
             return (
               <button
                 key={slot.id}
@@ -205,8 +207,8 @@ export default function SettlementModal({
                   </span>
                   <span className="text-[10px] font-semibold text-slate-500">×{slot.input.count}</span>
                   <ArrowRight size={16} className="shrink-0 text-amber-700" />
-                  {/* Fixed output */}
-                  <span className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-2.5 py-2">
+                  {/* Fixed output — badge shows banked surplus, like an ingredient count */}
+                  <span className="relative flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-2.5 py-2">
                     {outIng && <IngredientSvg category={outIng.category} rarity={outIng.rarity} size={24} />}
                     <span className="min-w-0">
                       <span className="block truncate text-xs font-semibold" style={{ color: outIng ? RARITY_COLOR[outIng.rarity] : undefined }}>
@@ -216,13 +218,26 @@ export default function SettlementModal({
                         ×{slot.output.count} · {outIng ? outIng.rarity : ""} · 🪙 {outIng ? fmt(outIng.base_value) : "?"} each
                       </span>
                     </span>
+                    {surplus > 0 && (
+                      <span
+                        className="absolute right-1.5 top-1 text-[10px] font-bold text-emerald-400"
+                        title={`${surplus} input credit banked toward the next delivery`}
+                      >
+                        +{surplus}
+                      </span>
+                    )}
                   </span>
+                  {/* Worker-here indicator — one worker can trade a slot at a time */}
+                  {workerHere && (
+                    <div
+                      className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-2 ring-amber-500/60"
+                      style={{ background: `${workerHere.w.color ?? "#7c3aed"}33` }}
+                      title={`${workerHere.w.name} is trading here`}
+                    >
+                      <WorkerArt size={32} active hueShift={workerHue(workerHere.w.id)} />
+                    </div>
+                  )}
                 </div>
-                {(prosperityEntry.surplus[slot.id] ?? 0) > 0 && (
-                  <p className="mt-1.5 flex items-center gap-1 text-[10px] text-emerald-600">
-                    📒 Town Surplus Ledger: <span className="font-bold">+{prosperityEntry.surplus[slot.id]}</span> input credit banked — counts toward the next delivery.
-                  </p>
-                )}
                 {short && (
                   <p className="mt-1.5 text-[10px] text-rose-500">
                     Not enough {fromIng!.name} — need {slot.input.count}, have {fromCount}.

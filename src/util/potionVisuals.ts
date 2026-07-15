@@ -4,7 +4,7 @@
  * e.g. "Greater Elixir of Flameburst"
  */
 import type { Attributes } from "../types";
-import { ATTR_KEYS } from "../engine/potions";
+import { ATTR_KEYS, ATTRIBUTE_SUFFIX_REGISTRY, COMBI_PAIRS, COMBI_TRIPLES } from "../engine/potions";
 
 /**
  * Qualitative one-liner naming a potion's strongest attributes — shown where
@@ -137,6 +137,19 @@ export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
 // Fallback colour when no suffix matches
 export const DEFAULT_LIQUID_COLOR = "#8a6fa3";
 
+// Per-attribute native colour (single-attribute suffix's colour), keyed by attribute.
+export const ATTR_COLOR: Record<keyof Attributes, string> = Object.fromEntries(
+  ATTR_KEYS.map((k) => [k, SUFFIX_LIQUID_COLORS[ATTRIBUTE_SUFFIX_REGISTRY[k]] ?? DEFAULT_LIQUID_COLOR])
+) as Record<keyof Attributes, string>;
+
+// Combi-potion suffix → the native colours of its constituent attributes, in
+// curated (a, b[, c]) order. Used to render the liquid as a gradient fusion of
+// its parent attributes instead of a single curated colour.
+export const SUFFIX_BLEND_COLORS: Record<string, string[]> = {
+  ...Object.fromEntries(COMBI_PAIRS.map(({ a, b, suffix }) => [suffix, [ATTR_COLOR[a], ATTR_COLOR[b]]])),
+  ...Object.fromEntries(COMBI_TRIPLES.map(({ a, b, c, suffix }) => [suffix, [ATTR_COLOR[a], ATTR_COLOR[b], ATTR_COLOR[c]]])),
+};
+
 // Per-type sprite path and liquid polygon points.
 // Polygon coords: SVG space with origin at bottle bottom-centre (same as PotionPileArt).
 // Remaining types will be filled in as polygons are defined.
@@ -169,6 +182,27 @@ export const POTION_TYPE_DATA: Record<string, { sprite: string; liquidPoints: st
 
 export function getPotionTypeData(potionType: string) {
   return POTION_TYPE_DATA[potionType] ?? POTION_TYPE_DATA.Tonic;
+}
+
+// Bounding box shared by every liquid polygon (see VB in PotionIcon.tsx).
+const LIQUID_BB = { x: -8, y: -16, w: 16, h: 16 };
+
+/** Converts a liquid polygon's SVG points into a CSS `clip-path: polygon(...)`
+ *  string (percentages relative to LIQUID_BB), for clipping a foreignObject
+ *  div that carries a CSS conic-gradient — the only clean way to render a
+ *  true 3-way angular colour split, which SVG's own gradients can't express. */
+export function liquidClipPath(points: string): string {
+  const pct = points
+    .trim()
+    .split(/\s+/)
+    .map((pair) => {
+      const [px, py] = pair.split(",").map(Number);
+      const xPct = ((px - LIQUID_BB.x) / LIQUID_BB.w) * 100;
+      const yPct = ((py - LIQUID_BB.y) / LIQUID_BB.h) * 100;
+      return `${xPct.toFixed(1)}% ${yPct.toFixed(1)}%`;
+    })
+    .join(", ");
+  return `polygon(${pct})`;
 }
 
 // Prefix → visual effect tier (0 = dull/desaturated, 9 = maximum spectacle).
@@ -209,6 +243,9 @@ export interface PotionVisuals {
   liquidColor: string;
   prefixTier:  number; // 0-9
   potionType:  string; // e.g. "Tonic", "Elixir"
+  /** Set only for 2- or 3-attribute combi potions: the native colours of each
+   *  constituent attribute, in curated order, for gradient-fusion rendering. */
+  blendColors?: string[];
 }
 
 /**
@@ -226,6 +263,7 @@ export function parsePotionVisuals(name: string): PotionVisuals {
 
   const liquidColor = SUFFIX_LIQUID_COLORS[suffix] ?? DEFAULT_LIQUID_COLOR;
   const prefixTier  = PREFIX_TIERS[prefix] ?? 0;
+  const blendColors = SUFFIX_BLEND_COLORS[suffix];
 
-  return { liquidColor, prefixTier, potionType };
+  return { liquidColor, prefixTier, potionType, blendColors };
 }

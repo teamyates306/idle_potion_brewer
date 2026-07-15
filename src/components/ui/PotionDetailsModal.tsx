@@ -58,10 +58,21 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
         {(() => {
           // Each attribute contributes weight/totalWeight of the blended rate,
           // so its coin impact on THIS potion is base × share × (rate − 1).
+          // Deltas are rounded cumulatively (not independently) so the displayed
+          // rows always sum to the actual sellNow − baseValue total.
           const totalWeight = quote.rows.reduce((a, r) => a + r.weight, 0) || 1;
+          const coinDeltaByAttr: Record<string, number> = {};
+          let cumUnrounded = 0;
+          let cumRounded = 0;
+          for (const r of quote.rows) {
+            cumUnrounded += baseValue * (r.weight / totalWeight) * (r.rate - 1);
+            const newCumRounded = Math.round(cumUnrounded);
+            coinDeltaByAttr[r.attr] = newCumRounded - cumRounded;
+            cumRounded = newCumRounded;
+          }
           return movers.map((r) => {
             const d = Math.round((r.rate - 1) * 100);
-            const coinDelta = Math.round(baseValue * (r.weight / totalWeight) * (r.rate - 1));
+            const coinDelta = coinDeltaByAttr[r.attr];
             return (
               <div key={r.attr} className="flex justify-between">
                 <span className="text-slate-400">
