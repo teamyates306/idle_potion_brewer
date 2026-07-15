@@ -1,6 +1,7 @@
 // ---- Procedural potion generation (see Master Spec §7) ----
 import type { BaseFormulas } from "../store/configStore";
 import type { Attributes, Ingredient } from "../types";
+import { RARITY_RANK } from "../types";
 import { sumAttr } from "./formulas";
 
 export const ATTR_KEYS: (keyof Attributes)[] = [
@@ -279,7 +280,10 @@ export const COMBI_TIE_TOLERANCE = 0.9;
  * within the same near-tie (more specific wins), which in turn outranks the
  * single-attribute fallback.
  */
-function resolveSuffix(stats: Attributes): { suffix: string; isCombi: boolean } {
+function resolveSuffix(
+  stats: Attributes,
+  allowCombi: boolean
+): { suffix: string; isCombi: boolean } {
   let topAbs = 0;
   for (const key of ATTR_KEYS) topAbs = Math.max(topAbs, Math.abs(stats[key]));
   if (topAbs === 0) return { suffix: ATTRIBUTE_SUFFIX_REGISTRY.strength, isCombi: false };
@@ -289,33 +293,35 @@ function resolveSuffix(stats: Attributes): { suffix: string; isCombi: boolean } 
     .sort((a, b) => Math.abs(stats[b]) - Math.abs(stats[a]));
   const primary = tied[0];
 
-  if (tied.length >= 4) {
-    for (let i = 0; i < tied.length; i++) {
-      for (let j = i + 1; j < tied.length; j++) {
-        for (let k = j + 1; k < tied.length; k++) {
-          for (let l = k + 1; l < tied.length; l++) {
-            const quadSuffix = COMBI_QUAD_LOOKUP.get([tied[i], tied[j], tied[k], tied[l]].sort().join("|"));
-            if (quadSuffix) return { suffix: quadSuffix, isCombi: true };
+  if (allowCombi) {
+    if (tied.length >= 4) {
+      for (let i = 0; i < tied.length; i++) {
+        for (let j = i + 1; j < tied.length; j++) {
+          for (let k = j + 1; k < tied.length; k++) {
+            for (let l = k + 1; l < tied.length; l++) {
+              const quadSuffix = COMBI_QUAD_LOOKUP.get([tied[i], tied[j], tied[k], tied[l]].sort().join("|"));
+              if (quadSuffix) return { suffix: quadSuffix, isCombi: true };
+            }
           }
         }
       }
     }
-  }
-  if (tied.length >= 3) {
-    for (let i = 0; i < tied.length; i++) {
-      for (let j = i + 1; j < tied.length; j++) {
-        for (let k = j + 1; k < tied.length; k++) {
-          const tripleSuffix = COMBI_TRIPLE_LOOKUP.get([tied[i], tied[j], tied[k]].sort().join("|"));
-          if (tripleSuffix) return { suffix: tripleSuffix, isCombi: true };
+    if (tied.length >= 3) {
+      for (let i = 0; i < tied.length; i++) {
+        for (let j = i + 1; j < tied.length; j++) {
+          for (let k = j + 1; k < tied.length; k++) {
+            const tripleSuffix = COMBI_TRIPLE_LOOKUP.get([tied[i], tied[j], tied[k]].sort().join("|"));
+            if (tripleSuffix) return { suffix: tripleSuffix, isCombi: true };
+          }
         }
       }
     }
-  }
-  if (tied.length >= 2) {
-    for (let i = 0; i < tied.length; i++) {
-      for (let j = i + 1; j < tied.length; j++) {
-        const pairSuffix = COMBI_LOOKUP.get([tied[i], tied[j]].sort().join("|"));
-        if (pairSuffix) return { suffix: pairSuffix, isCombi: true };
+    if (tied.length >= 2) {
+      for (let i = 0; i < tied.length; i++) {
+        for (let j = i + 1; j < tied.length; j++) {
+          const pairSuffix = COMBI_LOOKUP.get([tied[i], tied[j]].sort().join("|"));
+          if (pairSuffix) return { suffix: pairSuffix, isCombi: true };
+        }
       }
     }
   }
@@ -374,9 +380,20 @@ export function describePotion(
   const primaryCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "root";
   const type = CATEGORY_TYPE[primaryCategory] ?? "Tonic";
 
+  // Combi names are gated to keep them feeling like a genuine discovery
+  // rather than a rarity-1 fluke:
+  //  - the potion must be at least Common tier (Diluted/Lesser never combi)
+  //  - a recipe made of only ONE distinct ingredient (however many copies)
+  //    must be at least Scarce rarity to combi-name off its own near-tie
+  const isCommonOrAbove = prefixIdx >= 2;
+  const distinctIds = new Set(ids);
+  const soloRarity = distinctIds.size === 1 ? ingredients[0].rarity : null;
+  const soloBelowScarce = soloRarity != null && RARITY_RANK[soloRarity] < RARITY_RANK.scarce;
+  const allowCombi = isCommonOrAbove && !soloBelowScarce;
+
   // Name incorporates the dominant attribute, or a curated combi-name when
   // the top attributes tie exactly on a recognized pair (see COMBI_PAIRS).
-  const { suffix, isCombi } = resolveSuffix(stats);
+  const { suffix, isCombi } = resolveSuffix(stats, allowCombi);
   const name = `${prefix} ${type} of ${suffix}`;
 
   const desc: PotionDescriptor = { hash, name, value, stats, toxicity: stats.toxicity, volatility: stats.volatility, isCombi };
