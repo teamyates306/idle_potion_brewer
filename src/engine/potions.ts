@@ -96,6 +96,26 @@ export const COMBI_PAIRS: { a: keyof Attributes; b: keyof Attributes; suffix: st
   { a: "heat", b: "aero", suffix: "Wildfire" },
   { a: "luck", b: "mutation", suffix: "the Wildcard" },
   { a: "toxicity", b: "chrono", suffix: "the Decay" },
+  // Round 3 — added from the highest-frequency uncurated 2-way ties observed
+  // after widening tie detection to a near-tie band (see COMBI_TIE_TOLERANCE)
+  // for the 150-ingredient / 10-category world.
+  { a: "mutation", b: "resonance", suffix: "the Wavelength" },
+  { a: "insight", b: "resonance", suffix: "the Accord" },
+  { a: "aqua", b: "resonance", suffix: "the Undersong" },
+  { a: "density", b: "heat", suffix: "the Forge" },
+  { a: "alkalinity", b: "density", suffix: "the Bastion" },
+  // Round 4 — next 10 highest-frequency uncurated 2-way near-ties, bringing
+  // the curated pair count to 50.
+  { a: "void", b: "volatility", suffix: "the Maelstrom" },
+  { a: "cold", b: "terra", suffix: "the Tundra" },
+  { a: "elasticity", b: "terra", suffix: "the Quagmire" },
+  { a: "aero", b: "radiance", suffix: "the Zenith" },
+  { a: "entropy", b: "void", suffix: "the Erasure" },
+  { a: "density", b: "stability", suffix: "the Anchor" },
+  { a: "heat", b: "terra", suffix: "the Magma" },
+  { a: "cold", b: "mana", suffix: "the Frostweave" },
+  { a: "heat", b: "resonance", suffix: "the Firesong" },
+  { a: "density", b: "viscosity", suffix: "the Sludge" },
 ];
 
 const COMBI_LOOKUP = new Map<string, string>(
@@ -149,10 +169,53 @@ export const COMBI_TRIPLES: { a: keyof Attributes; b: keyof Attributes; c: keyof
   { a: "strength", b: "vitality", c: "aero", suffix: "the Stampede" },
   { a: "aqua", b: "terra", c: "radiance", suffix: "the Oasis" },
   { a: "volatility", b: "solvency", c: "mutation", suffix: "the Alchemy" },
+  // Round 3 — added from the highest-frequency uncurated 3-way ties observed
+  // after widening tie detection to a near-tie band (see COMBI_TIE_TOLERANCE)
+  // for the 150-ingredient / 10-category world.
+  { a: "focus", b: "mana", c: "mutation", suffix: "Ingenuity" },
+  { a: "gravitas", b: "mutation", c: "volatility", suffix: "Revolution" },
+  { a: "entropy", b: "insight", c: "void", suffix: "Oblivion" },
+  { a: "entropy", b: "soul", c: "void", suffix: "Damnation" },
+  { a: "aqua", b: "density", c: "radiance", suffix: "the Lighthouse" },
+  // Round 4 — next 10 highest-frequency uncurated 3-way near-ties, bringing
+  // the curated triple count to 50.
+  { a: "strength", b: "terra", c: "viscosity", suffix: "the Landslide" },
+  { a: "chrono", b: "soul", c: "void", suffix: "Timelessness" },
+  { a: "entropy", b: "void", c: "volatility", suffix: "Annihilation" },
+  { a: "insight", b: "resonance", c: "void", suffix: "Clairvoyance" },
+  { a: "entropy", b: "mutation", c: "soul", suffix: "Rebirth" },
+  { a: "chrono", b: "mutation", c: "void", suffix: "Evolution" },
+  { a: "chrono", b: "entropy", c: "void", suffix: "Extinction" },
+  { a: "chrono", b: "gravitas", c: "volatility", suffix: "Turmoil" },
+  { a: "mutation", b: "soul", c: "void", suffix: "Possession" },
+  { a: "chrono", b: "mutation", c: "resonance", suffix: "Reverie" },
 ];
 
 const COMBI_TRIPLE_LOOKUP = new Map<string, string>(
   COMBI_TRIPLES.map(({ a, b, c, suffix }) => [[a, b, c].sort().join("|"), suffix])
+);
+
+/**
+ * Four-way combi-potions: when four attributes land in a near-tie (see
+ * COMBI_TIE_TOLERANCE) and that specific quartet is curated below, it
+ * outranks any 3-way COMBI_TRIPLES match found within the same near-tie
+ * (most specific wins) — the top of the specificity chain, above triples,
+ * pairs, and the single-attribute fallback. Named in a "grand epithet"
+ * register (the Cataclysm, the Oracle, ...) distinct from the elemental
+ * 2-way and personality-trait 3-way registers, since these 4-stat collisions
+ * are the rarest tier. Picked from the highest-frequency 4-way near-ties
+ * observed in recipe-space sampling (scripts/comboPotentialAnalysis.ts).
+ */
+export const COMBI_QUADS: { a: keyof Attributes; b: keyof Attributes; c: keyof Attributes; d: keyof Attributes; suffix: string }[] = [
+  { a: "entropy", b: "gravitas", c: "mutation", d: "volatility", suffix: "the Cataclysm" },
+  { a: "entropy", b: "insight", c: "resonance", d: "void", suffix: "the Oracle" },
+  { a: "chrono", b: "focus", c: "mana", d: "mutation", suffix: "the Genesis" },
+  { a: "chrono", b: "gravitas", c: "mutation", d: "volatility", suffix: "the Apocalypse" },
+  { a: "entropy", b: "insight", c: "mutation", d: "void", suffix: "the Revelation" },
+];
+
+const COMBI_QUAD_LOOKUP = new Map<string, string>(
+  COMBI_QUADS.map(({ a, b, c, d, suffix }) => [[a, b, c, d].sort().join("|"), suffix])
 );
 
 /** Stable sorted-hash key from a set of ingredient ids. */
@@ -190,30 +253,54 @@ export const CATEGORY_TYPE: Record<string, string> = {
   crystal: "Philter",
   essence: "Draught",
   bone: "Decoction",
+  ore: "Concoction",
+  chitin: "Extract",
+  bestial: "Tincture",
+  herb: "Infusion",
 };
+
+// A recipe's naming pool grew to a 150-ingredient / 10-category world (10 ×
+// 10 × 100 = 10,000 theoretical prefix+type+suffix names), but EXACT ties
+// between attributes are mathematically rare once there's more value variety
+// to sum over — only ~31% of names ended up reachable, and curated 3-way
+// combos in particular went from routinely hit to a coin-flip. Widening
+// "tie" to a near-tie band (within 10% of the top attribute) is a pure
+// naming-logic change — it touches no ingredient stat or base_value — and
+// lifts the 2-5 ingredient combo-tie rate roughly 7x (see
+// scripts/comboTieAnalysis.ts), which is what actually gates reachability of
+// the curated COMBI_PAIRS/COMBI_TRIPLES names.
+export const COMBI_TIE_TOLERANCE = 0.9;
 
 /**
  * Resolves the naming suffix for a recipe's stats: the single dominant
- * attribute, unless several attributes tie exactly for the largest absolute
- * value and that tie contains a curated combo. A 3-way COMBI_TRIPLES match
- * always outranks a 2-way COMBI_PAIRS match found within the same tie (more
- * specific wins), which in turn outranks the single-attribute fallback.
+ * attribute, unless several attributes land within COMBI_TIE_TOLERANCE of the
+ * largest absolute value ("near-tied") and that set contains a curated combo.
+ * A 3-way COMBI_TRIPLES match always outranks a 2-way COMBI_PAIRS match found
+ * within the same near-tie (more specific wins), which in turn outranks the
+ * single-attribute fallback.
  */
 function resolveSuffix(stats: Attributes): { suffix: string; isCombi: boolean } {
   let topAbs = 0;
-  const tied: (keyof Attributes)[] = [];
-  for (const key of ATTR_KEYS) {
-    const abs = Math.abs(stats[key]);
-    if (abs > topAbs) {
-      topAbs = abs;
-      tied.length = 0;
-      tied.push(key);
-    } else if (abs === topAbs && abs > 0) {
-      tied.push(key);
+  for (const key of ATTR_KEYS) topAbs = Math.max(topAbs, Math.abs(stats[key]));
+  if (topAbs === 0) return { suffix: ATTRIBUTE_SUFFIX_REGISTRY.strength, isCombi: false };
+
+  const tied = ATTR_KEYS
+    .filter((key) => Math.abs(stats[key]) >= topAbs * COMBI_TIE_TOLERANCE)
+    .sort((a, b) => Math.abs(stats[b]) - Math.abs(stats[a]));
+  const primary = tied[0];
+
+  if (tied.length >= 4) {
+    for (let i = 0; i < tied.length; i++) {
+      for (let j = i + 1; j < tied.length; j++) {
+        for (let k = j + 1; k < tied.length; k++) {
+          for (let l = k + 1; l < tied.length; l++) {
+            const quadSuffix = COMBI_QUAD_LOOKUP.get([tied[i], tied[j], tied[k], tied[l]].sort().join("|"));
+            if (quadSuffix) return { suffix: quadSuffix, isCombi: true };
+          }
+        }
+      }
     }
   }
-  const primary = tied[0] ?? "strength";
-
   if (tied.length >= 3) {
     for (let i = 0; i < tied.length; i++) {
       for (let j = i + 1; j < tied.length; j++) {

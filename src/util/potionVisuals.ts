@@ -4,7 +4,7 @@
  * e.g. "Greater Elixir of Flameburst"
  */
 import type { Attributes } from "../types";
-import { ATTR_KEYS, ATTRIBUTE_SUFFIX_REGISTRY, COMBI_PAIRS, COMBI_TRIPLES } from "../engine/potions";
+import { ATTR_KEYS, ATTRIBUTE_SUFFIX_REGISTRY, COMBI_PAIRS, COMBI_TRIPLES, COMBI_QUADS } from "../engine/potions";
 
 /**
  * Qualitative one-liner naming a potion's strongest attributes — shown where
@@ -95,6 +95,21 @@ export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
   "Wildfire":          "#ff4500", // heat + aero
   "the Wildcard":      "#e056fd", // luck + mutation
   "the Decay":         "#6b4226", // toxicity + chrono
+  "the Wavelength":    "#4ecdc4", // mutation + resonance
+  "the Accord":        "#48c9b0", // insight + resonance
+  "the Undersong":     "#16a3b6", // aqua + resonance
+  "the Forge":         "#b85c38", // density + heat
+  "the Bastion":       "#b0b8bf", // alkalinity + density
+  "the Maelstrom":     "#6c3483", // void + volatility
+  "the Tundra":        "#9bb8a3", // cold + terra
+  "the Quagmire":      "#6b8e4e", // elasticity + terra
+  "the Zenith":        "#e8e3b8", // aero + radiance
+  "the Erasure":       "#4a2545", // entropy + void
+  "the Anchor":        "#7f8c8d", // density + stability
+  "the Magma":         "#c0553a", // heat + terra
+  "the Frostweave":    "#7d7fd4", // cold + mana
+  "the Firesong":      "#d98552", // heat + resonance
+  "the Sludge":        "#5f9e9b", // density + viscosity
 
   // ── Combi-potion suffixes (curated 3-way tied triples, see COMBI_TRIPLES) ──
   "Skill":         "#00d2d3", // focus + luck + volatility
@@ -132,6 +147,28 @@ export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
   "the Stampede":    "#cd6133", // strength + vitality + aero
   "the Oasis":       "#2ed573", // aqua + terra + radiance
   "the Alchemy":     "#daa520", // volatility + solvency + mutation
+  "Ingenuity":       "#9b6bcc", // focus + mana + mutation
+  "Revolution":      "#c2185b", // gravitas + mutation + volatility
+  "Oblivion":        "#3d2b56", // entropy + insight + void
+  "Damnation":       "#4a1942", // entropy + soul + void
+  "the Lighthouse":  "#e8c872", // aqua + density + radiance
+  "the Landslide":   "#8b6f47", // strength + terra + viscosity
+  "Timelessness":    "#4a4e8c", // chrono + soul + void
+  "Annihilation":    "#8b0000", // entropy + void + volatility
+  "Clairvoyance":    "#7c6bb0", // insight + resonance + void
+  "Rebirth":         "#e8a87c", // entropy + mutation + soul
+  "Evolution":       "#5b7c99", // chrono + mutation + void
+  "Extinction":      "#2f2f3a", // chrono + entropy + void
+  "Turmoil":         "#7d5ba6", // chrono + gravitas + volatility
+  "Possession":      "#6a4c93", // mutation + soul + void
+  "Reverie":         "#c9a0dc", // chrono + mutation + resonance
+
+  // ── Combi-potion suffixes (curated 4-way tied quads, see COMBI_QUADS) ──
+  "the Cataclysm":   "#8e1c1c", // entropy + gravitas + mutation + volatility
+  "the Oracle":      "#5a3d7a", // entropy + insight + resonance + void
+  "the Genesis":     "#f0c987", // chrono + focus + mana + mutation
+  "the Apocalypse":  "#4a1c1c", // chrono + gravitas + mutation + volatility
+  "the Revelation":  "#9b59b6", // entropy + insight + mutation + void
 };
 
 // Fallback colour when no suffix matches
@@ -143,11 +180,12 @@ export const ATTR_COLOR: Record<keyof Attributes, string> = Object.fromEntries(
 ) as Record<keyof Attributes, string>;
 
 // Combi-potion suffix → the native colours of its constituent attributes, in
-// curated (a, b[, c]) order. Used to render the liquid as a gradient fusion of
-// its parent attributes instead of a single curated colour.
+// curated (a, b[, c[, d]]) order. Used to render the liquid as a gradient
+// fusion of its parent attributes instead of a single curated colour.
 export const SUFFIX_BLEND_COLORS: Record<string, string[]> = {
   ...Object.fromEntries(COMBI_PAIRS.map(({ a, b, suffix }) => [suffix, [ATTR_COLOR[a], ATTR_COLOR[b]]])),
   ...Object.fromEntries(COMBI_TRIPLES.map(({ a, b, c, suffix }) => [suffix, [ATTR_COLOR[a], ATTR_COLOR[b], ATTR_COLOR[c]]])),
+  ...Object.fromEntries(COMBI_QUADS.map(({ a, b, c, d, suffix }) => [suffix, [ATTR_COLOR[a], ATTR_COLOR[b], ATTR_COLOR[c], ATTR_COLOR[d]]])),
 };
 
 // Per-type sprite path and liquid polygon points.
@@ -177,6 +215,26 @@ export const POTION_TYPE_DATA: Record<string, { sprite: string; liquidPoints: st
   Decoction: {
     sprite: "/sprites/potion-decoction.svg",
     liquidPoints: "-3.5,-11.5 -3.5,-9.5 -5.5,-7.5 -5.5,-6.5 -7.5,-4.5 -7.5,-2.5 -5.5,-0.5 1.5,-0.5 2.5,-1.5 3.5,-1.5 6.5,-4.5 6.5,-7.5 4.5,-9.5 4.5,-10.5 3.5,-11.5",
+  },
+  // New bottle types for the ore/chitin/bestial/herb ingredient categories.
+  // Placeholder art: bottle sprite files below don't exist yet (drop them into
+  // public/sprites/ once created); liquid polygon reuses an existing shape as a
+  // safe placeholder until bespoke bottle art defines its own.
+  Concoction: {
+    sprite: "/sprites/potion-concoction.svg",
+    liquidPoints: "2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0",
+  },
+  Extract: {
+    sprite: "/sprites/potion-extract.svg",
+    liquidPoints: "-1.5,-8.5 1.5,-8.5 1.5,-6.5 -1.5,-6.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 1.5,-6.5 -1.5,-6.5",
+  },
+  Tincture: {
+    sprite: "/sprites/potion-tincture.svg",
+    liquidPoints: "-1.5,-10.5 -5.5,-10.5 -6.5,-9.5 -7.5,-8.5 -7.5,-2.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 7.5,-2.5 7.5,-8.5 6.5,-9.5 5.5,-10.5 1.5,-10.5",
+  },
+  Infusion: {
+    sprite: "/sprites/potion-infusion.svg",
+    liquidPoints: "-5.5,-11.5 -6.5,-10.5 -6.5,-8.5 -5.5,-7.5 -5.5,-5.5 -4.5,-4.5 -4.5,-2.5 -3.5,-1.5 -2.5,-0.5 2.5,-0.5 3.5,-1.5 4.5,-2.5 4.5,-4.5 5.5,-5.5 5.5,-7.5 6.5,-8.5 6.5,-10.5 5.5,-11.5",
   },
 };
 

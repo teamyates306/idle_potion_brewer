@@ -22,8 +22,7 @@ export const RARITY_RANK: Record<Rarity, number> = Object.fromEntries(
 
 /**
  * Value-based rarity bracketing. All ingredients are re-bracketed from their
- * base_value so the 8 rarities follow the actual value distribution
- * (spread over 129 ingredients: 21/20/18/13/17/16/17/7).
+ * base_value so the 8 rarities follow the actual value distribution.
  */
 export function rarityForValue(v: number): Rarity {
   if (v < 9) return "common";
@@ -42,7 +41,11 @@ export type IngredientCategory =
   | "fungus"
   | "crystal"
   | "essence"
-  | "bone";
+  | "bone"
+  | "ore"
+  | "chitin"
+  | "bestial"
+  | "herb";
 
 export interface Attributes {
   // Physical

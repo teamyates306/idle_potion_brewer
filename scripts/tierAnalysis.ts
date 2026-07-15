@@ -16,7 +16,7 @@ console.log("\nIngredient base_value sorted:");
 console.log(values.join(", "));
 
 // ── Fast value math (mirrors describePotion exactly) ─────────────────────────
-const CATS = ["root", "petal", "fungus", "crystal", "essence", "bone"];
+const CATS = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
 const rates = ATTR_KEYS.map((k) => (DEFAULT_FORMULAS as any)[`value_mult_${k}`] ?? 0.01);
 const A = ATTR_KEYS.length;
 
@@ -50,7 +50,7 @@ ings.forEach((ing, i) => {
 }
 
 const attrSum = new Float64Array(A);
-const catSum = new Float64Array(6);
+const catSum = new Float64Array(CATS.length);
 
 function recipeValueAndName(idxs: number[]): { value: number; cat: number; attr: number; legCount: number } {
   attrSum.fill(0); catSum.fill(0);
@@ -69,7 +69,7 @@ function recipeValueAndName(idxs: number[]): { value: number; cat: number; attr:
   }
   const value = Math.max(1, Math.round(base * mult));
   let cat = 0, cbest = -1;
-  for (let c = 0; c < 6; c++) if (catSum[c] > cbest) { cbest = catSum[c]; cat = c; }
+  for (let c = 0; c < CATS.length; c++) if (catSum[c] > cbest) { cbest = catSum[c]; cat = c; }
   let attr = 0, abest = -1;
   for (let a = 0; a < A; a++) { const abs = Math.abs(attrSum[a]); if (abs > abest) { abest = abs; attr = a; } }
   return { value, cat, attr, legCount };

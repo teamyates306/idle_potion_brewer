@@ -8,7 +8,7 @@ interface Props {
   rarity?: Rarity;
 }
 
-const KNOWN = new Set(["root", "petal", "fungus", "crystal", "essence", "bone"]);
+const KNOWN = new Set(["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"]);
 
 // Per-rarity flair: glow strength (px @ size 30), particle count, and the
 // top-tier light sweep. Common gets nothing so lists stay calm and rarity

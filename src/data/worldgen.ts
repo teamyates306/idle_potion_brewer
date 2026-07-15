@@ -1,5 +1,5 @@
 // =============================================================================
-// Deterministic world generation: fills the game out to 100 ingredients and 30
+// Deterministic world generation: fills the game out to 150 ingredients and 30
 // locations on a principled "stat budget" + travel curve, layered on top of the
 // hand-authored base content in configStore. Pure module (no store imports) so
 // the headless simulator can use it too. Generation is seeded, so ingredient
@@ -49,15 +49,26 @@ interface TierCfg {
 // instead of spreading evenly across 4-5, which dramatically widens the mathematical
 // footprint of the ingredient pool (more unique stat vectors → more unique potions).
 const TIERS: TierCfg[] = [
-  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 2, mag: [4, 10],  vol: [0, 2],   tox: [0, 2],   value: [1, 4],     count: 6 },
-  { rarity: "uncommon",  pools: [DOM_BASIC, DOM_ELEM],  nAttr: 2, mag: [6, 14],  vol: [1, 4],   tox: [0, 4],   value: [10, 20],   count: 8 },
-  { rarity: "rare",      pools: [DOM_ELEM, DOM_BASIC],  nAttr: 3, mag: [8, 18],  vol: [3, 8],   tox: [2, 8],   value: [22, 42],   count: 12 },
-  { rarity: "epic",      pools: [DOM_ELEM, DOM_MENTAL], nAttr: 3, mag: [10, 20], vol: [5, 11],  tox: [4, 11],  value: [46, 78],   count: 14 },
-  { rarity: "legendary", pools: [DOM_COSMIC, DOM_MENTAL], nAttr: 3, mag: [12, 24], vol: [9, 16], tox: [6, 14],  value: [85, 150],  count: 12 },
-  { rarity: "legendary", pools: [DOM_COSMIC],           nAttr: 4, mag: [14, 28], vol: [12, 22], tox: [8, 18],  value: [160, 300], count: 8 },
+  { rarity: "common",    pools: [DOM_BASIC],            nAttr: 2, mag: [4, 10],  vol: [0, 2],   tox: [0, 2],   value: [1, 4],     count: 9 },
+  { rarity: "uncommon",  pools: [DOM_BASIC, DOM_ELEM],  nAttr: 2, mag: [6, 14],  vol: [1, 4],   tox: [0, 4],   value: [10, 20],   count: 11 },
+  { rarity: "rare",      pools: [DOM_ELEM, DOM_BASIC],  nAttr: 3, mag: [8, 18],  vol: [3, 8],   tox: [2, 8],   value: [22, 42],   count: 17 },
+  { rarity: "epic",      pools: [DOM_ELEM, DOM_MENTAL], nAttr: 3, mag: [10, 20], vol: [5, 11],  tox: [4, 11],  value: [46, 78],   count: 20 },
+  { rarity: "legendary", pools: [DOM_COSMIC, DOM_MENTAL], nAttr: 3, mag: [12, 24], vol: [9, 16], tox: [6, 14],  value: [85, 150],  count: 17 },
+  { rarity: "legendary", pools: [DOM_COSMIC],           nAttr: 4, mag: [14, 28], vol: [12, 22], tox: [8, 18],  value: [160, 300], count: 12 },
 ];
 
-const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone"];
+const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
+
+// How many *procedural* ingredients each category gets, topping it up to a
+// ~15-ingredient final total once the hand-authored base (configStore.ts) is
+// layered in. The 6 legacy categories already carry hand-authored entries
+// (9/13/10/14/9/9), so they need less top-up; the 4 new categories are
+// entirely procedural today, so they get the full ~15. Sums to 86, matching
+// the TIERS counts above (9+11+17+20+17+12=86).
+const CATEGORY_TOPUP: Record<IngredientCategory, number> = {
+  root: 6, petal: 2, fungus: 5, crystal: 1, bone: 6, essence: 6,
+  ore: 15, chitin: 15, bestial: 15, herb: 15,
+};
 const NOUNS: Record<IngredientCategory, string[]> = {
   root:    ["Taproot", "Bloodroot", "Gnarlroot", "Mandrake", "Briar", "Rhizome", "Tuber", "Creeper", "Snakeroot", "Witchroot"],
   petal:   ["Bloom", "Blossom", "Lotus", "Nettle", "Frond", "Lily", "Orchid", "Thorn", "Vine", "Wort"],
@@ -65,6 +76,10 @@ const NOUNS: Record<IngredientCategory, string[]> = {
   crystal: ["Shard", "Geode", "Prism", "Quartz", "Druse", "Spar", "Facet", "Gleam", "Cluster", "Stone"],
   essence: ["Mist", "Vapor", "Ichor", "Tincture", "Aether", "Fume", "Dram", "Brume", "Distillate", "Bottle"],
   bone:    ["Marrow", "Fang", "Rib", "Talon", "Horn", "Vertebra", "Skull", "Ossein", "Knuckle", "Splinter"],
+  ore:     ["Vein", "Nugget", "Ingot", "Lode", "Cluster", "Filings", "Ore", "Deposit", "Slag", "Chunk"],
+  chitin:  ["Carapace", "Mandible", "Wingcase", "Exoskeleton", "Thorax", "Shell", "Proboscis", "Sting", "Cocoon", "Chitin"],
+  bestial: ["Claw", "Pelt", "Tusk", "Antler", "Fur", "Hide", "Talon", "Whisker", "Feather", "Sinew"],
+  herb:    ["Leaf", "Sprig", "Sage", "Fern", "Bough", "Sprout", "Bramble", "Clover", "Frond", "Bracken"],
 };
 const TIER_ADJ: string[][] = [
   ["Pale", "Muddy", "Dull", "Plain", "Damp", "Bog"],
@@ -87,18 +102,29 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
 const ri = (rng: () => number, [lo, hi]: [number, number]) => lo + Math.floor(rng() * (hi - lo + 1));
 
 /**
- * Generate the 60 procedural ingredients that top the hand-authored base up to
- * 100. `reserved` is the set of existing IDs to avoid colliding with.
+ * Generate the 86 procedural ingredients that top the hand-authored base up to
+ * 150, across 10 categories. `reserved` is the set of existing IDs to avoid
+ * colliding with.
  */
 export function makeGeneratedIngredients(reserved: string[]): Record<string, Ingredient> {
   const rng = mulberry32(0xb0bafe77);
   const used = new Set(reserved);
   const out: Record<string, Ingredient> = {};
+
+  // Build a shuffled plan of exactly CATEGORY_TOPUP[cat] entries per category
+  // (length == total TIERS count) so each category lands at its target final
+  // total, while still spreading each category's picks evenly across tiers.
+  const categoryPlan: IngredientCategory[] = [];
+  for (const cat of CATEGORIES) for (let i = 0; i < CATEGORY_TOPUP[cat]; i++) categoryPlan.push(cat);
+  for (let i = categoryPlan.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [categoryPlan[i], categoryPlan[j]] = [categoryPlan[j], categoryPlan[i]];
+  }
   let catCursor = 0;
 
   TIERS.forEach((tier, ti) => {
     for (let k = 0; k < tier.count; k++) {
-      const category = CATEGORIES[catCursor++ % CATEGORIES.length];
+      const category = categoryPlan[catCursor++ % categoryPlan.length];
 
       // unique themed name
       let name = "", id = "", guard = 0;
@@ -185,9 +211,9 @@ function tierOfValue(v: number): number {
 // These get their own explicit distance/danger rather than the geometric formula.
 const EXTRA_LOCATION_CFG: Record<string, { distance: number; danger: number; unlockCost: number; dropIds: string[] }> = {
   whisperingbogs: { distance: 18, danger: 4, unlockCost: 8000,
-    dropIds: ["bogamber", "whisperingspore", "ashshroom", "hexpetal", "mistcap", "bogpearl"] },
+    dropIds: ["ashshroom", "hexpetal", "mistcap", "bogpearl"] },
   ashencrags:     { distance: 24, danger: 6, unlockCost: 40000,
-    dropIds: ["ashscale", "embershard", "cinderbone", "stormglass", "gravewax", "entropyshard"] },
+    dropIds: ["cinderbone", "stormglass", "gravewax", "entropyshard"] },
 };
 
 /**

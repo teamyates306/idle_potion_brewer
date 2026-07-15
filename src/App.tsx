@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark } from "lucide-react";
+import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark, Gem } from "lucide-react";
+import TrophyCaseModal from "./components/TrophyCaseModal";
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
@@ -31,7 +32,7 @@ import { masteryLevel } from "./data/masteryTrees";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | "trophies" | null;
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -154,6 +155,14 @@ export default function App() {
           <Trophy size={18} className="text-amber-700" />
           <span>Achievements</span>
         </button>
+        <button
+          onClick={() => setPanel("trophies")}
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+          title="Trophy Case"
+        >
+          <Gem size={18} className="text-cyan-700" />
+          <span>Trophies</span>
+        </button>
         {hasMastery && (
           <button
             onClick={() => setPanel("mastery")}
@@ -225,6 +234,7 @@ export default function App() {
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
       {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
+      {panel === "trophies" && <TrophyCaseModal onClose={() => setPanel(null)} />}
       {panel === "mastery"  && <MasteryView  onClose={() => setPanel(null)} />}
       {panel === "help"     && <HelpModal    onClose={() => setPanel(null)} />}
       {panel === "gax"      && <GaxDashboard onClose={() => setPanel(null)} />}

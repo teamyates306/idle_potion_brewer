@@ -12,7 +12,7 @@ const RARITY_ORDER: Record<string, number> = {
 };
 
 // Group ingredients by their type, in a stable display order.
-const CATEGORY_ORDER = ["root", "petal", "fungus", "crystal", "essence", "bone"];
+const CATEGORY_ORDER = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
 const CATEGORY_LABEL: Record<string, string> = {
   root: "Roots", petal: "Petals", fungus: "Fungi", crystal: "Crystals", essence: "Essences", bone: "Bones",
 };

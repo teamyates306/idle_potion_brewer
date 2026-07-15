@@ -39,7 +39,7 @@ function loadDraft(): Draft {
 }
 
 // ── Reference data / labels ──────────────────────────────────────────────────
-const CATS: Ingredient["category"][] = ["root", "petal", "fungus", "crystal", "essence", "bone"];
+const CATS: Ingredient["category"][] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
 
 const CAT_LABEL: Record<string, string> = {
   root: "Root", petal: "Petal", fungus: "Fungus",

@@ -62,7 +62,9 @@ export interface BaseFormulas {
 }
 
 // Hand-authored base ingredients (Tiers 1-5). The procedural generator in
-// worldgen.ts tops this up to 100 with stat-budgeted Tier 1-6 ingredients.
+// worldgen.ts tops this up to 150 with stat-budgeted Tier 1-6 ingredients
+// across 10 categories (including the 4 procedural-only categories: ore,
+// chitin, bestial, herb).
 const BASE_INGREDIENTS: Record<string, Ingredient> = {
   rootmoss: {
     id: "rootmoss",
@@ -385,37 +387,6 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     description: "It blinked once during cataloguing. The catalogue has been sealed.",
   },
 
-  // ===== PHASE-BREAKERS — 5 unique ingredients with 15-20% higher base_value vs same-tier peers =====
-  // Tier 3 (rare avg ~27-32) — these sit ~35-37, 15-17% above
-  bogamber: { // PHASE-BREAKER
-    id: "bogamber", name: "Bog Amber", category: "crystal", rarity: "rare", base_value: 37,
-    attributes: attrs({ aqua: 14, viscosity: 9, soul: 6, toxicity: 4 }),
-    description: "Warm resin pulled from the bogs, shot through with something that was moving inside it. Still is, faintly.",
-  },
-  whisperingspore: { // PHASE-BREAKER
-    id: "whisperingspore", name: "Whispering Spore", category: "fungus", rarity: "rare", base_value: 35,
-    attributes: attrs({ aero: 12, resonance: 10, chrono: 4, volatility: 6 }),
-    description: "Releases a tone that takes a moment to arrive. Workers claim it answers questions they haven't asked yet.",
-  },
-  // Tier 5 (legendary avg ~110-120) — these sit ~130-135, ~12-15% above (kept below epic tier ceiling ~120 average)
-  // Note: legendary range is 85-150, tier avg ~120; 130-135 is ~8-12% above the tier midpoint
-  ashscale: { // PHASE-BREAKER
-    id: "ashscale", name: "Ashen Scale", category: "bone", rarity: "legendary", base_value: 135,
-    attributes: attrs({ heat: 19, entropy: 14, mutation: 10, terra: 8, volatility: 14 }),
-    description: "A scale the size of a shield, still exhaling heat from a creature no longer extant. The Guild is not asking what shed it.",
-  },
-  embershard: { // PHASE-BREAKER
-    id: "embershard", name: "Ember Shard", category: "crystal", rarity: "legendary", base_value: 130,
-    attributes: attrs({ heat: 22, shock: 13, gravitas: 9, volatility: 15, toxicity: 9 }),
-    description: "A crystallised fragment of a flame that refused to go out. Touching it is inadvisable and also very warm.",
-  },
-  // Tier 4 (epic avg ~55-65) — this sits ~73, ~17% above tier avg
-  voidcrystal: { // PHASE-BREAKER
-    id: "voidcrystal", name: "Void Crystal", category: "essence", rarity: "epic", base_value: 73,
-    attributes: attrs({ void: 17, entropy: 12, chrono: 8, solvency: 6, volatility: 10 }),
-    description: "A crystallised absence. Holds nothing — which is exactly what makes it valuable.",
-  },
-
   // ===== GAP-FILLERS — 24 ingredients targeting attribute×category combos with
   // no dominant carrier (solvency was entirely dead; vitality/elasticity/toxicity/
   // volatility/viscosity/acidity/resonance/terra/mutation were severely sparse).
@@ -541,12 +512,44 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     attributes: attrs({ mutation: 22, void: 9, entropy: 7, chrono: 5 }),
     description: "Grew in a spiral that keeps recalculating itself when nobody is looking.",
   },
+
+  // ===== TROPHY FINDS — 5 ingredients, one per curated 4-way combo (COMBI_QUADS
+  // in engine/potions.ts). Each carries its combo's four attributes at close to
+  // even magnitude, making that near-tie easier to land for players chasing the
+  // rarest tier of the Trophy Case. =====
+  cataclysmshard: {
+    id: "cataclysmshard", name: "Cataclysm Shard", category: "bone", rarity: "legendary", base_value: 160,
+    attributes: attrs({ entropy: 24, gravitas: 23, mutation: 25, volatility: 24 }),
+    description: "A splinter from the moment everything ended. The Guild keeps it in a lead box, just in case.",
+  },
+  oracleseye: {
+    id: "oracleseye", name: "Oracle's Eye", category: "crystal", rarity: "legendary", base_value: 155,
+    attributes: attrs({ entropy: 23, insight: 24, resonance: 23, void: 25 }),
+    description: "It sees the end of things and hums about it constantly. The hum is the unsettling part.",
+  },
+  genesisvial: {
+    id: "genesisvial", name: "Genesis Vial", category: "essence", rarity: "legendary", base_value: 150,
+    attributes: attrs({ chrono: 23, focus: 22, mana: 24, mutation: 23 }),
+    description: "Contains a beginning that hasn't happened yet. Handle before, not after.",
+  },
+  apocalypseingot: {
+    id: "apocalypseingot", name: "Apocalypse Ingot", category: "ore", rarity: "legendary", base_value: 165,
+    attributes: attrs({ chrono: 24, gravitas: 23, mutation: 23, volatility: 25 }),
+    description: "Forged from a future the smiths declined to elaborate on. Heavier than it should be.",
+  },
+  revelationbloom: {
+    id: "revelationbloom", name: "Revelation Bloom", category: "herb", rarity: "legendary", base_value: 158,
+    attributes: attrs({ entropy: 23, insight: 25, mutation: 23, void: 24 }),
+    description: "Opens once and shows you something true. Most pickers wish it hadn't.",
+  },
 };
 
-// Full registry: hand-authored base (Tiers 1-5) + procedural generation up to
-// 100 stat-budgeted ingredients (worldgen.ts). Every ingredient's rarity is
-// re-bracketed from its base_value into the 8-rarity scale (see rarityForValue)
-// so hand-authored rarity fields never drift from the value distribution.
+// Full registry: hand-authored base (Tiers 1-5 + 5 Trophy Finds, 69 entries)
+// + procedural generation up to 150 stat-budgeted ingredients across 10
+// categories (worldgen.ts), for 155 total. Every ingredient's rarity is
+// re-bracketed from its
+// base_value into the 8-rarity scale (see rarityForValue) so hand-authored
+// rarity fields never drift from the value distribution.
 const ASSEMBLED_INGREDIENTS: Record<string, Ingredient> = Object.fromEntries(
   Object.entries({
     ...BASE_INGREDIENTS,
@@ -707,11 +710,11 @@ export const useConfigStore = create<ConfigState>()(
     }),
     }),
     {
-      // Bumped to -v4 with the 8-rarity re-bracketing + 10-tier potion prefixes
-      // so stale persisted config (old rarities/thresholds) is dropped.
+      // Bumped to -v6 with 5 new Trophy Find ingredients (155-ingredient world)
+      // added for the 4-way combo tier, so stale persisted config is dropped.
       // This store holds no player progress (that lives in gameStore), so a
       // fresh rehydrate from code defaults is safe.
-      name: "ipb-config-v4",
+      name: "ipb-config-v6",
       storage: safeStorage,
       // Merge saved formulas over defaults so new formula keys added in code still appear
       merge: (persisted: unknown, current: ConfigState): ConfigState => {

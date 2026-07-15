@@ -30,6 +30,14 @@ const PARTICLE_SPOTS = [
 
 const VB = "-8 -16 16 16";
 
+/** Equal-wedge conic-gradient string for a 3+ colour combi split (one wedge
+ *  per constituent attribute, evenly dividing the full circle). */
+function conicWedges(colors: string[]): string {
+  const step = 360 / colors.length;
+  const stops = colors.map((c, i) => `${c} ${(i * step).toFixed(1)}deg ${((i + 1) * step).toFixed(1)}deg`);
+  return `conic-gradient(from 0deg, ${stops.join(", ")})`;
+}
+
 /**
  * Inline SVG potion icon: bottle sprite + liquid polygon + optional glow/particles.
  * All visual properties derived from the full potion name string.
@@ -80,17 +88,18 @@ export default function PotionIcon({ name, size = 20 }: Props) {
         )}
         {blendColors && blendColors.length === 2 ? (
           <polygon points={liquidPoints} fill={`url(#${gradId})`} opacity="0.8" />
-        ) : blendColors && blendColors.length === 3 ? (
+        ) : blendColors && blendColors.length >= 3 ? (
           <foreignObject x="-8" y="-16" width="16" height="16">
             <div
-              // 3-attribute combi: a true three-way angular split (conic-gradient),
-              // one 120° wedge per constituent attribute's native colour.
+              // 3- and 4-attribute combis: a true angular split (conic-gradient),
+              // one equal wedge per constituent attribute's native colour — 120°
+              // wedges for a 3-way tie, 90° wedges (4 angles) for a 4-way tie.
               style={{
                 width: "100%",
                 height: "100%",
                 opacity: 0.8,
                 clipPath: liquidClipPath(liquidPoints),
-                background: `conic-gradient(from 0deg, ${blendColors[0]} 0deg 120deg, ${blendColors[1]} 120deg 240deg, ${blendColors[2]} 240deg 360deg)`,
+                background: conicWedges(blendColors),
               }}
             />
           </foreignObject>
