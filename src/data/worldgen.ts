@@ -34,7 +34,7 @@ const ZERO_ATTRS: Attributes = {
 };
 
 // ── Attribute domains, escalating from basic -> elemental -> mental -> cosmic ──
-const DOM_BASIC: (keyof Attributes)[] = ["strength", "vitality", "density", "speed", "elasticity", "stability", "alkalinity", "acidity", "terra", "viscosity"];
+const DOM_BASIC: (keyof Attributes)[] = ["strength", "vitality", "density", "speed", "elasticity", "stability", "alkalinity", "acidity", "terra", "viscosity", "solvency"];
 const DOM_ELEM: (keyof Attributes)[] = ["heat", "cold", "shock", "aqua", "terra", "aero", "radiance"];
 const DOM_MENTAL: (keyof Attributes)[] = ["focus", "mana", "resonance", "insight", "luck"];
 const DOM_COSMIC: (keyof Attributes)[] = ["void", "chrono", "gravitas", "entropy", "soul", "mutation"];

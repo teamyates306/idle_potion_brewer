@@ -7,6 +7,7 @@ import { masteryLevel, masteryXpProgress, potionMasteryReductionPct } from "../.
 import { ATTR_EMOJI, attrLabel, gaxDayIndex, gaxPotionQuote } from "../../engine/gax";
 import IngredientSvg from "../art/IngredientSvg";
 import PotionIcon from "../art/PotionIcon";
+import { dominantAttrSentence } from "../../util/potionVisuals";
 import type { Attributes } from "../../types";
 
 /**
@@ -54,20 +55,29 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
           <span>Base value</span>
           <span className="font-semibold text-slate-300">🪙 {fmt(baseValue)}</span>
         </div>
-        {movers.map((r) => {
-          const d = Math.round((r.rate - 1) * 100);
-          return (
-            <div key={r.attr} className="flex justify-between">
-              <span className="text-slate-400">
-                {ATTR_EMOJI[r.attr]} {attrLabel(r.attr)}
-                <span className="ml-1 text-[10px] text-slate-500">({REASON_LABEL[r.reason]})</span>
-              </span>
-              <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                {d > 0 ? "+" : ""}{d}%
-              </span>
-            </div>
-          );
-        })}
+        {(() => {
+          // Each attribute contributes weight/totalWeight of the blended rate,
+          // so its coin impact on THIS potion is base × share × (rate − 1).
+          const totalWeight = quote.rows.reduce((a, r) => a + r.weight, 0) || 1;
+          return movers.map((r) => {
+            const d = Math.round((r.rate - 1) * 100);
+            const coinDelta = Math.round(baseValue * (r.weight / totalWeight) * (r.rate - 1));
+            return (
+              <div key={r.attr} className="flex justify-between">
+                <span className="text-slate-400">
+                  {ATTR_EMOJI[r.attr]} {attrLabel(r.attr)}
+                  <span className="ml-1 text-[10px] text-slate-500">({REASON_LABEL[r.reason]})</span>
+                </span>
+                <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                  {d > 0 ? "+" : ""}{d}%
+                  <span className="ml-1.5 text-[10px] opacity-80">
+                    ({coinDelta > 0 ? "+" : ""}{fmt(coinDelta)}🪙)
+                  </span>
+                </span>
+              </div>
+            );
+          });
+        })()}
         {movers.length === 0 && (
           <div className="text-slate-500">All of this potion's markets are trading at par.</div>
         )}
@@ -293,7 +303,10 @@ export default function PotionDetailsModal({
         ) : (
           <div className="mb-4 rounded-lg border border-purple-300 bg-purple-100/50 p-3">
             <p className="text-xs italic text-purple-800/80">
-              The potion shimmers with unseen potential. Equip Alchemist's Spectacles to read its true properties and value.
+              {dominantAttrSentence(potion.stats)}
+            </p>
+            <p className="mt-1.5 text-[10px] text-purple-700/60">
+              Equip Alchemist's Spectacles to read its exact properties and value.
             </p>
           </div>
         )}

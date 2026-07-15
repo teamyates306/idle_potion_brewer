@@ -45,27 +45,31 @@ function lerpColor(
 }
 
 export function computeDayNight(phase: number): DayNightState {
-  // Phase map:
-  // 0.00–0.10  night → sunrise transition
-  // 0.10–0.20  sunrise
-  // 0.20–0.70  daytime
-  // 0.70–0.80  sunset
-  // 0.80–1.00  night
+  // Phase map, anchored to the HUD clock (phase 0 = 00:00, 0.25 = 06:00,
+  // 0.5 = 12:00, 0.75 = 18:00). Midnight is genuinely pitch black; first
+  // light breaks around 06:00, full day by ~08:00, dusk from ~18:00, and
+  // night has fully fallen by ~21:00.
+  // 0.000–0.250  deep night (00:00–06:00)
+  // 0.250–0.333  dawn       (06:00–08:00)
+  // 0.333–0.750  daytime    (08:00–18:00)
+  // 0.750–0.875  dusk       (18:00–21:00)
+  // 0.875–1.000  night      (21:00–24:00)
 
   const dayness =
-    phase < 0.10 ? smoothStep(phase, 0.05, 0.15) :
-    phase < 0.70 ? 1 :
-    phase < 0.85 ? 1 - smoothStep(phase, 0.70, 0.85) :
+    phase < 0.25 ? 0 :
+    phase < 0.333 ? smoothStep(phase, 0.25, 0.333) :
+    phase < 0.75 ? 1 :
+    phase < 0.875 ? 1 - smoothStep(phase, 0.75, 0.875) :
     0;
 
   const sunriseness =
-    phase >= 0.05 && phase <= 0.30
-      ? Math.sin(Math.PI * smoothStep(phase, 0.05, 0.30))
+    phase >= 0.24 && phase <= 0.40
+      ? Math.sin(Math.PI * smoothStep(phase, 0.24, 0.40))
       : 0;
 
   const sunsetness =
-    phase >= 0.65 && phase <= 0.90
-      ? Math.sin(Math.PI * smoothStep(phase, 0.65, 0.90))
+    phase >= 0.72 && phase <= 0.90
+      ? Math.sin(Math.PI * smoothStep(phase, 0.72, 0.90))
       : 0;
 
   // Window colour: night=#091828, sunrise: night→day, day=#a8d0f0, sunset: day→orange→night
@@ -74,11 +78,11 @@ export function computeDayNight(phase: number): DayNightState {
   let wr: number, wg: number, wb: number;
   if (sunriseness > 0) {
     [wr, wg, wb] = lerpColor(9, 24, 40, 168, 208, 240, dayness);
-  } else if (phase >= 0.65 && phase < 0.90) {
-    // Sunset window: split at midpoint (0.775) so the sequence is always blue→orange→night.
-    const mid = 0.775;
+  } else if (phase >= 0.72 && phase < 0.90) {
+    // Sunset window: split at midpoint (0.81) so the sequence is always blue→orange→night.
+    const mid = 0.81;
     if (phase < mid) {
-      const t = (phase - 0.65) / (mid - 0.65); // 0→1 across first half
+      const t = (phase - 0.72) / (mid - 0.72); // 0→1 across first half
       [wr, wg, wb] = lerpColor(168, 208, 240, 208, 104, 40, t);
     } else {
       const t = (phase - mid) / (0.90 - mid); // 0→1 across second half
@@ -104,7 +108,8 @@ export function computeDayNight(phase: number): DayNightState {
   } else if (dayness > 0.5) {
     tintColor = `rgba(180, 220, 255, ${(dayness * 0.04).toFixed(3)})`;
   } else {
-    tintColor = `rgba(10, 20, 60, ${((1 - dayness) * 0.18).toFixed(3)})`;
+    // Deep night reads genuinely dark — pitch black at 00:00, not "dim day".
+    tintColor = `rgba(6, 10, 34, ${((1 - dayness) * 0.42).toFixed(3)})`;
   }
 
   const starOpacity = 1 - dayness;

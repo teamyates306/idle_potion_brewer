@@ -25,8 +25,7 @@ const ATTR_GROUPS: { label: string; keys: (keyof import("../types").Attributes)[
 ];
 
 const BASE_FORMULA_KEYS: (keyof BaseFormulas)[] = [
-  "base_brew_time", "xp_base", "xp_growth", "cost_base", "cost_growth",
-  "toxicity_time_mult", "volatility_xp_mult", "volatility_multibrew_penalty", "offline_threshold_hours",
+  "base_brew_time", "xp_base", "xp_growth", "cost_base", "cost_growth", "offline_threshold_hours",
 ];
 
 const FORMULA_LABELS: Partial<Record<keyof BaseFormulas, string>> = {
@@ -35,9 +34,6 @@ const FORMULA_LABELS: Partial<Record<keyof BaseFormulas, string>> = {
   xp_growth:                   "XP growth factor",
   cost_base:                   "Upgrade cost base",
   cost_growth:                 "Upgrade cost growth",
-  toxicity_time_mult:          "Toxicity → brew time mult",
-  volatility_xp_mult:          "Volatility → XP mult",
-  volatility_multibrew_penalty:"Volatility → multi-brew penalty",
   offline_threshold_hours:     "Offline threshold (hrs)",
 };
 

@@ -12,3 +12,6 @@ dist-ssr
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+
+# Economy Lab CLI output (scripts/runLab.ts) — scratch analysis artifacts
+sim-reports/

@@ -127,10 +127,13 @@ for (let s = 0; s < SAMPLES5; s++) {
   record(idxs5, total5 / SAMPLES5);
 }
 
-// Exhaustive top-end search: 4/5-multisets over the 30 most valuable ingredients
+// Exhaustive top-end search: 4/5-multisets over the most valuable ingredients
 // (accurate maxByLeg + top-tier reachability, which random sampling misses).
-const topIdx = ings.map((_, i) => i).sort((a, b) => baseVals[b] - baseVals[a]).slice(0, 30);
-console.log("Enumerating 4/5-multisets of top-30 ingredients for the high end…");
+// Window scales with pool size so it keeps covering roughly the same value band
+// as the pool grows (originally top-30 of 105 ingredients).
+const TOP_N = Math.max(45, Math.round(30 * N / 105));
+const topIdx = ings.map((_, i) => i).sort((a, b) => baseVals[b] - baseVals[a]).slice(0, TOP_N);
+console.log(`Enumerating 4/5-multisets of top-${TOP_N} ingredients for the high end…`);
 const T = topIdx.length;
 for (let a = 0; a < T; a++) for (let b = a; b < T; b++) for (let c = b; c < T; c++) for (let d = c; d < T; d++) {
   record([topIdx[a], topIdx[b], topIdx[c], topIdx[d]], 0); // weight 0: reachability only

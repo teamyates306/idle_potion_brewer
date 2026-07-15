@@ -1,9 +1,17 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, Footprints, Plus, Store, X } from "lucide-react";
-import { useGameStore, ingredientMatchesTradeInput, tradeInputLabel } from "../store/gameStore";
+import { ArrowRight, Footprints, Plus, Store, TrendingUp, X } from "lucide-react";
+import {
+  useGameStore, ingredientMatchesTradeInput, tradeInputLabel,
+  activeTradeSlots, settlementRoles,
+} from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { gatherRoundTrip } from "../engine/formulas";
+import { computeMasteryEffects } from "../data/masteryTrees";
 import { regionOfDistance } from "../data/regions";
+import {
+  PROSPERITY_BARTER_LEVEL, PROSPERITY_MAX_LEVEL, PROSPERITY_REGIONAL_PCT_PER_LEVEL,
+  PROSPERITY_SLOT_UNLOCK_LEVEL, bulkShipmentSize, processBulkTrade, prosperityProgress,
+} from "../engine/prosperity";
 import { fmt, fmtDuration, RARITY_COLOR } from "../util/format";
 import IngredientSvg from "./art/IngredientSvg";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
@@ -32,14 +40,25 @@ export default function SettlementModal({
   const inv = useGameStore((s) => s.ingredientInv);
   const assignWorkerToTrade = useGameStore((s) => s.assignWorkerToTrade);
   const cancelTrade = useGameStore((s) => s.cancelTrade);
+  const settlementProsperity = useGameStore((s) => s.settlementProsperity);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
   const cfg = useConfigStore();
 
-  const [activeSlotId, setActiveSlotId] = useState<string>(settlement.slots[0]?.id ?? "");
+  // ── Prosperity: level, XP progress, regional role, live trade slots ──
+  const prosperityEntry = settlementProsperity[settlement.id] ?? { xp: 0, surplus: {} };
+  const prosperity = prosperityProgress(prosperityEntry.xp);
+  const role = settlementRoles()[settlement.id] ?? "speed";
+  const slots = activeTradeSlots(settlementProsperity, settlement);
+  const caravanPct = computeMasteryEffects(masteryUnlocks).caravan_size_pct;
+  const carryCapFor = (retrieval: number) => Math.max(1, Math.floor(retrieval * (1 + caravanPct / 100)));
+
+  const [activeSlotId, setActiveSlotId] = useState<string>(slots[0]?.id ?? "");
   const [fromBySlot, setFromBySlot] = useState<Record<string, string | null>>({});
   const [pickerSlot, setPickerSlot] = useState<TradeSlot | null>(null);
+  const [showHowTradesWork, setShowHowTradesWork] = useState(false);
 
   const region = regionOfDistance(settlement.distance);
-  const activeSlot = settlement.slots.find((s) => s.id === activeSlotId) ?? settlement.slots[0];
+  const activeSlot = slots.find((s) => s.id === activeSlotId) ?? slots[0];
   const activeFrom = activeSlot ? fromBySlot[activeSlot.id] ?? null : null;
   const activeFromIng = activeFrom ? cfg.ingredients[activeFrom] : null;
   const activeFromOk =
@@ -81,15 +100,58 @@ export default function SettlementModal({
         </div>
 
         <p className="mb-3 text-sm italic text-slate-400">"{settlement.flavor}"</p>
-        <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-          Send a worker with surplus ingredients; they hand the goods over on arrival and
-          carry the settlement's fixed offer home. The run repeats while your stash holds out.
-        </p>
+
+        {/* Prosperity panel */}
+        <div className="mb-3 rounded-xl border border-amber-700/40 bg-amber-950/15 p-3">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+              <TrendingUp size={13} /> Prosperity Level {prosperity.level}{prosperity.level >= PROSPERITY_MAX_LEVEL ? " · MAX" : ""}
+            </span>
+            <span className="text-[10px] text-slate-500">
+              {role === "speed" ? "🏇 Waypoint Town" : "📦 Cargo Supply Town"} · +{(prosperity.level * PROSPERITY_REGIONAL_PCT_PER_LEVEL).toFixed(1)}% regional {role === "speed" ? "travel speed" : "carry"}
+            </span>
+          </div>
+          {prosperity.level < PROSPERITY_MAX_LEVEL && (
+            <>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+                <div className="h-2 rounded-full bg-amber-600 transition-all" style={{ width: `${Math.round((prosperity.current / Math.max(1, prosperity.needed)) * 100)}%` }} />
+              </div>
+              <div className="mt-0.5 text-right text-[9px] text-slate-500">
+                {fmt(prosperity.current)} / {fmt(prosperity.needed)} XP
+              </div>
+            </>
+          )}
+          {prosperity.level >= PROSPERITY_MAX_LEVEL && (
+            <div className="mt-0.5 text-right text-[9px] text-slate-500">{fmt(prosperityEntry.xp)} XP total</div>
+          )}
+          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
+            Every item delivered grants +1 Prosperity XP.
+            {prosperity.level < PROSPERITY_SLOT_UNLOCK_LEVEL && <> Level {PROSPERITY_SLOT_UNLOCK_LEVEL} opens a bonus trade offer.</>}
+            {prosperity.level >= PROSPERITY_SLOT_UNLOCK_LEVEL && prosperity.level < PROSPERITY_BARTER_LEVEL && <> Bonus offer unlocked! Level {PROSPERITY_BARTER_LEVEL} grants Barter Efficiency (−1 input, +1 output on every offer).</>}
+            {prosperity.level >= PROSPERITY_BARTER_LEVEL && <> Barter Efficiency active: every offer asks one less and pays one more.</>}
+          </p>
+        </div>
 
         {/* Trade slots */}
-        <p className="mb-1.5 text-[10px] uppercase tracking-wider text-amber-700">Trade offers</p>
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <p className="text-[10px] uppercase tracking-wider text-amber-700">Trade offers</p>
+          <button
+            onClick={() => setShowHowTradesWork((x) => !x)}
+            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-600 text-[9px] font-bold text-slate-500 hover:border-amber-600 hover:text-amber-600"
+            title="How trades work"
+          >
+            ?
+          </button>
+        </div>
+        {showHowTradesWork && (
+          <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
+            Workers pack their bags to full carrying capacity. Whole recipes convert to return
+            cargo; fractional leftovers are banked as surplus credit at the town and count
+            toward the next delivery. The run repeats while your stash holds out.
+          </p>
+        )}
         <div className="mb-4 space-y-2">
-          {settlement.slots.map((slot) => {
+          {slots.map((slot) => {
             const outIng = cfg.ingredients[slot.output.ingredientId];
             const from = fromBySlot[slot.id] ?? null;
             const fromIng = from ? cfg.ingredients[from] : null;
@@ -104,8 +166,13 @@ export default function SettlementModal({
                   isActive ? "border-amber-500/70 bg-amber-950/25 ring-1 ring-amber-500/40" : "border-slate-700 bg-slate-800/40 hover:border-amber-600/40"
                 }`}
               >
-                <div className="mb-2 text-[11px] font-medium text-slate-300">
-                  Wants: <span className="text-amber-800 font-semibold">{tradeInputLabel(slot.input)}</span>
+                <div className="mb-2 flex items-center justify-between text-[11px] font-medium text-slate-300">
+                  <span>
+                    Wants: <span className="text-amber-800 font-semibold">{tradeInputLabel(slot.input)}</span>
+                  </span>
+                  {slot.unlockLevel && (
+                    <span className="rounded-full bg-amber-800/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">★ L{slot.unlockLevel} bonus offer</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2.5">
                   {/* "From" slot — styled like a brewer recipe slot */}
@@ -151,6 +218,11 @@ export default function SettlementModal({
                     </span>
                   </span>
                 </div>
+                {(prosperityEntry.surplus[slot.id] ?? 0) > 0 && (
+                  <p className="mt-1.5 flex items-center gap-1 text-[10px] text-emerald-600">
+                    📒 Town Surplus Ledger: <span className="font-bold">+{prosperityEntry.surplus[slot.id]}</span> input credit banked — counts toward the next delivery.
+                  </p>
+                )}
                 {short && (
                   <p className="mt-1.5 text-[10px] text-rose-500">
                     Not enough {fromIng!.name} — need {slot.input.count}, have {fromCount}.
@@ -203,14 +275,36 @@ export default function SettlementModal({
               const tripSecs = gatherRoundTrip(settlement.distance, w.gather_speed);
               const busyHere = w.assigned_settlement === settlement.id;
               const canSend = activeFromOk && !busyHere;
+              // Live Dispatch Calculator: exactly what this worker's bulk run yields.
+              const carryCap = carryCapFor(w.retrieval_size);
+              let dispatch: { ship: number; ret: number; surplusAfter: number } | null = null;
+              if (activeSlot && activeFromIng && canSend) {
+                const ship = bulkShipmentSize(inv[activeFromIng.id] ?? 0, activeSlot.input.count, carryCap);
+                const result = processBulkTrade(
+                  ship, prosperityEntry.surplus[activeSlot.id] ?? 0,
+                  activeSlot.input.count, activeSlot.output.count, carryCap
+                );
+                dispatch = { ship, ret: result.carriedOutput, surplusAfter: result.newSurplus };
+              }
+              const outIng = activeSlot ? cfg.ingredients[activeSlot.output.ingredientId] : null;
               return (
                 <div key={w.id} className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/40 p-3">
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${w.color ?? "#7c3aed"}33` }}>
                     <WorkerArt size={36} active={false} hueShift={workerHue(w.id)} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-semibold text-slate-100">{w.name}</div>
+                    <div className="text-sm font-semibold text-slate-100">
+                      {w.name} <span className="text-[10px] font-normal text-slate-500">(Carry Cap: {carryCap})</span>
+                    </div>
                     <div className="text-xs text-slate-500">{fmtDuration(tripSecs)} round trip</div>
+                    {dispatch && activeFromIng && (
+                      <div className="mt-1 rounded-md bg-slate-900/60 px-2 py-1 text-[10px] leading-relaxed text-slate-400">
+                        Will transport <span className="font-bold text-amber-300">{dispatch.ship}× {activeFromIng.name}</span>.
+                        <br />
+                        Expected return: <span className="font-bold text-emerald-400">{dispatch.ret}× {outIng?.name ?? "output"}</span>
+                        {dispatch.surplusAfter > 0 && <> (leaving <span className="font-bold text-emerald-600">{dispatch.surplusAfter}</span> surplus credit in town)</>}
+                      </div>
+                    )}
                   </div>
                   <button
                     onClick={() => send(i)}
@@ -316,10 +410,14 @@ export function SettlementPickerModal({
   onClose: () => void;
 }) {
   const unlockedRegions = useGameStore((s) => s.unlockedRegions);
+  const settlementProsperity = useGameStore((s) => s.settlementProsperity);
   const cfg = useConfigStore();
   const settlements = Object.values(cfg.settlements)
     .filter((st) => unlockedRegions.includes(regionOfDistance(st.distance).id))
     .sort((a, b) => a.distance - b.distance);
+  // Count only offers visible at the town's CURRENT prosperity level — the
+  // hidden L5 bonus slot must not leak into the picker.
+  const visibleOffers = (st: Settlement) => activeTradeSlots(settlementProsperity, st).length;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4 sm:items-center" onClick={onClose}>
@@ -342,7 +440,7 @@ export function SettlementPickerModal({
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-slate-100">{st.name}</span>
                   <span className="block text-[11px] text-slate-400">
-                    {st.slots.length} offer{st.slots.length !== 1 ? "s" : ""} · {fmtDuration(gatherRoundTrip(st.distance, 1))} base round trip
+                    {visibleOffers(st)} offer{visibleOffers(st) !== 1 ? "s" : ""} · {fmtDuration(gatherRoundTrip(st.distance, 1))} base round trip
                   </span>
                 </span>
               </button>

@@ -858,8 +858,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
   const anyMachineTokens  = machines.some((m) => (m.upgrade_tokens ?? 0) > 0);
-  // Surface truly idle workers (no location, no machine) so wasted hands are visible at a glance
-  const idleWorkerCount = workers.filter((w) => !w.assigned_location && w.assigned_machine_id == null).length;
+  // Surface truly idle workers (no location, no machine, no trade run) so wasted hands are visible at a glance
+  const idleWorkerCount = workers.filter((w) => !w.assigned_location && w.assigned_machine_id == null && !w.assigned_settlement).length;
 
   const TRACK = 68;
   const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {

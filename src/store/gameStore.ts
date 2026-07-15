@@ -14,6 +14,16 @@ import type {
 } from "../types";
 import { REGIONS_BY_ID, regionOfDistance } from "../data/regions";
 import {
+  assignSettlementRoles,
+  bulkShipmentSize,
+  effectiveSlots,
+  processBulkTrade,
+  prosperityLevel,
+  regionalBonuses,
+  type RegionalBonuses,
+} from "../engine/prosperity";
+import { gameDay } from "../engine/clock";
+import {
   GAX_EVENTS_BY_ID,
   type GaxEventState,
   type GaxMarketState,
@@ -37,8 +47,8 @@ import {
 import { LOCATIONS, useConfigStore } from "./configStore";
 import {
   applyLevels,
+  BASE_BREW_XP,
   brewTime,
-  brewXp,
   effectiveMultiBrew,
   gatherRoundTrip,
   rollMultiBrew,
@@ -235,6 +245,74 @@ export function regionRequirementsStatus(
 function refundUnconsumedTrade(w: Worker, inv: IngredientInventory): IngredientInventory {
   if (!w.trade || w.trade.consumed) return inv;
   return { ...inv, [w.trade.inputIngredientId]: (inv[w.trade.inputIngredientId] ?? 0) + w.trade.inputCount };
+}
+
+// ── Settlement prosperity helpers ─────────────────────────────────────────────
+export interface SettlementProsperityEntry {
+  xp: number;
+  /** Bulk Fractional Ledger: input-equivalent credits banked per trade slot. */
+  surplus: Record<string, number>;
+}
+
+/** Roles are assigned once per world (deterministic per settlement id). */
+let _settlementRoles: Record<string, "speed" | "cargo"> | null = null;
+export function settlementRoles(): Record<string, "speed" | "cargo"> {
+  if (!_settlementRoles) {
+    _settlementRoles = assignSettlementRoles(Object.values(useConfigStore.getState().settlements));
+  }
+  return _settlementRoles;
+}
+
+export function settlementLevel(
+  prosperity: Record<string, SettlementProsperityEntry>,
+  settlementId: string
+): number {
+  return prosperityLevel(prosperity[settlementId]?.xp ?? 0);
+}
+
+/** The trade slots a settlement currently offers (prosperity-aware). */
+export function activeTradeSlots(
+  prosperity: Record<string, SettlementProsperityEntry>,
+  settlement: { id: string; slots: import("../types").TradeSlot[]; name: string; flavor: string; distance: number }
+) {
+  return effectiveSlots(settlement, settlementLevel(prosperity, settlement.id));
+}
+
+/** Additive regional gathering passives for the region containing `distance`. */
+export function regionalBonusesAt(
+  prosperity: Record<string, SettlementProsperityEntry>,
+  distance: number
+): RegionalBonuses {
+  const xpMap: Record<string, number> = {};
+  for (const [id, e] of Object.entries(prosperity)) xpMap[id] = e.xp;
+  return regionalBonuses(
+    regionOfDistance(distance).id,
+    Object.values(useConfigStore.getState().settlements),
+    settlementRoles(),
+    xpMap
+  );
+}
+
+/** Round-trip seconds to a resource node, including the regional Waypoint
+ *  speed passive. All live-loop and catch-up gather math must use this. */
+export function locationTripSecs(
+  prosperity: Record<string, SettlementProsperityEntry>,
+  distance: number,
+  gatherSpeed: number
+): number {
+  const { speedPct } = regionalBonusesAt(prosperity, distance);
+  return gatherRoundTrip(distance, gatherSpeed) * Math.max(0.05, 1 - speedPct / 100);
+}
+
+/** A worker's effective carry for gathering in a region (Cargo Supply passive,
+ *  rounded up per spec) — applied on top of caravan mastery. */
+export function regionalCarry(
+  prosperity: Record<string, SettlementProsperityEntry>,
+  distance: number,
+  baseSize: number
+): number {
+  const { cargoPct } = regionalBonusesAt(prosperity, distance);
+  return cargoPct > 0 ? Math.ceil(baseSize * (1 + cargoPct / 100)) : baseSize;
 }
 
 function pickDrop(drops: { ingredientId: string; weight: number }[]): string {
@@ -449,6 +527,14 @@ interface GameState {
   // discovery bounty
   discoveryBounty: DiscoveryBounty | null;
 
+  // Settlement prosperity: per-settlement XP + the Bulk Fractional Ledger's
+  // surplus credits (input-equivalents banked per trade slot).
+  settlementProsperity: Record<string, SettlementProsperityEntry>;
+
+  // HUD clock anchor: the absolute game-day when this save began (reset by
+  // hardReset) so the top-corner "Day N" counter restarts at Day 1.
+  gameStartDay: number;
+
   // The Grand Alchemical Exchange
   gaxUnlocked: boolean;
   gaxMarket: GaxMarketState;
@@ -629,6 +715,8 @@ export const useGameStore = create<GameState>()(
       activeQuests: [],
       questCooldowns: {},
       discoveryBounty: null,
+      settlementProsperity: {},
+      gameStartDay: gameDay(now()),
       gaxUnlocked: false,
       gaxMarket: emptyMarket(now()),
       gaxOfflineReport: null,
@@ -938,7 +1026,11 @@ export const useGameStore = create<GameState>()(
         if (!loc) return;
 
         const fx = computeMasteryEffects(s.masteryUnlocks);
-        const size = w.retrieval_size * (1 + fx.caravan_size_pct / 100);
+        // Cargo Supply Town passive: regional prosperity boosts carry (ceil).
+        const size = regionalCarry(
+          s.settlementProsperity, loc.distance,
+          w.retrieval_size * (1 + fx.caravan_size_pct / 100)
+        );
         let count = Math.floor(size);
         if (Math.random() < size - count) count += 1;
 
@@ -1023,22 +1115,31 @@ export const useGameStore = create<GameState>()(
           if (w.specialization === "pounder" || w.specialization === "manic") return {};
           const cfg = useConfigStore.getState();
           const settlement = cfg.settlements[settlementId];
-          const slot = settlement?.slots.find((sl) => sl.id === slotId);
+          // Prosperity-aware slots: hidden L5 slot + L10 barter efficiency.
+          const slot = settlement
+            ? activeTradeSlots(s.settlementProsperity, settlement).find((sl) => sl.id === slotId)
+            : undefined;
           const ing = cfg.ingredients[inputIngredientId];
           if (!settlement || !slot || !ing) return {};
           // Region gate: the settlement must sit in an unlocked region.
           if (!s.unlockedRegions.includes(regionOfDistance(settlement.distance).id)) return {};
           if (!ingredientMatchesTradeInput(ing, slot.input)) return {};
-          // Refund any previous unconsumed trade, then withdraw the new inputs.
+          // Refund any previous unconsumed trade, then withdraw the BULK load:
+          // the worker packs to full carry capacity, not one recipe's worth.
           let inv = refundUnconsumedTrade(w, s.ingredientInv);
           if ((inv[inputIngredientId] ?? 0) < slot.input.count) return {};
-          inv = { ...inv, [inputIngredientId]: inv[inputIngredientId] - slot.input.count };
+          const fx = computeMasteryEffects(s.masteryUnlocks);
+          const carryCap = Math.max(1, Math.floor(w.retrieval_size * (1 + fx.caravan_size_pct / 100)));
+          const shipment = bulkShipmentSize(inv[inputIngredientId], slot.input.count, carryCap);
+          inv = { ...inv, [inputIngredientId]: inv[inputIngredientId] - shipment };
           const trade: ActiveTrade = {
             settlementId,
             slotId,
             inputIngredientId,
-            inputCount: slot.input.count,
+            inputCount: shipment,
             outputIngredientId: slot.output.ingredientId,
+            // Provisional — the real figure is computed at the handshake from
+            // the shipment + the settlement's surplus ledger.
             outputCount: slot.output.count,
             consumed: false,
           };
@@ -1048,7 +1149,7 @@ export const useGameStore = create<GameState>()(
                   assigned_settlement: settlementId, trade,
                   assigned_location: null, assigned_machine_id: null,
                   trip_phase: "outbound" as const, trip_started_at: now(),
-                  flavor_status: `Hauling ${slot.input.count} ${ing.name} to ${settlement.name}.` }
+                  flavor_status: `Hauling ${shipment} ${ing.name} to ${settlement.name}.` }
               : wk
           );
           return { workers, ingredientInv: inv };
@@ -1061,13 +1162,45 @@ export const useGameStore = create<GameState>()(
           if (!w?.trade || w.trade.consumed) return {};
           const cfg = useConfigStore.getState();
           const settlement = w.assigned_settlement ? cfg.settlements[w.assigned_settlement] : null;
+          if (!settlement) return {};
+
+          // ── The 50% handshake: Bulk Fractional Ledger processing ──
+          // Total value = shipped + the town's banked surplus for this slot;
+          // whole recipes convert to return cargo (capped by carry), the
+          // remainder is credited back to the settlement's ledger. Every
+          // delivered item also grants +1 Prosperity XP to the town.
+          const trade = w.trade;
+          const level = settlementLevel(s.settlementProsperity, settlement.id);
+          const slot = effectiveSlots(settlement, level).find((sl) => sl.id === trade.slotId);
+          const entry = s.settlementProsperity[settlement.id] ?? { xp: 0, surplus: {} };
+          const priorSurplus = entry.surplus[trade.slotId] ?? 0;
+          const fx = computeMasteryEffects(s.masteryUnlocks);
+          const carryCap = Math.max(1, Math.floor(w.retrieval_size * (1 + fx.caravan_size_pct / 100)));
+          const result = slot
+            ? processBulkTrade(trade.inputCount, priorSurplus, slot.input.count, slot.output.count, carryCap)
+            : { carriedOutput: trade.outputCount, newSurplus: priorSurplus, recipesLeftBehind: 0 };
+
+          const settlementProsperity: Record<string, SettlementProsperityEntry> = {
+            ...s.settlementProsperity,
+            [settlement.id]: {
+              xp: entry.xp + trade.inputCount, // +1 prosperity XP per item delivered
+              surplus: { ...entry.surplus, [trade.slotId]: result.newSurplus },
+            },
+          };
+          const newLevel = settlementLevel(settlementProsperity, settlement.id);
+          if (newLevel > level) {
+            pushToast(`🏘 ${settlement.name} reached Prosperity Level ${newLevel}!`, "amber");
+          }
+
           const workers = s.workers.map((wk, i) =>
             i === workerIndex
-              ? { ...wk, trade: { ...wk.trade!, consumed: true }, trip_phase: "inbound" as const,
-                  flavor_status: `Trading at ${settlement?.name ?? "the settlement"}. Haggling politely.` }
+              ? { ...wk,
+                  trade: { ...trade, consumed: true, outputCount: result.carriedOutput },
+                  trip_phase: "inbound" as const,
+                  flavor_status: `Trading at ${settlement.name}. Haggling politely.` }
               : wk
           );
-          return { workers };
+          return { workers, settlementProsperity };
         }),
 
       completeTradeTrip: (workerIndex) => {
@@ -1077,9 +1210,9 @@ export const useGameStore = create<GameState>()(
         const trade = w?.trade;
         const settlement = w?.assigned_settlement ? cfg.settlements[w.assigned_settlement] : null;
         if (!w || !trade || !settlement) return;
-        const slot = settlement.slots.find((sl) => sl.id === trade.slotId);
+        const slot = activeTradeSlots(s.settlementProsperity, settlement).find((sl) => sl.id === trade.slotId);
 
-        // Deposit the fixed output.
+        // Deposit the return cargo computed at the handshake (ledger-aware).
         const inv = { ...s.ingredientInv };
         inv[trade.outputIngredientId] = (inv[trade.outputIngredientId] ?? 0) + trade.outputCount;
         const discovered = s.discovered.includes(trade.outputIngredientId)
@@ -1092,19 +1225,25 @@ export const useGameStore = create<GameState>()(
         const leveled = applyLevels(w.level, w.xp + gained, cfg.formulas);
         const levelsGained = leveled.level - w.level;
 
-        // Auto-repeat while the stash can still cover the inputs; otherwise the
-        // worker stands down at the workshop.
-        const canRepeat = !!slot && (inv[trade.inputIngredientId] ?? 0) >= trade.inputCount;
-        if (canRepeat) inv[trade.inputIngredientId] -= trade.inputCount;
+        // Auto-repeat with a fresh BULK load while the stash can still cover at
+        // least one recipe; otherwise the worker stands down at the workshop.
+        const fx = computeMasteryEffects(s.masteryUnlocks);
+        const carryCap = Math.max(1, Math.floor(w.retrieval_size * (1 + fx.caravan_size_pct / 100)));
+        const canRepeat = !!slot && (inv[trade.inputIngredientId] ?? 0) >= slot.input.count;
+        let nextShipment = 0;
+        if (canRepeat && slot) {
+          nextShipment = bulkShipmentSize(inv[trade.inputIngredientId], slot.input.count, carryCap);
+          inv[trade.inputIngredientId] -= nextShipment;
+        }
 
         const outName = cfg.ingredients[trade.outputIngredientId]?.name ?? trade.outputIngredientId;
         const workers = s.workers.map((wk, i) =>
           i === workerIndex
-            ? canRepeat
+            ? canRepeat && slot
               ? { ...wk, xp: leveled.xp, level: leveled.level,
                   gather_speed: wk.gather_speed + levelsGained * 0.05,
                   upgrade_tokens: (wk.upgrade_tokens ?? 0) + levelsGained,
-                  trade: { ...trade, consumed: false },
+                  trade: { ...trade, consumed: false, inputCount: nextShipment, outputCount: slot.output.count },
                   trip_phase: "outbound" as const, trip_started_at: now(),
                   flavor_status: `Back out to ${settlement.name} with another load.` }
               : { ...wk, xp: leveled.xp, level: leveled.level,
@@ -1294,9 +1433,9 @@ export const useGameStore = create<GameState>()(
         const masteryFx = computeMasteryEffects(s.masteryUnlocks);
         // Global mastery multi-brew is additive ON TOP of the brewer's own %.
         const multiBonus = masteryFx.multi_brew_pct / 100;
-        const outputs = rollMultiBrew(effectiveMultiBrew(machine, potion.volatility, cfg.formulas) + multiBonus);
+        const outputs = rollMultiBrew(effectiveMultiBrew(machine) + multiBonus);
         // Mastery XP = the pre-mastery brew seconds of this recipe (one cycle).
-        const preMasteryBrewSecs = brewTime(machine, potion.toxicity, cfg.formulas, ingredients);
+        const preMasteryBrewSecs = brewTime(machine, cfg.formulas, ingredients);
         const valueMult = 1 + masteryFx.potion_value_pct / 100;
         const sellMult = 1 + masteryFx.sell_price_pct / 100;
 
@@ -1311,7 +1450,7 @@ export const useGameStore = create<GameState>()(
           potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
         }
 
-        const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
+        const gainedXp = BASE_BREW_XP * outputs;
         const leveled = applyLevels(machine.level, machine.xp + gainedXp, cfg.formulas);
         const machineLevelsGained = leveled.level - machine.level;
         const levelBonus = machineLevelsGained * 0.03;
@@ -1517,8 +1656,7 @@ export const useGameStore = create<GameState>()(
         if (slotIds.length === 0) return;
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
         if (ingredients.length === 0) return;
-        const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
-        const brewSecs = brewTime(machine, totalToxicity, cfg.formulas, ingredients);
+        const brewSecs = brewTime(machine, cfg.formulas, ingredients);
         const boostMs = playerClickPower(s.player_click_power_level) * 1000;
         const elapsedMs = now() - machine.brew_started_at;
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
@@ -1595,6 +1733,10 @@ export const useGameStore = create<GameState>()(
           return { coins: s.coins - GAX_UNLOCK_COST, gaxUnlocked: true };
         });
         if (get().gaxUnlocked) {
+          // The Immediate Unveil: settle any elapsed market days RIGHT NOW so
+          // the accumulated background satiation, events and multipliers slam
+          // into effect the millisecond the Exchange opens — no stale board.
+          get().settleGax();
           pushToast("🏛 The Grand Alchemical Exchange is open! Watch the ticker — the market watches you.", "amber");
         }
       },
@@ -1834,6 +1976,9 @@ export const useGameStore = create<GameState>()(
           const discoveredLocDrops: Record<string, string[]> = { ...(s.discovered_location_drops ?? {}) };
           let totalGathers = 0;
           let totalWorkerXp = 0;
+          // Bulk Fractional Ledger: prosperity XP + surplus mutate per catch-up trip.
+          const prosperity: Record<string, SettlementProsperityEntry> = { ...s.settlementProsperity };
+          const offlineMasteryFx = computeMasteryEffects(s.masteryUnlocks);
 
           // Per-machine reduction rates (workers clicking specific machines)
           const machineReductionPerSec: Record<number, number> = {};
@@ -1876,26 +2021,60 @@ export const useGameStore = create<GameState>()(
               let xpGained = 0;
               let stillAssigned = true;
               let tripStart = w.trip_started_at;
+              const carryCap = Math.max(1, Math.floor(w.retrieval_size * (1 + offlineMasteryFx.caravan_size_pct / 100)));
               while (trips > 0) {
-                // Complete this run: deposit the output.
+                // Handshake (if the in-flight run hadn't consumed yet) + deposit:
+                // run the Bulk Fractional Ledger for this completed trip.
+                const entry = prosperity[settlement.id] ?? { xp: 0, surplus: {} };
+                const level = prosperityLevel(entry.xp);
+                const slot = effectiveSlots(settlement, level).find((sl) => sl.id === trade.slotId);
+                if (!slot) { stillAssigned = false; break; }
+                if (!trade.consumed) {
+                  const result = processBulkTrade(
+                    trade.inputCount, entry.surplus[trade.slotId] ?? 0,
+                    slot.input.count, slot.output.count, carryCap
+                  );
+                  prosperity[settlement.id] = {
+                    xp: entry.xp + trade.inputCount,
+                    surplus: { ...entry.surplus, [trade.slotId]: result.newSurplus },
+                  };
+                  trade = { ...trade, outputCount: result.carriedOutput };
+                }
                 inv[trade.outputIngredientId] = (inv[trade.outputIngredientId] ?? 0) + trade.outputCount;
                 discovered.add(trade.outputIngredientId);
                 discoveredAttributes = unlockAttributes(trade.outputIngredientId, discoveredAttributes, cfg);
                 xpGained += Math.round(5 + settlement.distance);
                 tripStart += tripSecs * 1000;
                 trips -= 1;
-                // Re-provision for the next run, or stand down.
-                if ((inv[trade.inputIngredientId] ?? 0) >= trade.inputCount) {
-                  inv[trade.inputIngredientId] -= trade.inputCount;
-                  trade = { ...trade, consumed: false };
+                // Re-provision a fresh BULK load for the next run, or stand down.
+                if ((inv[trade.inputIngredientId] ?? 0) >= slot.input.count) {
+                  const shipment = bulkShipmentSize(inv[trade.inputIngredientId], slot.input.count, carryCap);
+                  inv[trade.inputIngredientId] -= shipment;
+                  trade = { ...trade, consumed: false, inputCount: shipment, outputCount: slot.output.count };
                 } else {
                   stillAssigned = false;
                   break;
                 }
               }
-              // Mid-trip halfway consumption for the in-flight run.
+              // Mid-trip halfway consumption for the in-flight run: run the
+              // handshake ledger math exactly as the live loop would have.
               if (stillAssigned && ((now() - tripStart) / 1000) >= tripSecs / 2 && !trade.consumed) {
-                trade = { ...trade, consumed: true };
+                const entry = prosperity[settlement.id] ?? { xp: 0, surplus: {} };
+                const level = prosperityLevel(entry.xp);
+                const slot = effectiveSlots(settlement, level).find((sl) => sl.id === trade.slotId);
+                if (slot) {
+                  const result = processBulkTrade(
+                    trade.inputCount, entry.surplus[trade.slotId] ?? 0,
+                    slot.input.count, slot.output.count, carryCap
+                  );
+                  prosperity[settlement.id] = {
+                    xp: entry.xp + trade.inputCount,
+                    surplus: { ...entry.surplus, [trade.slotId]: result.newSurplus },
+                  };
+                  trade = { ...trade, consumed: true, outputCount: result.carriedOutput };
+                } else {
+                  trade = { ...trade, consumed: true };
+                }
               }
               if (xpGained === 0 && stillAssigned) return { ...w, trade };
               totalWorkerXp += xpGained;
@@ -1919,13 +2098,18 @@ export const useGameStore = create<GameState>()(
             const loc = w.assigned_location ? cfg.locations[w.assigned_location] : null;
             if (!loc || !w.trip_started_at) return w;
 
-            const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
+            // Regional Waypoint passives: settlement prosperity trims travel
+            // time and boosts carry for resource nodes in the same region.
+            const tripSecs = locationTripSecs(prosperity, loc.distance, w.gather_speed);
             const timeSinceTripStart = (now() - w.trip_started_at) / 1000;
             const trips = Math.floor(timeSinceTripStart / tripSecs);
             if (trips === 0) return w;
 
             const caravanFx = computeMasteryEffects(s.masteryUnlocks);
-            const effectiveSize = w.retrieval_size * (1 + caravanFx.caravan_size_pct / 100);
+            const effectiveSize = regionalCarry(
+              prosperity, loc.distance,
+              w.retrieval_size * (1 + caravanFx.caravan_size_pct / 100)
+            );
             const totalItems = trips * effectiveSize;
             totalGathers += Math.floor(totalItems);
             const totalW = loc.drops.reduce((a, d) => a + d.weight, 0);
@@ -1983,7 +2167,6 @@ export const useGameStore = create<GameState>()(
               .filter((x): x is Ingredient => !!x);
             if (ingredients.length === 0) return machine;
 
-            const totalToxicity = ingredients.reduce((acc, ing) => acc + ing.attributes.toxicity, 0);
             const reductionRate = machineReductionPerSec[machine.id] ?? 0;
             const realElapsed = machine.brew_stalled
               ? 0
@@ -2009,7 +2192,7 @@ export const useGameStore = create<GameState>()(
             // Same additive mastery reduction as the live loop (tree % + potion
             // mastery %, capped) so offline and online brew rates match.
             const potionLvl = masteryLevel(s.potionMastery[potion.name]?.xp ?? 0);
-            let preMasterySecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+            let preMasterySecs = brewTime(machineSim, cfg.formulas, ingredients);
             let currentBrewSecs = applyMasteryToBrewTime(preMasterySecs, masteryFx.brew_speed_pct, potionLvl);
 
             while (brewElapsedSecs >= currentBrewSecs) {
@@ -2023,7 +2206,7 @@ export const useGameStore = create<GameState>()(
 
               // Global mastery multi-brew is additive on top of the brewer's %.
               const outputs = rollMultiBrew(
-                effectiveMultiBrew(machineSim, potion.volatility, cfg.formulas) + masteryFx.multi_brew_pct / 100
+                effectiveMultiBrew(machineSim) + masteryFx.multi_brew_pct / 100
               );
 
               totalPotionsBrewedCount += outputs;
@@ -2043,7 +2226,7 @@ export const useGameStore = create<GameState>()(
                 potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
               }
 
-              const gainedXp = brewXp(potion.volatility, cfg.formulas) * outputs;
+              const gainedXp = BASE_BREW_XP * outputs;
               totalMachineXp += gainedXp;
               const leveled = applyLevels(machineSim.level, machineSim.xp + gainedXp, cfg.formulas);
               const levelsGained = leveled.level - machineSim.level;
@@ -2057,7 +2240,7 @@ export const useGameStore = create<GameState>()(
               if (levelsGained > 0 && (machine.upgrade_tokens ?? 0) === 0) machineFirstToken = true;
 
               if (levelsGained > 0) {
-                preMasterySecs = brewTime(machineSim, totalToxicity, cfg.formulas, ingredients);
+                preMasterySecs = brewTime(machineSim, cfg.formulas, ingredients);
                 currentBrewSecs = applyMasteryToBrewTime(preMasterySecs, masteryFx.brew_speed_pct, potionLvl);
               }
 
@@ -2192,6 +2375,7 @@ export const useGameStore = create<GameState>()(
             welcomeBack,
             gaxMarket,
             gaxOfflineReport,
+            settlementProsperity: prosperity,
             lastSeen: now(),
           };
         });
@@ -2304,6 +2488,8 @@ export const useGameStore = create<GameState>()(
           activeQuests: [],
           questCooldowns: {},
           discoveryBounty: null,
+          settlementProsperity: {},
+          gameStartDay: gameDay(now()),
           gaxUnlocked: false,
           gaxMarket: emptyMarket(now()),
           gaxOfflineReport: null,
@@ -2427,6 +2613,8 @@ export const useGameStore = create<GameState>()(
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
         discoveryBounty: s.discoveryBounty,
+        settlementProsperity: s.settlementProsperity,
+        gameStartDay: s.gameStartDay,
         gaxUnlocked: s.gaxUnlocked,
         gaxMarket: s.gaxMarket,
         player_click_power_level: s.player_click_power_level,
@@ -2510,6 +2698,8 @@ export const useGameStore = create<GameState>()(
           masteryTokens: p.masteryTokens ?? 0,
           masteryUnlocks: p.masteryUnlocks ?? [],
           seenHints: p.seenHints ?? [],
+          settlementProsperity: p.settlementProsperity ?? {},
+          gameStartDay: p.gameStartDay ?? gameDay(now()),
           // Cooldown state is not persisted across reloads — on return the player
           // always gets a fresh bounty rather than sitting in a countdown.
           discoveryBounty: p.discoveryBounty?.cooldownUntil != null ? null : (p.discoveryBounty ?? null),

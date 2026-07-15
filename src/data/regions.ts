@@ -237,6 +237,18 @@ export function buildSettlements(allIngredients: Record<string, Ingredient>): Re
         output: { ingredientId: pick.id, count: ss.outCount },
       });
     });
+    // Hidden prosperity bonus slot (config-defined, revealed at prosperity
+    // level 5): a bulk variant of the town's first offer — wider input (no
+    // category restriction, +2 count) for a doubled fixed output.
+    if (slots.length > 0) {
+      const first = slots[0];
+      slots.push({
+        id: `${spec.id}_bonus`,
+        input: { rarity: first.input.rarity, count: first.input.count + 2 },
+        output: { ingredientId: first.output.ingredientId, count: first.output.count + 1 },
+        unlockLevel: 5,
+      });
+    }
     out[spec.id] = { id: spec.id, name: spec.name, flavor: spec.flavor, distance: spec.distance, slots };
   }
   return out;

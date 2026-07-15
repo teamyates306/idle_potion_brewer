@@ -23,7 +23,7 @@ export const RARITY_RANK: Record<Rarity, number> = Object.fromEntries(
 /**
  * Value-based rarity bracketing. All ingredients are re-bracketed from their
  * base_value so the 8 rarities follow the actual value distribution
- * (spread over 105 ingredients: 16/15/14/11/14/18/11/6).
+ * (spread over 129 ingredients: 21/20/18/13/17/16/17/7).
  */
 export function rarityForValue(v: number): Rarity {
   if (v < 9) return "common";
@@ -128,6 +128,9 @@ export interface TradeSlot {
   id: string;
   input: TradeInput;
   output: TradeOutput;
+  /** Hidden until the settlement reaches this prosperity level (e.g. the
+   *  level-5 bonus slot). Absent/0 = always available. */
+  unlockLevel?: number;
 }
 
 export interface Settlement {
@@ -140,14 +143,19 @@ export interface Settlement {
 }
 
 /** A worker's in-flight trade run. Inputs are withdrawn from inventory on
- *  departure, formally consumed at the halfway point (arrival at the
- *  settlement), and the output is deposited when the worker returns. */
+ *  departure (a BULK load up to the worker's carry capacity, not just one
+ *  recipe's worth), formally consumed at the halfway point (arrival at the
+ *  settlement — where the Bulk Fractional Ledger math runs), and the computed
+ *  output is deposited when the worker returns. */
 export interface ActiveTrade {
   settlementId: string;
   slotId: string;
   inputIngredientId: string;
+  /** Bulk shipment size actually withdrawn for this run. */
   inputCount: number;
   outputIngredientId: string;
+  /** Output items the worker will carry home — recomputed at the handshake
+   *  from (shipment + settlement surplus ledger) ÷ input requirement. */
   outputCount: number;
   consumed: boolean;
 }

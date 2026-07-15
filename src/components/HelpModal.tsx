@@ -97,8 +97,8 @@ const CONTENT: Record<TabId, React.ReactNode> = {
       <P>
         Each ingredient has hidden stats (heat, mana, toxicity, soul…). A potion sums its
         ingredients' stats: positive totals multiply its value; the dominant stat names it.
-        <Em> Toxicity</Em> boosts value but slows brewing; <Em>volatility</Em> boosts brewer
-        XP but hurts multi-brew.
+        If two or more stats tie exactly for the top spot, some pairs and triples have their
+        own special <Em>combi-potion</Em> names instead.
       </P>
       <H>Finding them</H>
       <P>

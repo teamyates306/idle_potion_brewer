@@ -3,6 +3,28 @@
  * Name format: "{prefix} {type} of {suffix}"
  * e.g. "Greater Elixir of Flameburst"
  */
+import type { Attributes } from "../types";
+import { ATTR_KEYS } from "../engine/potions";
+
+/**
+ * Qualitative one-liner naming a potion's strongest attributes — shown where
+ * exact numbers are gated behind the Alchemist's Spectacles. Explains where
+ * the potion's name comes from without leaking the stat sheet.
+ */
+export function dominantAttrSentence(stats: Attributes): string {
+  const ranked = ATTR_KEYS
+    .map((k) => ({ k, abs: Math.abs(stats[k]) }))
+    .filter((x) => x.abs > 0)
+    .sort((a, b) => b.abs - a.abs);
+  if (ranked.length === 0) return "A curiously inert mixture — no essence stands out.";
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const top = cap(ranked[0].k);
+  const second = ranked[1] && ranked[1].abs >= ranked[0].abs * 0.5 ? cap(ranked[1].k) : null;
+  const tied = ranked[1] && ranked[1].abs === ranked[0].abs;
+  if (tied && second) return `${top} and ${second} pull in perfect balance — a combi-brew in the making, and the source of its name.`;
+  if (second) return `Dominated by ${top}, with strong ${second} undertones — that ${top.toLowerCase()} essence is where its name comes from.`;
+  return `Its essence is almost pure ${top} — that's where its name comes from.`;
+}
 
 // Maps the display suffix (value from ATTRIBUTE_SUFFIX_REGISTRY) to a liquid colour.
 export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
@@ -36,6 +58,80 @@ export const SUFFIX_LIQUID_COLORS: Record<string, string> = {
   "Ruin":           "#d63031", // dark rust red — entropy
   "the Soul":       "#a8c0ff", // ethereal blue-white — soul
   "Transformation": "#fd79a8", // vivid pink — mutation
+
+  // ── Combi-potion suffixes (curated tied-attribute pairs, see COMBI_PAIRS) ──
+  "the Storm":         "#e67e22", // heat + shock
+  "the Reaping":       "#34314c", // void + soul
+  "Prophecy":          "#7f5af0", // mana + insight
+  "the Titan":         "#b33939", // strength + vitality
+  "the Glacier":       "#81ecec", // cold + stability
+  "the Unraveling":    "#576574", // chrono + entropy
+  "the Undertow":      "#0abde3", // aqua + viscosity
+  "the Ascension":     "#ffd694", // radiance + soul
+  "the Plague":        "#82589f", // toxicity + mutation
+  "the Collapse":      "#2f3542", // gravitas + density
+  "the Windrace":      "#7ed6df", // speed + aero
+  "Serendipity":       "#f6b93b", // luck + resonance
+  "Corrosion":         "#a4b83b", // acidity + solvency
+  "the Still Mind":    "#7f8fa6", // focus + stability
+  "Chaos Incarnate":   "#eb2f06", // entropy + volatility
+  "the Mountain":      "#4b6584", // terra + gravitas
+  "the Rift":          "#3c1874", // void + chrono
+  "the Recoil":        "#eccc68", // elasticity + shock
+  "the Halo":          "#fff6d5", // alkalinity + radiance
+  "the Metamorphosis": "#c56cf0", // soul + mutation
+  "the Flux":          "#9c27b0", // volatility + mutation
+  "Instinct":          "#ffb142", // focus + luck
+  "the Reckoning":     "#7f1d1d", // gravitas + soul
+  "the Mirage":        "#48dbfb", // aqua + radiance
+  "the Bedrock":       "#8d6e63", // alkalinity + stability
+  "the Haunting":      "#4a4e69", // entropy + soul
+  "the Rot":           "#556b2f", // entropy + mutation
+  "the Gambit":        "#ffa502", // mana + luck
+  "Destiny":           "#f8b500", // luck + gravitas
+  "the Confluence":    "#1e90ff", // mana + aqua
+  "the Sirocco":       "#d4a373", // terra + aero
+  "Permafrost":        "#a2d5f2", // cold + aqua
+  "Wildfire":          "#ff4500", // heat + aero
+  "the Wildcard":      "#e056fd", // luck + mutation
+  "the Decay":         "#6b4226", // toxicity + chrono
+
+  // ── Combi-potion suffixes (curated 3-way tied triples, see COMBI_TRIPLES) ──
+  "Skill":         "#00d2d3", // focus + luck + volatility
+  "Ego":           "#ff9f43", // focus + luck + toxicity
+  "Charisma":      "#ee5a6f", // gravitas + soul + volatility
+  "Vice":          "#5f27cd", // soul + toxicity + volatility
+  "Corruption":    "#6b5b95", // mutation + toxicity + volatility
+  "Madness":       "#c44569", // entropy + insight + mutation
+  "Despair":       "#2d3436", // toxicity + void + volatility
+  "Patience":      "#badc58", // focus + luck + viscosity
+  "Resolve":       "#576574", // solvency + strength + vitality
+  "Obsession":     "#9c88ff", // mana + mutation + soul
+  "Grace":         "#f8c9d4", // aqua + luck + radiance
+  "Nihilism":      "#1e272e", // entropy + toxicity + volatility
+  "Serenity":      "#dff9fb", // alkalinity + resonance + stability
+  "Recklessness":  "#ff5e57", // luck + toxicity + volatility
+  "Passion":       "#ff6b81", // aqua + radiance + volatility
+  "Empathy":       "#a3cb38", // aqua + radiance + resonance
+  "Cynicism":      "#485460", // gravitas + luck + toxicity
+  "Fanaticism":    "#b71540", // mutation + soul + volatility
+  "Composure":     "#c8d6e5", // alkalinity + aqua + stability
+  "Paranoia":      "#3d3d3d", // aqua + toxicity + volatility
+  "Fate":            "#ffd32a", // focus + luck + chrono
+  "the Drowning":    "#0a3d62", // aqua + gravitas + soul
+  "the Descent":     "#718093", // aero + gravitas + soul
+  "the Tsunami":     "#0652dd", // strength + vitality + aqua
+  "the Aurora":      "#7bed9f", // aqua + aero + radiance
+  "the Supernova":   "#ff6348", // radiance + volatility + entropy
+  "the Monolith":    "#57606f", // alkalinity + stability + gravitas
+  "the Warcry":      "#b71540", // strength + vitality + resonance
+  "the Zephyr":      "#c8f7dc", // aero + alkalinity + stability
+  "the Singularity": "#1a1a2e", // density + void + solvency
+  "the Upheaval":    "#a0522d", // terra + volatility + mutation
+  "the Blizzard":    "#dff9fb", // cold + volatility + entropy
+  "the Stampede":    "#cd6133", // strength + vitality + aero
+  "the Oasis":       "#2ed573", // aqua + terra + radiance
+  "the Alchemy":     "#daa520", // volatility + solvency + mutation
 };
 
 // Fallback colour when no suffix matches

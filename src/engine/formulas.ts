@@ -29,17 +29,15 @@ export const RARITY_WEIGHT: Record<string, number> = {
 };
 
 /**
- * brew_time = base_brew_time / brew_speed
- *   × ingredient complexity (count + rarity)
- *   × toxicity penalty
+ * brew_time = base_brew_time / brew_speed × ingredient complexity (count + rarity)
  *
  * Each ingredient adds its rarity weight; the result is normalised so a single
  * common ingredient keeps roughly the base time. More slots and rarer ingredients
- * scale time up significantly.
+ * scale time up significantly. (Toxicity used to add a time penalty here; it's
+ * now an ordinary attribute with no brewing side effect.)
  */
 export function brewTime(
-  machine: BrewingMachine,
-  totalToxicity: number,
+  machine: Pick<BrewingMachine, "brew_speed">,
   f: BaseFormulas,
   ingredients: Ingredient[] = []
 ): number {
@@ -52,7 +50,7 @@ export function brewTime(
   // Normalise: a single common ingredient = multiplier of 1.0
   const complexityMult = raritySum / 1;
 
-  return base * complexityMult * (1 + Math.max(0, totalToxicity) * f.toxicity_time_mult);
+  return base * complexityMult;
 }
 
 /**
@@ -66,16 +64,9 @@ export function rollMultiBrew(chance: number, rng: () => number = Math.random): 
   return guaranteed + (rng() < frac ? 1 : 0);
 }
 
-/** Effective multi-brew chance after volatility penalty. */
-export function effectiveMultiBrew(
-  machine: BrewingMachine,
-  totalVolatility: number,
-  f: BaseFormulas
-): number {
-  return Math.max(
-    0,
-    machine.multi_brew_chance - totalVolatility * f.volatility_multibrew_penalty
-  );
+/** Effective multi-brew chance. (Volatility used to penalize this; it's now an ordinary attribute.) */
+export function effectiveMultiBrew(machine: Pick<BrewingMachine, "multi_brew_chance">): number {
+  return Math.max(0, machine.multi_brew_chance);
 }
 
 /** xp_required = xp_base * (xp_growth ^ (level - 1)) */
@@ -108,10 +99,8 @@ export function applyLevels(
   return { level: lvl, xp: remaining };
 }
 
-/** XP earned per brew, boosted by volatility. */
-export function brewXp(totalVolatility: number, f: BaseFormulas): number {
-  return Math.round(10 + totalVolatility * f.volatility_xp_mult);
-}
+/** XP earned per brew. (Volatility used to boost this; it's now an ordinary attribute.) */
+export const BASE_BREW_XP = 10;
 
 /**
  * Offline progress — O(1) expected-value math, no catch-up loop (see §6).

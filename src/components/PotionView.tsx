@@ -390,9 +390,7 @@ export function SupplyChainDashboard() {
       const activeIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
       if (activeIds.length === 0) continue;
       const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
-      const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
-      const volatility = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.volatility ?? 0), 0);
-      const bt = brewTime(m, toxicity, cfg.formulas, ingredients);
+      const bt = brewTime(m, cfg.formulas, ingredients);
       // Apply worker click reduction to effective brew time
       const workerReduction = workerReductionByMachine[m.id] ?? 0;
       const effectiveBt = Math.max(0.1, bt / (1 + workerReduction));
@@ -402,7 +400,7 @@ export function SupplyChainDashboard() {
         rates[id] = (rates[id] ?? 0) + brewsPerHr;
       }
       // Potion output: brews × avg potions per cycle (multi-brew)
-      const multiBrewChance = effectiveMultiBrew(m, volatility, cfg.formulas);
+      const multiBrewChance = effectiveMultiBrew(m);
       const potionsPerHr = brewsPerHr * (1 + multiBrewChance);
       outputs.push({ id: m.id, name: m.name, potionsPerHr });
     }

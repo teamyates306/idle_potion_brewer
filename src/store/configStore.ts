@@ -27,9 +27,6 @@ export interface BaseFormulas {
   xp_growth: number;
   cost_base: number;
   cost_growth: number;
-  toxicity_time_mult: number;
-  volatility_xp_mult: number;
-  volatility_multibrew_penalty: number;
   offline_threshold_hours: number;
   // Per-attribute value multipliers (applied to positive attribute totals on brewed potions)
   value_mult_strength: number;
@@ -418,18 +415,165 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
     attributes: attrs({ void: 17, entropy: 12, chrono: 8, solvency: 6, volatility: 10 }),
     description: "A crystallised absence. Holds nothing — which is exactly what makes it valuable.",
   },
+
+  // ===== GAP-FILLERS — 24 ingredients targeting attribute×category combos with
+  // no dominant carrier (solvency was entirely dead; vitality/elasticity/toxicity/
+  // volatility/viscosity/acidity/resonance/terra/mutation were severely sparse).
+  // One per (category, attribute) cell, spread across tiers to widen the value
+  // range each attribute can dominate at, rather than stacking all at one tier. =====
+  leachroot: {
+    id: "leachroot", name: "Leachroot", category: "root", rarity: "common", base_value: 6,
+    attributes: attrs({ solvency: 8, alkalinity: 2 }),
+    description: "Dissolves anything it's steeped with, eventually, including the pot.",
+  },
+  weepbloom: {
+    id: "weepbloom", name: "Weepbloom", category: "petal", rarity: "uncommon", base_value: 15,
+    attributes: attrs({ solvency: 11, aqua: 3 }),
+    description: "Weeps a clear fluid that has opinions about whatever it touches.",
+  },
+  seepcap: {
+    id: "seepcap", name: "Seepcap", category: "fungus", rarity: "common", base_value: 7,
+    attributes: attrs({ solvency: 7, viscosity: 3 }),
+    description: "Slowly becomes the surface it's sitting on. The Guild recommends a tray.",
+  },
+  etchglass: {
+    id: "etchglass", name: "Etchglass", category: "crystal", rarity: "rare", base_value: 29,
+    attributes: attrs({ solvency: 13, acidity: 4 }),
+    description: "Frosted, then unfrosted, then gone. Store it somewhere it can't reach.",
+  },
+  solventichor: {
+    id: "solventichor", name: "Solvent Ichor", category: "essence", rarity: "epic", base_value: 56,
+    attributes: attrs({ solvency: 17, toxicity: 5 }),
+    description: "A vial that has eaten through four vials. This is the fifth.",
+  },
+  leechingmarrow: {
+    id: "leechingmarrow", name: "Leeching Marrow", category: "bone", rarity: "legendary", base_value: 118,
+    attributes: attrs({ solvency: 21, entropy: 8, toxicity: 7, gravitas: 5 }),
+    description: "The bone itself is fine. What it's doing to the shelf beneath it is not.",
+  },
+  verdantbud: {
+    id: "verdantbud", name: "Verdant Bud", category: "petal", rarity: "common", base_value: 5,
+    attributes: attrs({ vitality: 7, heat: 1 }),
+    description: "Refuses to stop growing, even after picking. Especially after picking.",
+  },
+  marrowpulse: {
+    id: "marrowpulse", name: "Marrow Pulse", category: "bone", rarity: "uncommon", base_value: 16,
+    attributes: attrs({ vitality: 12, density: 3 }),
+    description: "Long dead. Still keeping a rhythm. The Guild does not discuss it further.",
+  },
+  rubbercap: {
+    id: "rubbercap", name: "Rubbercap", category: "fungus", rarity: "common", base_value: 6,
+    attributes: attrs({ elasticity: 8, speed: 2 }),
+    description: "Bounces if dropped. Bounces if not dropped. Best kept in a box.",
+  },
+  springstone: {
+    id: "springstone", name: "Springstone", category: "crystal", rarity: "rare", base_value: 27,
+    attributes: attrs({ elasticity: 14, shock: 3 }),
+    description: "Compresses under a fingertip and returns the favour with interest.",
+  },
+  rotroot: {
+    id: "rotroot", name: "Rotroot", category: "root", rarity: "uncommon", base_value: 14,
+    attributes: attrs({ toxicity: 11, acidity: 3 }),
+    description: "Pulled up already rotten. Grown that way, apparently, on purpose.",
+  },
+  venomousvapor: {
+    id: "venomousvapor", name: "Venomous Vapor", category: "essence", rarity: "epic", base_value: 58,
+    attributes: attrs({ toxicity: 19, volatility: 5 }),
+    description: "Bottled reluctantly. Opened never, if the label is to be believed.",
+  },
+  fizzgeode: {
+    id: "fizzgeode", name: "Fizzgeode", category: "crystal", rarity: "rare", base_value: 28,
+    attributes: attrs({ volatility: 14, shock: 4 }),
+    description: "Rattles when still. Best not to learn what it does when disturbed.",
+  },
+  quakebone: {
+    id: "quakebone", name: "Quakebone", category: "bone", rarity: "legendary", base_value: 128,
+    attributes: attrs({ volatility: 21, entropy: 9, shock: 8, toxicity: 6 }),
+    description: "Shivers on a shelf that isn't moving, in a building that isn't shaking.",
+  },
+  gumroot: {
+    id: "gumroot", name: "Gumroot", category: "root", rarity: "common", base_value: 7,
+    attributes: attrs({ viscosity: 9, vitality: 2 }),
+    description: "Stretches further than a root ought to. Workers use it to test doorframes.",
+  },
+  thickichor: {
+    id: "thickichor", name: "Thick Ichor", category: "essence", rarity: "epic", base_value: 60,
+    attributes: attrs({ viscosity: 20, solvency: 4 }),
+    description: "Pours like an argument nobody wants to have. Slowly, and at length.",
+  },
+  sourthorn: {
+    id: "sourthorn", name: "Sourthorn", category: "petal", rarity: "uncommon", base_value: 15,
+    attributes: attrs({ acidity: 12, toxicity: 3 }),
+    description: "Puckers the whole face from three paces. The Guild issues a warning label.",
+  },
+  etchedfang: {
+    id: "etchedfang", name: "Etched Fang", category: "bone", rarity: "rare", base_value: 30,
+    attributes: attrs({ acidity: 15, density: 4 }),
+    description: "Whatever it belonged to, it was still dissolving its dinner from the inside.",
+  },
+  chimingfacet: {
+    id: "chimingfacet", name: "Chiming Facet", category: "crystal", rarity: "rare", base_value: 25,
+    attributes: attrs({ resonance: 13, mana: 4 }),
+    description: "Rings a note nobody struck. Keeps ringing it, patiently, forever.",
+  },
+  hummingrib: {
+    id: "hummingrib", name: "Humming Rib", category: "bone", rarity: "epic", base_value: 57,
+    attributes: attrs({ resonance: 18, soul: 5 }),
+    description: "Vibrates faintly on a still shelf, in tune with something not in the room.",
+  },
+  stoneheartgeode: {
+    id: "stoneheartgeode", name: "Stoneheart Geode", category: "crystal", rarity: "uncommon", base_value: 17,
+    attributes: attrs({ terra: 12, density: 3 }),
+    description: "Cracked open, it's just more rock, all the way down. Reassuring, somehow.",
+  },
+  loamvapor: {
+    id: "loamvapor", name: "Loam Vapor", category: "essence", rarity: "rare", base_value: 26,
+    attributes: attrs({ terra: 14, alkalinity: 4 }),
+    description: "Smells like a freshly dug grave. The Guild insists this is a compliment.",
+  },
+  warpcap: {
+    id: "warpcap", name: "Warpcap", category: "fungus", rarity: "epic", base_value: 62,
+    attributes: attrs({ mutation: 16, entropy: 5 }),
+    description: "Not the mushroom it was an hour ago. Not committing to what it'll be next.",
+  },
+  twistroot: {
+    id: "twistroot", name: "Twistroot", category: "root", rarity: "legendary", base_value: 132,
+    attributes: attrs({ mutation: 22, void: 9, entropy: 7, chrono: 5 }),
+    description: "Grew in a spiral that keeps recalculating itself when nobody is looking.",
+  },
 };
 
 // Full registry: hand-authored base (Tiers 1-5) + procedural generation up to
 // 100 stat-budgeted ingredients (worldgen.ts). Every ingredient's rarity is
 // re-bracketed from its base_value into the 8-rarity scale (see rarityForValue)
 // so hand-authored rarity fields never drift from the value distribution.
-export const INGREDIENTS: Record<string, Ingredient> = Object.fromEntries(
+const ASSEMBLED_INGREDIENTS: Record<string, Ingredient> = Object.fromEntries(
   Object.entries({
     ...BASE_INGREDIENTS,
     ...makeGeneratedIngredients(Object.keys(BASE_INGREDIENTS)),
   }).map(([id, ing]) => [id, { ...ing, rarity: rarityForValue(ing.base_value) }])
 );
+
+// Toxicity and volatility were originally "always-on" secondary stats (68%/61%
+// ingredient coverage, vs a ~12% average for every other attribute) paired with
+// bespoke brew-time/XP/multi-brew mechanics. Those mechanics are gone (see
+// engine/formulas.ts) and both are now ordinary attributes, so their data
+// footprint is normalized to match: only the strongest COVERAGE_TARGET natural
+// carriers of each keep a non-zero value, everyone else drops to 0 — the same
+// distribution shape as any other attribute.
+const UBIQUITOUS_ATTR_COVERAGE_TARGET = 16;
+function normalizeAttrCoverage(ings: Record<string, Ingredient>, key: keyof Attributes, keep: number): void {
+  const carriers = Object.values(ings)
+    .filter((ing) => ing.attributes[key] !== 0)
+    .sort((a, b) => Math.abs(b.attributes[key]) - Math.abs(a.attributes[key]));
+  for (const ing of carriers.slice(keep)) {
+    ing.attributes = { ...ing.attributes, [key]: 0 };
+  }
+}
+normalizeAttrCoverage(ASSEMBLED_INGREDIENTS, "toxicity", UBIQUITOUS_ATTR_COVERAGE_TARGET);
+normalizeAttrCoverage(ASSEMBLED_INGREDIENTS, "volatility", UBIQUITOUS_ATTR_COVERAGE_TARGET);
+
+export const INGREDIENTS: Record<string, Ingredient> = ASSEMBLED_INGREDIENTS;
 
 // 30 locations on the travel curve: round-trip gather time runs geometrically
 // from 5s at the Hollow to 1800s (30 min) at the Riftscar, with danger, unlock
@@ -463,9 +607,6 @@ export const DEFAULT_FORMULAS: BaseFormulas = {
   xp_growth: 1.6,
   cost_base: 25,
   cost_growth: 1.65,
-  toxicity_time_mult: 0.03,
-  volatility_xp_mult: 0.5,
-  volatility_multibrew_penalty: 0.01,
   offline_threshold_hours: 6,
   value_mult_strength:   0.01,
   value_mult_speed:      0.01,
@@ -485,7 +626,7 @@ export const DEFAULT_FORMULAS: BaseFormulas = {
   value_mult_aero:       0.01,
   value_mult_radiance:   0.015,
   value_mult_void:       0.016,
-  value_mult_toxicity:   0.04,
+  value_mult_toxicity:   0.01,
   value_mult_volatility: 0.01,
   value_mult_acidity:    0.01,
   value_mult_alkalinity: 0.01,

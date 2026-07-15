@@ -23,7 +23,7 @@
 
 import {
   brewTime, upgradeCost, rollMultiBrew, effectiveMultiBrew,
-  applyLevels, brewXp, gatherRoundTrip,
+  applyLevels, BASE_BREW_XP, gatherRoundTrip,
 } from "../src/engine/formulas";
 import { describePotion } from "../src/engine/potions";
 import {
@@ -465,9 +465,8 @@ function tick(s: SimState): void {
     const ings = recipeIngredients(slotIds);
     if (ings.length === 0) continue;
     m.active_ticks += 1;
-    const toxicity = ings.reduce((a, i) => a + i.attributes.toxicity, 0);
     m.brew_elapsed += 1 + (reductionByMachine[m.id] ?? 0);
-    let brewSecs = brewTime(m, toxicity, F, ings);
+    let brewSecs = brewTime(m, F, ings);
     let guard = 0;
     while (m.brew_elapsed >= brewSecs && guard++ < 200) {
       const need: Record<string, number> = {};
@@ -478,7 +477,7 @@ function tick(s: SimState): void {
       for (const [id, n] of Object.entries(need)) { s.ingredientInv[id] -= n; s.consumedTotal += n; }
 
       const potion = descOf(slotIds);
-      const outputs = rollMultiBrew(effectiveMultiBrew(m, potion.volatility, F));
+      const outputs = rollMultiBrew(effectiveMultiBrew(m));
       s.potionInv[potion.hash] = (s.potionInv[potion.hash] ?? 0) + outputs;
       s.potionsBrewed += outputs;
       const isNewPotion = !s.discoveredPotions.has(potion.hash);
@@ -506,11 +505,11 @@ function tick(s: SimState): void {
           logEvent(s, `${s.discoveredPotions.size} recipes found`);
       }
 
-      const xp = brewXp(potion.volatility, F) * outputs;
+      const xp = BASE_BREW_XP * outputs;
       const leveled = applyLevels(m.level, m.xp + xp, F);
       const gained = leveled.level - m.level;
       m.xp = leveled.xp; m.level = leveled.level;
-      if (gained > 0) { m.brew_speed += gained * MACHINE_LEVEL_BREW_BONUS; m.upgrade_tokens += gained; brewSecs = brewTime(m, toxicity, F, ings); }
+      if (gained > 0) { m.brew_speed += gained * MACHINE_LEVEL_BREW_BONUS; m.upgrade_tokens += gained; brewSecs = brewTime(m, F, ings); }
       m.brew_elapsed -= brewSecs;
     }
   }
@@ -1368,7 +1367,7 @@ async function main() {
       key_levers: {
         cost_base: F.cost_base, cost_growth: F.cost_growth,
         xp_base: F.xp_base, xp_growth: F.xp_growth,
-        base_brew_time: F.base_brew_time, toxicity_time_mult: F.toxicity_time_mult,
+        base_brew_time: F.base_brew_time,
         value_mult_toxicity: F.value_mult_toxicity,
         machine_costs: MACHINE_COSTS, hire_cost_base: HIRE_COST_BASE,
       },

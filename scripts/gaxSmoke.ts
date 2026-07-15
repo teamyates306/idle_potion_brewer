@@ -5,6 +5,7 @@ import {
   emptyMarket, recordSale, settleMarket, satiationMultiplier, attrMultiplier,
   potionPriceMultiplier, gaxPotionQuote, eventPhase, eventFactor, dampedDelta,
   gravityRate, GAX_EVENTS_BY_ID, SAT_CAP, HEALTHY_LIMIT, NOISE_AMPLITUDE,
+  DEFAULT_GAX_TUNING,
 } from "../src/engine/gax";
 import { INGREDIENTS, DEFAULT_FORMULAS } from "../src/store/configStore";
 import { describePotion } from "../src/engine/potions";
@@ -151,11 +152,12 @@ const zeroNoiseRng = () => 0.5; // (0.5*2-1)=0 noise, and never triggers events 
     const eff = GAX_EVENTS_BY_ID[m.event.defId].effects[attr as never] as number;
     check("forecast leaves prices unmoved", eventFactor(m.event, s, attr) === 1);
     // Stacking: seed a flooded bucket on the event attr, expect combined rate (± noise).
-    m.satiation[attr] = SAT_CAP / 2; // player rate ×0.75
+    m.satiation[attr] = SAT_CAP / 2;
     m.noise[attr] = 0;
     if (!m.board.includes(attr)) m.board.push(attr);
     const combined = attrMultiplier(m, s + 1, attr);
-    const expected = Math.max(0.25, Math.min(2.5, 0.75 * (1 + eff)));
+    const playerRate = satiationMultiplier(SAT_CAP / 2);
+    const expected = Math.max(0.25, Math.min(2.5, playerRate * (1 + eff)));
     check("peak STACKS on the player-driven rate", Math.abs(combined - expected) < 1e-9,
       `combined=${combined} expected=${expected}`);
   }
@@ -165,6 +167,17 @@ const zeroNoiseRng = () => 0.5; // (0.5*2-1)=0 noise, and never triggers events 
 {
   check("multiplier floor 0.5x", satiationMultiplier(SAT_CAP * 10) === 0.5);
   check("multiplier ceiling 1.5x", satiationMultiplier(-SAT_CAP * 10) === 1.5);
+}
+
+// 9b. Rule 5 — equilibrium offset (Healthy Baseline Demand Buffer)
+{
+  const atRest = satiationMultiplier(0);
+  check("bucket at rest trades at or slightly ABOVE par", atRest >= 1.0, `${atRest}`);
+  check("rest premium stays modest (<+10%)", atRest < 1.10, `${atRest}`);
+  const atBuffer = satiationMultiplier(DEFAULT_GAX_TUNING.demandBuffer);
+  check("multiplier crosses ×1.0 exactly at the demand buffer", Math.abs(atBuffer - 1) < 1e-9, `${atBuffer}`);
+  const justOver = satiationMultiplier(DEFAULT_GAX_TUNING.demandBuffer + 200);
+  check("only satiation beyond the buffer dips below par", justOver < 1.0, `${justOver}`);
 }
 
 // 10. Offline shortcut: exponential decay, no daily loops

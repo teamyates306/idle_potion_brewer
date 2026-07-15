@@ -16,6 +16,7 @@ import {
 } from "../data/masteryTrees";
 import { machineBrewSecondsFor } from "../hooks/useGameLoop";
 import { fmt } from "../util/format";
+import { dominantAttrSentence } from "../util/potionVisuals";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
 import type { BrewingMachine, Ingredient } from "../types";
@@ -119,6 +120,7 @@ function MachinePanelBody({
   const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
   const cfg = useConfigStore();
   const hasGloves = unlocked_globals.includes("gloves_of_engineering");
+  const hasSpectacles = unlocked_globals.includes("alchemist_spectacles");
   const masteryMultiPct = computeMasteryEffects(masteryUnlocks).multi_brew_pct;
 
   const [slotModal, setSlotModal] = useState<number | null>(null);
@@ -128,7 +130,6 @@ function MachinePanelBody({
   const activeIds = machine.recipe_slots
     .slice(0, machine.unlocked_slots)
     .filter((x): x is string => !!x);
-  const toxicity = activeIds.reduce((a, id) => a + (cfg.ingredients[id]?.attributes.toxicity ?? 0), 0);
   const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
   const preview = ingredients.length ? describePotion(ingredients, cfg.formulas) : null;
   // Only reveal the potion identity after it has been brewed at least once.
@@ -265,12 +266,12 @@ function MachinePanelBody({
 
       {/* Tap a slot above to open the spacious ingredient picker (modal). */}
 
-      {/* Potion preview */}
+      {/* Potion preview — numeric stat grid requires the Alchemist's Spectacles */}
       <button
-        onClick={() => preview && setPotionExpanded((x) => !x)}
+        onClick={() => preview && hasSpectacles && setPotionExpanded((x) => !x)}
         disabled={!preview}
         className={`mb-3 w-full rounded-lg bg-slate-800/60 p-3 text-left text-sm transition ${
-          preview ? "hover:bg-slate-700/60 active:scale-[0.99]" : ""
+          preview && hasSpectacles ? "hover:bg-slate-700/60 active:scale-[0.99]" : ""
         }`}
       >
         {preview ? (
@@ -281,16 +282,19 @@ function MachinePanelBody({
               ) : (
                 <span className="font-semibold text-slate-500 italic tracking-wider">??? Undiscovered</span>
               )}
-              {isKnownPotion && (potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />)}
+              {isKnownPotion && hasSpectacles && (potionExpanded ? <ChevronUp size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />)}
             </div>
             <div className="mt-0.5 text-xs text-slate-400">
               {isKnownPotion ? (
-                <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{!potionExpanded && " · tap for stats"}</>
+                <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{hasSpectacles && !potionExpanded && " · tap for stats"}</>
               ) : (
                 <>{bt.toFixed(2)}s brew · brew it to discover what you've made</>
               )}
             </div>
-            {isKnownPotion && potionExpanded && (
+            {isKnownPotion && !hasSpectacles && (
+              <div className="mt-1 text-[11px] italic text-slate-500">{dominantAttrSentence(preview.stats)}</div>
+            )}
+            {isKnownPotion && hasSpectacles && potionExpanded && (
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 {(Object.entries(preview.stats) as [string, number][])
                   .filter(([, val]) => val !== 0)
@@ -327,7 +331,7 @@ function MachinePanelBody({
 
       {/* Gloves of Engineering — True Brew Rate analytics */}
       {hasGloves && preview && (
-        <BrewAnalytics machine={machine} ingredients={ingredients} toxicity={toxicity} workers={workers} />
+        <BrewAnalytics machine={machine} ingredients={ingredients} workers={workers} />
       )}
 
       {tokens > 0 ? (
@@ -511,11 +515,10 @@ function fmtRate(perSec: number): string {
 
 // Gloves of Engineering — show the True Brew Rate formula breakdown
 function BrewAnalytics({
-  machine, ingredients, toxicity, workers,
+  machine, ingredients, workers,
 }: {
   machine: BrewingMachine;
   ingredients: Ingredient[];
-  toxicity: number;
   workers: { assigned_machine_id: number | null; auto_click_speed: number; click_power_level: number; click_power_mult?: number }[];
 }) {
   const cfg = useConfigStore();
@@ -526,17 +529,13 @@ function BrewAnalytics({
   // Step 1: base time
   const baseBt = f.base_brew_time / Math.max(0.0001, machine.brew_speed);
 
-  // Step 2: ingredient complexity
+  // Step 2: ingredient complexity — this is the full PRE-MASTERY brew time
   const raritySum = ingredients.length
     ? ingredients.reduce((a, ing) => a + (RARITY_WEIGHT[ing.rarity] ?? 1), 0)
     : 1;
-  const afterComplexity = baseBt * raritySum;
+  const preMasteryTime = baseBt * raritySum;
 
-  // Step 3: toxicity penalty — this is the full PRE-MASTERY brew time
-  const toxMult = 1 + Math.max(0, toxicity) * f.toxicity_time_mult;
-  const preMasteryTime = afterComplexity * toxMult;
-
-  // Step 4: combined mastery bonus — tree % and potion % stack ADDITIVELY as a
+  // Step 3: combined mastery bonus — tree % and potion % stack ADDITIVELY as a
   // single flat reduction off the pre-mastery time, hard-capped at 80%.
   const masteryFx = computeMasteryEffects(masteryUnlocks);
   const treePct = masteryFx.brew_speed_pct;
@@ -555,10 +554,8 @@ function BrewAnalytics({
   );
   const effectiveBt = Math.max(0.1, finalBrewTime / (1 + workerReduction));
 
-  // Multi-brew: brewer's own % minus volatility penalty, plus the additive
-  // global mastery bonus on top.
-  const volatility = ingredients.reduce((a, ing) => a + (ing.attributes.volatility ?? 0), 0);
-  const machineMulti = Math.max(0, machine.multi_brew_chance - volatility * f.volatility_multibrew_penalty);
+  // Multi-brew: brewer's own % plus the additive global mastery bonus.
+  const machineMulti = Math.max(0, machine.multi_brew_chance);
   const masteryMulti = masteryFx.multi_brew_pct / 100;
   const multiBrewChance = machineMulti + masteryMulti;
   const avgPotionsPerCycle = 1 + multiBrewChance;
@@ -576,14 +573,8 @@ function BrewAnalytics({
         />
         <AnalyticsRow
           label={`Ingredient Complexity (×${raritySum})`}
-          value={`${afterComplexity.toFixed(2)}s`}
+          value={`${preMasteryTime.toFixed(2)}s`}
         />
-        {toxicity > 0 && (
-          <AnalyticsRow
-            label={`Toxicity Penalty (×${toxMult.toFixed(2)})`}
-            value={`${preMasteryTime.toFixed(2)}s`}
-          />
-        )}
         {combinedReduction > 0 && (
           <AnalyticsRow
             label={`Combined Mastery Bonus (−${(combinedReduction * 100).toFixed(0)}%)`}

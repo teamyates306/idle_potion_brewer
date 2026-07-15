@@ -7,9 +7,10 @@ import SettlementModal, { SettlementPickerModal } from "./SettlementModal";
 import type { Settlement } from "../types";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
-import { useGameStore, planTokenSpend } from "../store/gameStore";
+import { useGameStore, planTokenSpend, regionalBonusesAt } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { HIRE_COST_BASE } from "../engine/economyConstants";
+import { computeMasteryEffects } from "../data/masteryTrees";
 import { upgradeCost, xpRequired, gatherRoundTrip } from "../engine/formulas";
 import {
   autoClickPower,
@@ -19,6 +20,75 @@ import {
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
+
+/**
+ * Logistics Formula Breakdown — the exact travel-time and cargo-capacity
+ * pipeline for this worker's current assignment, including the Regional
+ * Waypoint/Cargo Supply settlement passives. Tap the Round Trip tile to
+ * expand the nested formula.
+ */
+function LogisticsBreakdown({ worker, distance }: { worker: Worker; distance: number }) {
+  const [open, setOpen] = useState(false);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
+  const settlementProsperity = useGameStore((s) => s.settlementProsperity);
+
+  const fx = computeMasteryEffects(masteryUnlocks);
+  const spec = worker.specialization ?? "none";
+  const isGatherer = spec === "explorer" || spec === "caravan" || spec === "none";
+  const speedMult = worker.gather_speed * (1 + fx.worker_speed_pct / 100) * (isGatherer ? 1 + fx.gatherer_speed_pct / 100 : 1);
+  const bonuses = regionalBonusesAt(settlementProsperity, distance);
+
+  const baseSecs = distance * 2; // out + back at speed 1.0
+  const afterSpeed = gatherRoundTrip(distance, speedMult);
+  const finalSecs = afterSpeed * Math.max(0.05, 1 - bonuses.speedPct / 100);
+
+  const baseCarry = worker.retrieval_size * (1 + fx.caravan_size_pct / 100);
+  const finalCarry = bonuses.cargoPct > 0 ? Math.ceil(baseCarry * (1 + bonuses.cargoPct / 100)) : baseCarry;
+
+  return (
+    <div className="col-span-2 rounded-lg bg-slate-800/60 p-2.5">
+      <button onClick={() => setOpen((x) => !x)} className="flex w-full items-center justify-between text-left">
+        <span className="flex items-center gap-1.5 text-xs text-slate-400">
+          <ArrowUpCircle size={13} /> Round Trip
+        </span>
+        <span className="text-[10px] text-cyan-700">{open ? "hide formula ▲" : "📐 show formula ▼"}</span>
+      </button>
+      <div className="mt-0.5 font-semibold text-slate-100">{fmtDuration(finalSecs)}</div>
+      {open && (
+        <div className="mt-2 space-y-2 border-t border-slate-700/60 pt-2 font-mono text-[10px] leading-relaxed">
+          <div>
+            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-slate-500">Travel time breakdown</div>
+            <div className="text-slate-300">
+              Base {baseSecs.toFixed(1)}s
+              <span className="text-slate-500"> ──▶ </span>Worker Speed (÷{speedMult.toFixed(2)}×)
+              <span className="text-slate-500"> ──▶ </span>
+              <span className={bonuses.speedPct > 0 ? "text-emerald-500" : "text-slate-500"}>
+                Regional Settlement Advantage (−{bonuses.speedPct.toFixed(1)}%)
+              </span>
+              <span className="text-slate-500"> ──▶ </span>
+              <span className="font-bold text-cyan-500">{finalSecs.toFixed(1)}s</span>
+            </div>
+          </div>
+          <div>
+            <div className="mb-0.5 text-[9px] uppercase tracking-wider text-slate-500">Carry capacity breakdown</div>
+            <div className="text-slate-300">
+              Base {baseCarry.toFixed(1)}
+              <span className="text-slate-500"> ──▶ </span>
+              <span className={bonuses.cargoPct > 0 ? "text-emerald-500" : "text-slate-500"}>
+                Regional Settlement Advantage (+{bonuses.cargoPct.toFixed(1)}%{bonuses.cargoPct > 0 ? ", rounded up" : ""})
+              </span>
+              <span className="text-slate-500"> ──▶ </span>
+              <span className="font-bold text-cyan-500">{typeof finalCarry === "number" && bonuses.cargoPct > 0 ? finalCarry : baseCarry.toFixed(1)}</span>
+            </div>
+          </div>
+          <p className="text-[9px] normal-nums text-slate-500">
+            Regional advantages come from Settlement Prosperity — trade at this region's towns to level them up.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Mirrors gameStore's specMult — used for accurate upgrade previews in the detail modal.
 function specMult(spec: WorkerSpecialization, type: "speed" | "size" | "clkspd" | "clkpow"): number {
@@ -585,10 +655,7 @@ function WorkerDetailModal({
             <div className="mt-0.5 font-semibold text-slate-100">−{power.toFixed(2)}s/hit</div>
           </div>
           {loc && (
-            <div className="col-span-2 rounded-lg bg-slate-800/60 p-2.5">
-              <div className="flex items-center gap-1.5 text-xs text-slate-400"><ArrowUpCircle size={13} /> Round Trip</div>
-              <div className="mt-0.5 font-semibold text-slate-100">{fmtDuration(trip)}</div>
-            </div>
+            <LogisticsBreakdown worker={worker} distance={loc.distance} />
           )}
         </div>
 
