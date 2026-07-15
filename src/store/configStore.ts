@@ -514,32 +514,44 @@ const BASE_INGREDIENTS: Record<string, Ingredient> = {
   },
 
   // ===== TROPHY FINDS — 5 ingredients, one per curated 4-way combo (COMBI_QUADS
-  // in engine/potions.ts). Each carries its combo's four attributes at close to
-  // even magnitude, making that near-tie easier to land for players chasing the
-  // rarest tier of the Trophy Case. =====
+  // in engine/potions.ts). Each carries only HALF of its combo's four attributes
+  // (at high magnitude) — a strong lead, not a solo shortcut. Landing the actual
+  // near-tie means pairing it with other ingredients from the wider pool that
+  // carry the other two attributes at comparable magnitude, so these are found
+  // through genuine experimentation, not by stacking three of the same item. =====
   cataclysmshard: {
     id: "cataclysmshard", name: "Cataclysm Shard", category: "bone", rarity: "legendary", base_value: 160,
-    attributes: attrs({ entropy: 24, gravitas: 23, mutation: 25, volatility: 24 }),
+    // the Cataclysm needs entropy+gravitas+mutation+volatility — this carries
+    // entropy+mutation; gravitas+volatility must come from elsewhere.
+    attributes: attrs({ entropy: 25, mutation: 25 }),
     description: "A splinter from the moment everything ended. The Guild keeps it in a lead box, just in case.",
   },
   oracleseye: {
     id: "oracleseye", name: "Oracle's Eye", category: "crystal", rarity: "legendary", base_value: 155,
-    attributes: attrs({ entropy: 23, insight: 24, resonance: 23, void: 25 }),
+    // the Oracle needs entropy+insight+resonance+void — this carries
+    // insight+resonance; entropy+void must come from elsewhere.
+    attributes: attrs({ insight: 25, resonance: 25 }),
     description: "It sees the end of things and hums about it constantly. The hum is the unsettling part.",
   },
   genesisvial: {
     id: "genesisvial", name: "Genesis Vial", category: "essence", rarity: "legendary", base_value: 150,
-    attributes: attrs({ chrono: 23, focus: 22, mana: 24, mutation: 23 }),
+    // the Genesis needs chrono+focus+mana+mutation — this carries
+    // chrono+mutation; focus+mana must come from elsewhere.
+    attributes: attrs({ chrono: 25, mutation: 25 }),
     description: "Contains a beginning that hasn't happened yet. Handle before, not after.",
   },
   apocalypseingot: {
     id: "apocalypseingot", name: "Apocalypse Ingot", category: "ore", rarity: "legendary", base_value: 165,
-    attributes: attrs({ chrono: 24, gravitas: 23, mutation: 23, volatility: 25 }),
+    // the Apocalypse needs chrono+gravitas+mutation+volatility — this carries
+    // gravitas+volatility; chrono+mutation must come from elsewhere.
+    attributes: attrs({ gravitas: 25, volatility: 25 }),
     description: "Forged from a future the smiths declined to elaborate on. Heavier than it should be.",
   },
   revelationbloom: {
     id: "revelationbloom", name: "Revelation Bloom", category: "herb", rarity: "legendary", base_value: 158,
-    attributes: attrs({ entropy: 23, insight: 25, mutation: 23, void: 24 }),
+    // the Revelation needs entropy+insight+mutation+void — this carries
+    // insight+void; entropy+mutation must come from elsewhere.
+    attributes: attrs({ insight: 25, void: 25 }),
     description: "Opens once and shows you something true. Most pickers wish it hadn't.",
   },
 };
