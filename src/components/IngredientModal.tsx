@@ -1,20 +1,8 @@
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import IngredientSvg from "./art/IngredientSvg";
-import { RARITY_COLOR } from "../util/format";
+import { RARITY_COLOR, ATTR_LABELS } from "../util/format";
 import type { Attributes } from "../types";
-
-const ATTR_LABELS: Record<string, string> = {
-  strength: "Strength", speed: "Speed", vitality: "Vitality",
-  density: "Density", elasticity: "Elasticity", focus: "Focus",
-  mana: "Mana", resonance: "Resonance", insight: "Insight", luck: "Luck",
-  heat: "Heat", cold: "Cold", shock: "Shock", aqua: "Aqua",
-  terra: "Terra", aero: "Aero", radiance: "Radiance", void: "Void",
-  toxicity: "Toxicity", volatility: "Volatility", acidity: "Acidity",
-  alkalinity: "Alkalinity", viscosity: "Viscosity", stability: "Stability",
-  solvency: "Solvency", chrono: "Chrono", gravitas: "Gravitas",
-  entropy: "Entropy", soul: "Soul", mutation: "Mutation",
-};
 
 // Generate a vague impression from attribute totals (shown without Spectacles)
 function vagueImpression(attrs: Attributes): string {

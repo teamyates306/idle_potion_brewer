@@ -24,6 +24,7 @@ export default function IngredientSelectionModal({
 }) {
   const machine = useGameStore((s) => s.machines.find((m) => m.id === machineId));
   const programSlot = useGameStore((s) => s.programSlot);
+  const setRecipe = useGameStore((s) => s.setRecipe);
   const inv = useGameStore((s) => s.ingredientInv);
   const discovered = useGameStore((s) => s.discovered);
   const discoveredPotions = useGameStore((s) => s.discoveredPotions);
@@ -102,14 +103,23 @@ export default function IngredientSelectionModal({
               );
             })}
           </div>
-          {/* Clear slot — distinct red, below the tabs */}
-          <button
-            onClick={() => programSlot(machineId, activeSlot, null)}
-            disabled={!slots[activeSlot]}
-            className="mb-3 flex items-center gap-1.5 rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-900/50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Trash2 size={13} /> Clear Slot {activeSlot + 1}
-          </button>
+          {/* Clear slot / clear all — distinct red, below the tabs */}
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => programSlot(machineId, activeSlot, null)}
+              disabled={!slots[activeSlot]}
+              className="flex items-center gap-1.5 rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-900/50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 size={13} /> Clear Slot {activeSlot + 1}
+            </button>
+            <button
+              onClick={() => setRecipe(machineId, [])}
+              disabled={filledIds.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-900/50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 size={13} /> Clear All
+            </button>
+          </div>
         </div>
 
         {/* Search */}

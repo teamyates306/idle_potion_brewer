@@ -5,7 +5,8 @@ import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientModal from "./IngredientModal";
-import { RARITY_COLOR } from "../util/format";
+import { RARITY_COLOR, ATTR_LABELS } from "../util/format";
+import type { Ingredient } from "../types";
 
 const RARITY_ORDER: Record<string, number> = {
   common: 0, uncommon: 1, scarce: 2, rare: 3, exotic: 4, epic: 5, fabled: 6, legendary: 7,
@@ -20,34 +21,64 @@ const CATEGORY_COLOR: Record<string, string> = {
   root: "#a3a86b", petal: "#f472b6", fungus: "#c084fc", crystal: "#38bdf8", essence: "#22d3ee", bone: "#e2e8f0",
 };
 
+// Base sorts always available; "value" and any attribute key are only offered once
+// the Spectacles are unlocked (attribute/value data is otherwise hidden from the player).
+type SortMode = "rarity" | "name" | "count" | "value" | (string & {});
+
 export default function IngredientInventoryView({ onClose }: { onClose: () => void }) {
   const inv = useGameStore((s) => s.ingredientInv);
   const discovered = useGameStore((s) => s.discovered);
+  const discoveredAttributes = useGameStore((s) => s.discoveredAttributes);
+  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
   const cfg = useConfigStore();
   const [modalId, setModalId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("rarity");
+  const [rarityFilter, setRarityFilter] = useState<string>("all");
+
+  const hasSpectacles = unlocked_globals.includes("alchemist_spectacles");
 
   const q = query.trim().toLowerCase();
 
-  // Groups by type; within each group, rarest first then most-held first.
+  type InvItem = { id: string; ing: Ingredient; count: number };
+
+  const comparator = useMemo((): ((a: InvItem, b: InvItem) => number) => {
+    switch (sortMode) {
+      case "name":
+        return (a, b) => a.ing.name.localeCompare(b.ing.name);
+      case "count":
+        return (a, b) => b.count - a.count;
+      case "value":
+        return (a, b) => b.ing.base_value - a.ing.base_value;
+      case "rarity":
+        return (a, b) => (RARITY_ORDER[b.ing.rarity] ?? 0) - (RARITY_ORDER[a.ing.rarity] ?? 0) || b.count - a.count;
+      default:
+        // an attribute key: highest magnitude first
+        return (a, b) =>
+          Math.abs((b.ing.attributes as unknown as Record<string, number>)[sortMode] ?? 0) -
+          Math.abs((a.ing.attributes as unknown as Record<string, number>)[sortMode] ?? 0);
+    }
+  }, [sortMode]);
+
+  // Groups by type; within each group, ordered by the active sort.
   const groups = useMemo(() => {
-    const all = discovered
+    const all: InvItem[] = discovered
       .map((id) => ({ id, ing: cfg.ingredients[id], count: inv[id] ?? 0 }))
-      .filter((x) => x.ing && (!q || x.ing.name.toLowerCase().includes(q)));
+      .filter((x) => x.ing && (!q || x.ing.name.toLowerCase().includes(q)))
+      .filter((x) => rarityFilter === "all" || x.ing.rarity === rarityFilter);
 
     return CATEGORY_ORDER
       .map((cat) => ({
         cat,
-        items: all
-          .filter((x) => x.ing.category === cat)
-          .sort(
-            (a, b) =>
-              (RARITY_ORDER[b.ing.rarity] ?? 0) - (RARITY_ORDER[a.ing.rarity] ?? 0) ||
-              b.count - a.count
-          ),
+        items: all.filter((x) => x.ing.category === cat).sort(comparator),
       }))
       .filter((g) => g.items.length > 0);
-  }, [discovered, cfg.ingredients, inv, q]);
+  }, [discovered, cfg.ingredients, inv, q, rarityFilter, comparator]);
+
+  const rarityOptions = useMemo(
+    () => Object.keys(RARITY_ORDER).sort((a, b) => RARITY_ORDER[a] - RARITY_ORDER[b]),
+    []
+  );
 
   return (
     <>
@@ -71,6 +102,38 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
                   <X size={14} />
                 </button>
               )}
+            </div>
+
+            {/* Sort & filter — attribute/value sorting unlocks with the Spectacles */}
+            <div className="mb-3 flex flex-wrap gap-2">
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+              >
+                <option value="rarity">Sort: Rarity</option>
+                <option value="name">Sort: Name</option>
+                <option value="count">Sort: Amount held</option>
+                {hasSpectacles && <option value="value">Sort: Value</option>}
+                {hasSpectacles && discoveredAttributes.length > 0 && (
+                  <optgroup label="Sort by attribute">
+                    {discoveredAttributes.map((attr) => (
+                      <option key={attr} value={attr}>{ATTR_LABELS[attr] ?? attr}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+
+              <select
+                value={rarityFilter}
+                onChange={(e) => setRarityFilter(e.target.value)}
+                className="rounded-lg border border-slate-700 bg-slate-800/60 px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+              >
+                <option value="all">All rarities</option>
+                {rarityOptions.map((r) => (
+                  <option key={r} value={r} className="capitalize">{r[0].toUpperCase() + r.slice(1)}</option>
+                ))}
+              </select>
             </div>
 
             {groups.length === 0 ? (

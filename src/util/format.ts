@@ -24,3 +24,15 @@ export const RARITY_COLOR: Record<string, string> = {
   fabled: "#f472b6",     // rose-pink
   legendary: "#fbbf24",  // gold
 };
+
+export const ATTR_LABELS: Record<string, string> = {
+  strength: "Strength", speed: "Speed", vitality: "Vitality",
+  density: "Density", elasticity: "Elasticity", focus: "Focus",
+  mana: "Mana", resonance: "Resonance", insight: "Insight", luck: "Luck",
+  heat: "Heat", cold: "Cold", shock: "Shock", aqua: "Aqua",
+  terra: "Terra", aero: "Aero", radiance: "Radiance", void: "Void",
+  toxicity: "Toxicity", volatility: "Volatility", acidity: "Acidity",
+  alkalinity: "Alkalinity", viscosity: "Viscosity", stability: "Stability",
+  solvency: "Solvency", chrono: "Chrono", gravitas: "Gravitas",
+  entropy: "Entropy", soul: "Soul", mutation: "Mutation",
+};
