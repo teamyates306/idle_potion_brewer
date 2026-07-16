@@ -1116,65 +1116,105 @@ interface WallWalkerCfg {
   y: number; // feet baseline, in wall-SVG user units
 }
 
+function rand(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
+  const id = `walker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const adventurer = generateAdventurer(id);
+  if (!adventurer) return null;
+  const direction: "ltr" | "rtl" = Math.random() < 0.5 ? "ltr" : "rtl";
+  const size = rand(t.sizeMin, t.sizeMax);
+  const speed = rand(t.speedMin, t.speedMax);
+  const duration = width / Math.max(1, speed); // how long a full crossing takes at this walker's pace
+  const off = size * 2;
+  const fromX = direction === "ltr" ? -off : width + off;
+  const toX = direction === "ltr" ? width + off : -off;
+  const y = rand(t.yMin, t.yMax);
+  return { id, adventurer, direction, duration, size, fromX, toX, y };
+}
+
+// Multiple adventurers can be crossing at once now (capped by
+// tuning.maxConcurrent, hard ceiling 10). A lightweight periodic "roll the
+// dice" spawner — not a fixed interval — keeps the live population drifting
+// organically across the whole 0..max range instead of sitting at a flat
+// average, matching "a healthy randomized amount at any one time".
+//
+// A full crossing at these speeds takes well over a minute (world width ÷
+// ~17px/s ≈ 2 minutes), so the spawn rate has to be calibrated against that
+// lifetime (Little's Law: avg population = arrival rate × avg lifetime) —
+// a flat "35% chance every 1.4s" arrival rate was ~6x too fast for a 2-minute
+// walker lifespan, so the population saturated at the cap within seconds of
+// mounting, and because everyone arrived in that same short burst relative to
+// their long shared lifetime, they then all expired together too — a visible
+// "wave" of walkers rather than a healthy spread. Aiming for an average
+// population around half the cap keeps real variance across the full 0..cap
+// range without constantly pinning at the ceiling.
+const HARD_CAP = 10;
+const SPAWN_TICK_MS = 1400;
+
 function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning, forceSpawnToken: number): WallWalkerCfg[] {
   const [walkers, setWalkers] = useState<WallWalkerCfg[]>([]);
   // Tuning changes shouldn't restart the whole spawn cycle (that would cancel
-  // an in-flight walker) — read the latest values via a ref inside the timer.
+  // every in-flight walker) — read the latest values via a ref inside the timer.
   const tuningRef = useRef(tuning);
   tuningRef.current = tuning;
+  const walkersRef = useRef(walkers);
+  walkersRef.current = walkers;
 
   useEffect(() => {
     if (!enabled) { setWalkers([]); return; }
     let cancelled = false;
-    let timer = 0;
-    const spawnOne = () => {
+
+    const trySpawn = () => {
       if (cancelled) return;
       const t = tuningRef.current;
-      const id = `walker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const adventurer = generateAdventurer(id);
-      if (!adventurer) { timer = window.setTimeout(spawnOne, 20000); return; }
-      const direction: "ltr" | "rtl" = Math.random() < 0.5 ? "ltr" : "rtl";
-      const jitter = 0.85 + Math.random() * 0.3; // ±15%, "slightly varying paces"
-      const size = t.size * jitter;
-      const duration = (width / Math.max(1, t.speed)) * jitter;
-      const off = size * 2;
-      const fromX = direction === "ltr" ? -off : width + off;
-      const toX = direction === "ltr" ? width + off : -off;
-      const y = t.y + Math.random() * 5 - 2.5;
-      const cfg: WallWalkerCfg = { id, adventurer, direction, duration, size, fromX, toX, y };
+      const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+      if (walkersRef.current.length >= cap) return;
+      const cfg = makeWalker(width, t);
+      if (!cfg) return;
       setWalkers((w) => [...w, cfg]);
-      timer = window.setTimeout(() => {
+      window.setTimeout(() => {
         if (cancelled) return;
-        setWalkers((w) => w.filter((x) => x.id !== id));
-        timer = window.setTimeout(spawnOne, tuningRef.current.gapSec * 1000 * (0.5 + Math.random()));
-      }, duration * 1000);
+        setWalkers((w) => w.filter((x) => x.id !== cfg.id));
+      }, cfg.duration * 1000);
     };
-    timer = window.setTimeout(spawnOne, 2000 + Math.random() * 5000);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tuning read via ref, deliberately excluded
+
+    // Seed just one walker fairly soon so the wall doesn't start dead empty;
+    // everything after that follows the same calibrated random process below
+    // rather than a synchronized initial burst.
+    window.setTimeout(trySpawn, 1500 + Math.random() * 4000);
+
+    const tickTimer = window.setInterval(() => {
+      const t = tuningRef.current;
+      const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+      if (cap <= 0) return;
+      const avgSpeed = (t.speedMin + t.speedMax) / 2;
+      const avgDuration = width / Math.max(1, avgSpeed);
+      const targetAvgPopulation = cap / 2; // aim for the middle of 0..cap, not pinned at the ceiling
+      const arrivalRatePerSec = targetAvgPopulation / avgDuration;
+      const chance = Math.min(0.9, arrivalRatePerSec * (SPAWN_TICK_MS / 1000));
+      if (Math.random() < chance) trySpawn();
+    }, SPAWN_TICK_MS);
+
+    return () => { cancelled = true; window.clearInterval(tickTimer); };
   }, [enabled, width]);
 
-  // "Spawn now" preview button — bypasses the timer for an immediate extra walker.
+  // "Spawn now" preview button — bypasses the random roll for an immediate extra walker.
   const skipFirst = useRef(true);
   useEffect(() => {
     if (skipFirst.current) { skipFirst.current = false; return; }
     if (!enabled) return;
     const t = tuningRef.current;
-    const id = `walker-force-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const adventurer = generateAdventurer(id);
-    if (!adventurer) return;
-    const direction: "ltr" | "rtl" = Math.random() < 0.5 ? "ltr" : "rtl";
-    const size = t.size;
-    const duration = width / Math.max(1, t.speed);
-    const off = size * 2;
-    const fromX = direction === "ltr" ? -off : width + off;
-    const toX = direction === "ltr" ? width + off : -off;
-    const y = t.y + Math.random() * 5 - 2.5;
-    const cfg: WallWalkerCfg = { id, adventurer, direction, duration, size, fromX, toX, y };
+    const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+    if (walkersRef.current.length >= cap) return;
+    const cfg = makeWalker(width, t);
+    if (!cfg) return;
     setWalkers((w) => [...w, cfg]);
     const cleanupTimer = window.setTimeout(() => {
-      setWalkers((w) => w.filter((x) => x.id !== id));
-    }, duration * 1000);
+      setWalkers((w) => w.filter((x) => x.id !== cfg.id));
+    }, cfg.duration * 1000);
     return () => window.clearTimeout(cleanupTimer);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tuning read via ref, deliberately excluded
   }, [forceSpawnToken, enabled, width]);
@@ -1241,7 +1281,11 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
               animation: `wall-walk ${wk.duration}s linear 1 forwards`,
             }}
           >
-            <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
+            {/* Same day/night fade as the hills/sky behind them (--dn-daylight-op:
+                1 at noon, 0 at midnight) — dims in step with the window scene. */}
+            <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
+              <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
+            </g>
           </g>
         ))}
         <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0"
@@ -1283,7 +1327,12 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
   const lamps = computeLampPositions(width);
   const signX = Math.round(center);
   const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
-  const walkerTuning = useWalkerTuningStore((s) => ({ size: s.size, speed: s.speed, gapSec: s.gapSec, y: s.y }));
+  const walkerTuning = useWalkerTuningStore((s) => ({
+    sizeMin: s.sizeMin, sizeMax: s.sizeMax,
+    speedMin: s.speedMin, speedMax: s.speedMax,
+    yMin: s.yMin, yMax: s.yMax,
+    maxConcurrent: s.maxConcurrent,
+  }));
   const forceSpawnToken = useWalkerTuningStore((s) => s.forceSpawnToken);
   const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken);
 

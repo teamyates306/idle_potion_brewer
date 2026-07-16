@@ -4,17 +4,17 @@ import { create } from "zustand";
 // Deliberately NOT persisted — this is a dev tuning tool, not player-facing
 // settings; values reset to sane defaults on reload.
 export interface WalkerTuning {
-  size: number;    // base sprite height, in wall-SVG user units (~= CSS px)
-  speed: number;   // px/second crossing speed
-  gapSec: number;  // average seconds between walker appearances
-  y: number;       // feet baseline, in wall-SVG user units (window interior is y=70..134)
+  sizeMin: number; sizeMax: number;   // sprite height, wall-SVG user units (~= CSS px)
+  speedMin: number; speedMax: number; // px/second crossing speed
+  yMin: number; yMax: number;         // feet baseline, wall-SVG user units
+  maxConcurrent: number;              // hard cap on simultaneously-active walkers (0-10)
 }
 
 export const DEFAULT_WALKER_TUNING: WalkerTuning = {
-  size: 26,
-  speed: 26,
-  gapSec: 14,
-  y: 126,
+  sizeMin: 41, sizeMax: 44,
+  speedMin: 14, speedMax: 20,
+  yMin: 140, yMax: 143,
+  maxConcurrent: 10,
 };
 
 interface WalkerTuningState extends WalkerTuning {

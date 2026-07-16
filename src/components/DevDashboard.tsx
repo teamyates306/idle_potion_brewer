@@ -719,6 +719,45 @@ function Slider({
   );
 }
 
+function MinMaxSlider({
+  label, lo, hi, bounds, step = 1, unit = "", onChange,
+}: {
+  label: string; lo: number; hi: number; bounds: [number, number]; step?: number; unit?: string;
+  onChange: (lo: number, hi: number) => void;
+}) {
+  const [boundMin, boundMax] = bounds;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-500">
+        <span>{label}</span>
+        <span className="font-mono text-slate-300">{lo.toFixed(step < 1 ? 2 : 0)}–{hi.toFixed(step < 1 ? 2 : 0)}{unit}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range"
+          min={boundMin}
+          max={boundMax}
+          step={step}
+          value={lo}
+          onChange={(e) => onChange(Math.min(parseFloat(e.target.value), hi), hi)}
+          className="w-full accent-sky-500"
+          title="Minimum"
+        />
+        <input
+          type="range"
+          min={boundMin}
+          max={boundMax}
+          step={step}
+          value={hi}
+          onChange={(e) => onChange(lo, Math.max(parseFloat(e.target.value), lo))}
+          className="w-full accent-rose-500"
+          title="Maximum"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Window Walkers (live-tunable adventurer sprites crossing the wall windows) ──
 function WalkersTab() {
   const tuning = useWalkerTuningStore();
@@ -737,47 +776,45 @@ function WalkersTab() {
           <div>
             <WindowWalkerPreview />
             <p className="mt-1.5 max-w-[280px] text-[10px] leading-snug text-slate-500">
-              Loops continuously (ignores "time between walkers" — that only paces the real in-game spawn
-              timer, not this always-on preview). Dashed red line marks the exact feet baseline from the
-              vertical-position slider.
+              Loops continuously so you don't have to wait. Each loop re-rolls a fresh random value
+              within the current min/max ranges. Dashed red line marks the exact feet baseline in play.
             </p>
           </div>
-          <div className="min-w-[220px] flex-1 space-y-4">
-            <Slider
+          <div className="min-w-[240px] flex-1 space-y-4">
+            <MinMaxSlider
               label="Sprite size"
-              value={tuning.size}
-              min={8}
-              max={48}
+              lo={tuning.sizeMin}
+              hi={tuning.sizeMax}
+              bounds={[8, 64]}
               step={1}
               unit="px"
-              onChange={(v) => tuning.set({ size: v })}
+              onChange={(lo, hi) => tuning.set({ sizeMin: lo, sizeMax: hi })}
             />
-            <Slider
+            <MinMaxSlider
               label="Walk speed"
-              value={tuning.speed}
-              min={5}
-              max={80}
+              lo={tuning.speedMin}
+              hi={tuning.speedMax}
+              bounds={[5, 80]}
               step={1}
               unit="px/s"
-              onChange={(v) => tuning.set({ speed: v })}
+              onChange={(lo, hi) => tuning.set({ speedMin: lo, speedMax: hi })}
             />
-            <Slider
-              label="Time between walkers"
-              value={tuning.gapSec}
-              min={2}
-              max={60}
-              step={1}
-              unit="s avg"
-              onChange={(v) => tuning.set({ gapSec: v })}
-            />
-            <Slider
+            <MinMaxSlider
               label="Vertical position"
-              value={tuning.y}
-              min={60}
-              max={150}
+              lo={tuning.yMin}
+              hi={tuning.yMax}
+              bounds={[60, 150]}
               step={1}
               unit="y"
-              onChange={(v) => tuning.set({ y: v })}
+              onChange={(lo, hi) => tuning.set({ yMin: lo, yMax: hi })}
+            />
+            <Slider
+              label="Max concurrent walkers"
+              value={tuning.maxConcurrent}
+              min={0}
+              max={10}
+              step={1}
+              onChange={(v) => tuning.set({ maxConcurrent: v })}
             />
             <div className="flex flex-wrap gap-2 pt-2">
               <Btn onClick={() => tuning.spawnNow()}>Spawn one now (real wall)</Btn>
@@ -786,9 +823,11 @@ function WalkersTab() {
           </div>
         </div>
         <p className="mt-4 max-w-lg text-[11px] text-slate-500">
-          Each walker's actual size/speed is randomised ±15% around these values for "slightly varying
-          paces" — the preview shows the exact base value, not the jittered range. These values reset on
-          reload; once you're happy, tell me the numbers and I'll bake them in as the new defaults.
+          Each walker independently rolls a random size/speed/position within these ranges when it spawns.
+          The active count on the real wall drifts on its own between 0 and "max concurrent" — there's no
+          fixed spawn interval, just a small random check every ~1.4s, so the population feels organic
+          rather than metronomic. These values reset on reload; once you're happy, tell me the numbers and
+          I'll bake them in as the new defaults.
         </p>
       </Section>
     </div>
