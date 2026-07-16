@@ -241,27 +241,6 @@ export function getPotionTypeData(potionType: string) {
   return POTION_TYPE_DATA[potionType] ?? POTION_TYPE_DATA.Tonic;
 }
 
-// Bounding box shared by every liquid polygon (see VB in PotionIcon.tsx).
-const LIQUID_BB = { x: -8, y: -16, w: 16, h: 16 };
-
-/** Converts a liquid polygon's SVG points into a CSS `clip-path: polygon(...)`
- *  string (percentages relative to LIQUID_BB), for clipping a foreignObject
- *  div that carries a CSS conic-gradient — the only clean way to render a
- *  true 3-way angular colour split, which SVG's own gradients can't express. */
-export function liquidClipPath(points: string): string {
-  const pct = points
-    .trim()
-    .split(/\s+/)
-    .map((pair) => {
-      const [px, py] = pair.split(",").map(Number);
-      const xPct = ((px - LIQUID_BB.x) / LIQUID_BB.w) * 100;
-      const yPct = ((py - LIQUID_BB.y) / LIQUID_BB.h) * 100;
-      return `${xPct.toFixed(1)}% ${yPct.toFixed(1)}%`;
-    })
-    .join(", ");
-  return `polygon(${pct})`;
-}
-
 // Prefix → visual effect tier (0 = dull/desaturated, 9 = maximum spectacle).
 // "Grand" kept as a legacy alias (old saves may hold quest text with old names).
 export const PREFIX_TIERS: Record<string, number> = {
