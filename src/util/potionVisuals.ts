@@ -217,24 +217,23 @@ export const POTION_TYPE_DATA: Record<string, { sprite: string; liquidPoints: st
     liquidPoints: "-3.5,-11.5 -3.5,-9.5 -5.5,-7.5 -5.5,-6.5 -7.5,-4.5 -7.5,-2.5 -5.5,-0.5 1.5,-0.5 2.5,-1.5 3.5,-1.5 6.5,-4.5 6.5,-7.5 4.5,-9.5 4.5,-10.5 3.5,-11.5",
   },
   // New bottle types for the ore/chitin/bestial/herb ingredient categories.
-  // Placeholder art: bottle sprite files below don't exist yet (drop them into
-  // public/sprites/ once created); liquid polygon reuses an existing shape as a
-  // safe placeholder until bespoke bottle art defines its own.
+  // Liquid polygons hand-traced against the actual bottle art (see the
+  // interactive polygon editor used to derive these points).
   Concoction: {
     sprite: "/sprites/potion-concoction.svg",
-    liquidPoints: "2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0",
+    liquidPoints: "-7.5,-4.5 -6.5,-5.5 -6.5,-8.5 -7.5,-9.5 -7.5,-11.5 7.5,-11.5 7.5,-11.5 7.5,-9.0 6.5,-8.5 6.5,-5.5 7.5,-4.5 7.5,-1.5 6.5,-0.5 3.5,-0.5 2.5,-1.5 -2.5,-1.5 -3.5,-0.5 -6.5,-0.5 -7.5,-1.5",
   },
   Extract: {
     sprite: "/sprites/potion-extract.svg",
-    liquidPoints: "-1.5,-8.5 1.5,-8.5 1.5,-6.5 -1.5,-6.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 1.5,-6.5 -1.5,-6.5",
+    liquidPoints: "-5.5,-0.5 -6.5,-1.5 -6.5,-7.5 -4.5,-9.5 -2.5,-9.5 -1.5,-10.5 -1.5,-11.5 1.5,-11.5 1.5,-10.5 2.5,-9.5 4.5,-9.5 6.5,-7.5 6.5,-1.5 5.5,-0.5",
   },
   Tincture: {
     sprite: "/sprites/potion-tincture.svg",
-    liquidPoints: "-1.5,-10.5 -5.5,-10.5 -6.5,-9.5 -7.5,-8.5 -7.5,-2.5 -6.5,-1.5 -5.5,-0.5 5.5,-0.5 6.5,-1.5 7.5,-2.5 7.5,-8.5 6.5,-9.5 5.5,-10.5 1.5,-10.5",
+    liquidPoints: "-1.5,-12.5 -2.5,-11.5 -2.5,-9.5 -3.5,-8.5 -3.5,-1.5 -2.5,-0.5 2.5,-0.5 3.5,-1.5 3.5,-8.5 2.5,-9.5 2.5,-11.5 2.5,-11.5 1.5,-12.5 1.5,-12.5",
   },
   Infusion: {
     sprite: "/sprites/potion-infusion.svg",
-    liquidPoints: "-5.5,-11.5 -6.5,-10.5 -6.5,-8.5 -5.5,-7.5 -5.5,-5.5 -4.5,-4.5 -4.5,-2.5 -3.5,-1.5 -2.5,-0.5 2.5,-0.5 3.5,-1.5 4.5,-2.5 4.5,-4.5 5.5,-5.5 5.5,-7.5 6.5,-8.5 6.5,-10.5 5.5,-11.5",
+    liquidPoints: "-3.5,-0.5 -4.5,-1.5 -5.5,-1.5 -6.5,-2.5 -6.5,-4.5 -5.5,-5.5 -5.5,-6.5 -4.5,-7.5 -4.5,-8.5 -3.5,-9.5 -3.5,-10.5 -2.5,-11.5 2.5,-11.5 3.5,-10.5 3.5,-9.5 4.5,-8.5 4.5,-7.5 5.5,-6.5 5.5,-5.5 6.5,-4.5 6.5,-2.5 5.5,-1.5 4.5,-1.5 3.5,-0.5",
   },
 };
 
