@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollText, Check, Hourglass, FlaskConical, RotateCcw } from "lucide-react";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
+import AdventurerSprite from "./art/AdventurerSprite";
 import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
+import { generateAdventurer, CLASS_LABELS } from "../data/questSprites";
 import { fmt } from "../util/format";
 
 // Dark ink shades — the light -300 pastels were near-invisible on parchment cards.
@@ -78,6 +80,7 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   const rerollDiscoveryBounty = useGameStore((s) => s.rerollDiscoveryBounty);
   const coins = useGameStore((s) => s.coins);
   const [detailName, setDetailName] = useState<string | null>(null);
+  const [showHowQuestsWork, setShowHowQuestsWork] = useState(false);
 
   // 1s tick so countdowns update live and elapsed cooldowns regenerate.
   const [, setNow] = useState(Date.now());
@@ -111,9 +114,26 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   return (
     <>
       <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b">
-        <p className="mb-3 text-xs text-slate-400">
-          Townsfolk commissions. Fulfil them with any recipes matching the requested potion.
-        </p>
+        <div className="mb-3 flex items-start gap-1.5">
+          <p className="flex-1 text-xs text-slate-400">
+            Local adventurers passing through need potions for the road ahead. Fulfil their requests
+            with any recipes matching the potion they're after.
+          </p>
+          <button
+            onClick={() => setShowHowQuestsWork((x) => !x)}
+            className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-slate-600 text-[9px] font-bold text-slate-500 hover:border-amber-600 hover:text-amber-600"
+            title="How quests work"
+          >
+            ?
+          </button>
+        </div>
+        {showHowQuestsWork && (
+          <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
+            Quests are fulfilled from your potion inventory — the potions must actually be sitting in
+            your stash, so don't auto-sell a recipe you're saving for a quest. Matching any recipe with
+            the requested name counts, regardless of which exact ingredients brewed it.
+          </p>
+        )}
 
         <div className="space-y-3">
           {DIFFICULTIES.map((tier) => {
@@ -223,6 +243,10 @@ function QuestCard({
   const style = DIFF_STYLE[quest.difficulty];
   const rerollCost = Math.floor(quest.reward / 2);
   const canReroll = coins >= rerollCost;
+  // Deterministic from quest.id — same adventurer every render/reopen, no
+  // persisted state needed, and re-rolls into a new one only when the quest
+  // itself does (a fresh quest.id).
+  const adventurer = useMemo(() => generateAdventurer(quest.id), [quest.id]);
 
   const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -232,6 +256,17 @@ function QuestCard({
 
   return (
     <div className={`rounded-xl border p-3 ${style.bg}`}>
+      {adventurer && (
+        <div className="mb-2 flex items-center gap-3 border-b border-black/10 pb-2">
+          <AdventurerSprite adventurer={adventurer} size={64} />
+          <div className="min-w-0">
+            <div className="text-xs font-bold leading-tight text-slate-100">{adventurer.name}</div>
+            <div className="text-[10px] capitalize text-slate-400">
+              {adventurer.race} {CLASS_LABELS[adventurer.className]}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mb-2 flex items-center justify-between">
         <span className={`text-xs font-bold uppercase tracking-wider ${style.text}`}>{quest.difficulty}</span>
         <span className="flex items-center gap-2">

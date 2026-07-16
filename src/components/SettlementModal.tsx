@@ -153,13 +153,17 @@ export default function SettlementModal({
         <div className="mb-4 space-y-2">
           {slots.map((slot) => {
             const outIng = cfg.ingredients[slot.output.ingredientId];
-            const from = fromBySlot[slot.id] ?? null;
+            const workerHere = tradingHere.find(({ w }) => w.trade?.slotId === slot.id);
+            // A worker actively trading this slot has a committed input — that
+            // takes over the "From" display permanently (until recalled/changed),
+            // rather than the transient local picker selection.
+            const committedFrom = workerHere?.w.trade?.inputIngredientId ?? null;
+            const from = committedFrom ?? (fromBySlot[slot.id] ?? null);
             const fromIng = from ? cfg.ingredients[from] : null;
             const fromCount = fromIng ? inv[fromIng.id] ?? 0 : 0;
             const isActive = slot.id === activeSlot?.id;
-            const short = !!fromIng && fromCount < slot.input.count;
+            const short = !!fromIng && !workerHere && fromCount < slot.input.count;
             const surplus = prosperityEntry.surplus[slot.id] ?? 0;
-            const workerHere = tradingHere.find(({ w }) => w.trade?.slotId === slot.id);
             return (
               <button
                 key={slot.id}
@@ -177,7 +181,11 @@ export default function SettlementModal({
                   )}
                 </div>
                 <div className="flex items-center gap-2.5">
-                  {/* "From" slot — styled like a brewer recipe slot */}
+                  {/* "From" slot — styled like a brewer recipe slot. Once a
+                      worker is assigned, this shows their committed ingredient
+                      permanently (not the transient picker pick), and the
+                      badge switches from "stash count" to "banked surplus" —
+                      same plain ×N style as everywhere else, no gain-styled +N. */}
                   <span
                     role="button"
                     tabIndex={0}
@@ -186,7 +194,7 @@ export default function SettlementModal({
                     className={`relative flex h-14 w-14 shrink-0 cursor-pointer flex-col items-center justify-center rounded-lg border text-xs transition active:scale-95 ${
                       fromIng ? "border-amber-500/40 bg-slate-800 hover:border-amber-400" : "border-dashed border-amber-600/50 bg-slate-800/70 hover:border-amber-400"
                     }`}
-                    title="Choose which ingredient to send"
+                    title={workerHere ? `${workerHere.w.name} is trading this — tap to change for the next run` : "Choose which ingredient to send"}
                   >
                     {fromIng ? (
                       <>
@@ -195,7 +203,7 @@ export default function SettlementModal({
                           {fromIng.name}
                         </span>
                         <span className={`absolute right-1 top-1 font-bold leading-none ${short ? "text-rose-500" : "text-slate-300"}`} style={{ fontSize: "9px" }}>
-                          {fromCount > 999 ? "999+" : fromCount}
+                          {workerHere ? `×${surplus}` : fromCount > 999 ? "999+" : fromCount}
                         </span>
                       </>
                     ) : (
@@ -207,8 +215,8 @@ export default function SettlementModal({
                   </span>
                   <span className="text-[10px] font-semibold text-slate-500">×{slot.input.count}</span>
                   <ArrowRight size={16} className="shrink-0 text-amber-700" />
-                  {/* Fixed output — badge shows banked surplus, like an ingredient count */}
-                  <span className="relative flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-2.5 py-2">
+                  {/* Fixed output */}
+                  <span className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-2.5 py-2">
                     {outIng && <IngredientSvg category={outIng.category} rarity={outIng.rarity} size={24} />}
                     <span className="min-w-0">
                       <span className="block truncate text-xs font-semibold" style={{ color: outIng ? RARITY_COLOR[outIng.rarity] : undefined }}>
@@ -218,14 +226,6 @@ export default function SettlementModal({
                         ×{slot.output.count} · {outIng ? outIng.rarity : ""} · 🪙 {outIng ? fmt(outIng.base_value) : "?"} each
                       </span>
                     </span>
-                    {surplus > 0 && (
-                      <span
-                        className="absolute right-1.5 top-1 text-[10px] font-bold text-emerald-400"
-                        title={`${surplus} input credit banked toward the next delivery`}
-                      >
-                        +{surplus}
-                      </span>
-                    )}
                   </span>
                   {/* Worker-here indicator — one worker can trade a slot at a time */}
                   {workerHere && (

@@ -199,13 +199,22 @@ export function processBulkTrade(
 
 /**
  * How many input items a worker packs for a trade run: their full effective
- * carry capacity, never less than one recipe's requirement (so a fresh worker
- * can always run the minimum trade), bounded by what the stash holds.
+ * carry capacity, bounded by what the stash holds, at least 1 (so a fresh
+ * worker with any stash always has something to haul).
+ *
+ * Deliberately does NOT force at least `inputRequirement` per trip — a
+ * carry-constrained worker (e.g. carry 2 vs. a 4-for-1 offer) is meant to
+ * ship partial loads that accumulate in the settlement's surplus ledger
+ * (see processBulkTrade) across multiple round trips until a full recipe's
+ * worth has landed. Forcing the full requirement in one go — the previous
+ * behaviour — defeated the Bulk Fractional Ledger entirely: a low-carry
+ * worker would just haul the whole requirement in a single trip whenever
+ * the stash covered it, so surplus could never build up from zero.
  */
 export function bulkShipmentSize(
   stashCount: number,
   inputRequirement: number,
   carryCap: number
 ): number {
-  return Math.max(inputRequirement, Math.min(stashCount, Math.max(inputRequirement, carryCap)));
+  return Math.max(1, Math.min(stashCount, carryCap));
 }

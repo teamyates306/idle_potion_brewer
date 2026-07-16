@@ -113,6 +113,13 @@ export default function App() {
         <div className="pointer-events-auto flex items-center gap-2">
           <CoinCounter />
           <button
+            onClick={() => setPanel("help")}
+            className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
+            title="How to Play"
+          >
+            <HelpCircle size={16} />
+          </button>
+          <button
             onClick={() => setSettingsOpen(true)}
             className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
             title="Settings"
@@ -160,7 +167,7 @@ export default function App() {
           className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
           title="Trophy Case"
         >
-          <Gem size={18} className="text-cyan-700" />
+          <Gem size={18} className="text-amber-700" />
           <span>Trophies</span>
         </button>
         {hasMastery && (
@@ -188,14 +195,6 @@ export default function App() {
             <span>GAX</span>
           </button>
         )}
-        <button
-          onClick={() => setPanel("help")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-          title="How to Play"
-        >
-          <HelpCircle size={18} className="text-teal-800" />
-          <span>Help</span>
-        </button>
         {hasAbacus && (
           <button
             onClick={() => setPanel("supply")}

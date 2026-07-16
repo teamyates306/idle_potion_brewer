@@ -264,6 +264,15 @@ body {
 .ticker-track:hover { animation-play-state: paused; }
 .anim-throttle .ticker-track { animation-duration: 90s !important; }
 
+/* Window walkers — a distant adventurer sprite crossing behind the workshop
+   windows. --walk-from/--walk-to (px, in wall-SVG user units) are set per
+   instance; the element itself is duplicated once per window (each clipped
+   to that window's pane) so it reads as one figure passing behind them all. */
+@keyframes wall-walk {
+  from { transform: translateX(var(--walk-from)); }
+  to   { transform: translateX(var(--walk-to)); }
+}
+
 /* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
 @keyframes lamp-flicker {
   0%,  100% { opacity: 1;    }

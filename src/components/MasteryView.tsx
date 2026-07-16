@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
+import { ChevronUp, HelpCircle } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import {
@@ -28,42 +29,13 @@ function formatEffect(type: string, value: number): string {
 
 type PendingNode = { node: MasteryNodeDef; tree: MasteryTreeDef };
 
-function NodeButton({
-  node, isUnlocked, isAvailable, canAfford,
-  onClick, treeColor,
-}: {
-  node: MasteryNodeDef;
-  isUnlocked: boolean;
-  isAvailable: boolean;
-  canAfford: boolean;
-  onClick: () => void;
-  treeColor: string;
-}) {
-  let ringStyle = "border border-slate-600 bg-slate-800/80 opacity-40";
-  if (isUnlocked) ringStyle = "border-2 cursor-default";
-  else if (isAvailable && canAfford) ringStyle = "border-2 cursor-pointer hover:scale-110 active:scale-95";
-  else if (isAvailable && !canAfford) ringStyle = "border-2 opacity-60 cursor-pointer hover:scale-105";
-  else ringStyle = "border border-slate-600 bg-slate-800/80 opacity-40 cursor-pointer hover:opacity-60";
-
-  return (
-    <button
-      onClick={isUnlocked ? undefined : onClick}
-      disabled={isUnlocked}
-      className={`flex h-12 w-12 items-center justify-center rounded-full text-xl transition-transform ${ringStyle}`}
-      style={
-        isUnlocked
-          ? { borderColor: treeColor, background: `${treeColor}33`, boxShadow: `0 0 10px ${treeColor}66` }
-          : isAvailable
-          ? { borderColor: treeColor, background: "rgba(30,27,46,0.9)" }
-          : undefined
-      }
-    >
-      {node.icon}
-    </button>
-  );
-}
-
-function TreeColumn({
+/**
+ * One tree = one horizontal bar of 10 rectangular tier segments, left to
+ * right. No icons — colour (tree.accentColor) plus a tier number is the
+ * entire visual language, so every tree reads at a glance and several rows
+ * fit on screen together.
+ */
+function TreeBar({
   tree, unlockedSet, masteryTokens, onNodeClick,
 }: {
   tree: MasteryTreeDef;
@@ -71,47 +43,50 @@ function TreeColumn({
   masteryTokens: number;
   onNodeClick: (node: MasteryNodeDef, tree: MasteryTreeDef) => void;
 }) {
-  return (
-    <div className="flex min-w-[130px] flex-1 flex-col items-center">
-      <div
-        className="mb-3 w-full rounded-t-lg border-b-2 px-2 py-3 text-center"
-        style={{ borderColor: tree.accentColor, background: `${tree.accentColor}18` }}
-      >
-        <div className="text-2xl">{tree.icon}</div>
-        <div className="mt-1 text-[11px] font-bold uppercase tracking-wider" style={{ color: tree.accentColor }}>
-          {tree.name}
-        </div>
-        <div className="mt-0.5 text-[9px] leading-tight text-slate-500">{tree.description}</div>
-      </div>
+  const unlockedCount = tree.nodes.filter((n) => unlockedSet.has(n.id)).length;
 
-      <div className="relative flex flex-col items-center gap-0">
+  return (
+    <div className="rounded-lg border border-slate-700/60 bg-slate-800/40 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-slate-100">
+          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: tree.accentColor }} />
+          {tree.name}
+        </span>
+        <span className="text-[11px] font-semibold text-slate-300">{unlockedCount} / {tree.nodes.length}</span>
+      </div>
+      <div className="flex gap-[3px]">
         {tree.nodes.map((node, idx) => {
           const isUnlocked = unlockedSet.has(node.id);
           const parentUnlocked = !node.parentId || unlockedSet.has(node.parentId);
           const isAvailable = !isUnlocked && parentUnlocked;
           const canAfford = masteryTokens >= node.cost;
 
+          let bg = "rgba(100,110,130,0.18)"; // locked (parent not yet unlocked)
+          let extraStyle: CSSProperties = {};
+          let extraClass = "";
+          if (isUnlocked) {
+            bg = tree.accentColor;
+          } else if (isAvailable && canAfford) {
+            bg = `${tree.accentColor}80`;
+            extraStyle = { boxShadow: `0 0 0 1.5px ${tree.accentColor}` };
+            extraClass = "animate-pulse";
+          } else if (isAvailable) {
+            bg = `${tree.accentColor}40`;
+          }
+
           return (
-            <div key={node.id} className="flex flex-col items-center">
-              {idx > 0 && (
-                <div
-                  className="w-0.5 h-4"
-                  style={{
-                    background: unlockedSet.has(tree.nodes[idx - 1].id)
-                      ? tree.accentColor
-                      : "rgba(100,100,120,0.4)",
-                  }}
-                />
-              )}
-              <NodeButton
-                node={node}
-                isUnlocked={isUnlocked}
-                isAvailable={isAvailable}
-                canAfford={canAfford}
-                onClick={() => onNodeClick(node, tree)}
-                treeColor={tree.accentColor}
-              />
-            </div>
+            <button
+              key={node.id}
+              onClick={() => onNodeClick(node, tree)}
+              disabled={isUnlocked}
+              title={node.name}
+              className={`flex h-6 flex-1 items-center justify-center rounded-[3px] text-[10px] font-bold transition-transform ${
+                isUnlocked ? "cursor-default text-white" : "cursor-pointer text-slate-100 hover:scale-y-110"
+              } ${extraClass}`}
+              style={{ background: bg, ...extraStyle }}
+            >
+              {idx + 1}
+            </button>
           );
         })}
       </div>
@@ -134,11 +109,12 @@ function NodeConfirmModal({
   const isAvailable = !isUnlocked && parentUnlocked;
   const canAfford = masteryTokens >= node.cost;
   const canUnlock = isAvailable && canAfford;
+  const tierIdx = tree.nodes.findIndex((n) => n.id === node.id);
 
   let statusMsg: string | null = null;
   if (!parentUnlocked) {
     const parentNode = tree.nodes.find((n) => n.id === node.parentId);
-    statusMsg = `Requires "${parentNode?.name ?? "parent node"}" to be unlocked first.`;
+    statusMsg = `Requires "${parentNode?.name ?? "the previous tier"}" to be unlocked first.`;
   } else if (!canAfford) {
     statusMsg = `Costs ${node.cost} mastery token${node.cost !== 1 ? "s" : ""} — you have ${masteryTokens}.`;
   }
@@ -156,16 +132,21 @@ function NodeConfirmModal({
         {/* Header */}
         <div
           className="flex items-center gap-3 px-4 py-3"
-          style={{ background: `${tree.accentColor}18`, borderBottom: `1px solid ${tree.accentColor}30` }}
+          style={{ background: `${tree.accentColor}25`, borderBottom: `1px solid ${tree.accentColor}30` }}
         >
-          <span className="text-3xl">{node.icon}</span>
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
+            style={{ background: tree.accentColor }}
+          >
+            {tierIdx + 1}
+          </span>
           <div>
-            <p className="text-sm font-bold" style={{ color: tree.accentColor }}>{node.name}</p>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">{tree.name} Tree</p>
+            <p className="text-sm font-bold text-slate-100">{node.name}</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400">{tree.name} · Tier {tierIdx + 1}</p>
           </div>
           <button
             onClick={onClose}
-            className="ml-auto rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
+            className="ml-auto rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
           >
             ✕
           </button>
@@ -173,49 +154,58 @@ function NodeConfirmModal({
 
         <div className="p-4">
           {/* Description */}
-          <p className="mb-3 text-sm text-slate-300">{node.description}</p>
+          <p className="mb-3 text-sm text-slate-200">{node.description}</p>
 
-          {/* Effect highlight */}
+          {/* Effect highlight — solid chip, white text, readable regardless of hue */}
           <div
-            className="mb-3 rounded-lg px-3 py-2 text-sm font-semibold"
-            style={{ background: `${tree.accentColor}20`, color: tree.accentColor }}
+            className="mb-3 inline-block rounded-lg px-3 py-1.5 text-sm font-bold text-white"
+            style={{ background: tree.accentColor }}
           >
             {formatEffect(node.effect.type, node.effect.value)}
           </div>
 
           {/* Cost */}
-          <p className="mb-4 text-[11px] text-slate-500">
-            Cost: <span className="text-amber-300 font-semibold">{node.cost} mastery token{node.cost !== 1 ? "s" : ""}</span>
+          <p className="mb-4 text-[11px] text-slate-300">
+            Cost: <span className="font-semibold text-amber-300">{node.cost} mastery token{node.cost !== 1 ? "s" : ""}</span>
             {canUnlock && (
-              <span className="ml-2 text-slate-600">({masteryTokens} available)</span>
+              <span className="ml-2 text-slate-500">({masteryTokens} available)</span>
             )}
           </p>
 
           {/* Status message for unavailable nodes */}
           {statusMsg && (
-            <p className="mb-4 rounded-lg border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-400">
+            <p className="mb-4 rounded-lg border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
               {statusMsg}
             </p>
           )}
 
           {/* Actions */}
-          <div className="flex gap-2">
+          {isUnlocked ? (
             <button
               onClick={onClose}
-              className="flex-1 rounded-lg border border-slate-700 bg-slate-800 py-2 text-sm font-medium text-slate-300 hover:bg-slate-700 transition"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 transition"
             >
-              Cancel
+              Close
             </button>
-            {canUnlock && (
+          ) : (
+            <div className="flex gap-2">
               <button
-                onClick={onConfirm}
-                className="flex-1 rounded-lg py-2 text-sm font-bold text-white transition hover:brightness-110 active:scale-95"
-                style={{ background: tree.accentColor }}
+                onClick={onClose}
+                className="flex-1 rounded-lg border border-slate-700 bg-slate-800 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 transition"
               >
-                Spend Token ✨
+                Cancel
               </button>
-            )}
-          </div>
+              {canUnlock && (
+                <button
+                  onClick={onConfirm}
+                  className="flex-1 rounded-lg py-2 text-sm font-bold text-white transition hover:brightness-110 active:scale-95"
+                  style={{ background: tree.accentColor }}
+                >
+                  Spend Token
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -229,6 +219,7 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
   const unlockMasteryNode = useGameStore((s) => s.unlockMasteryNode);
 
   const [pending, setPending] = useState<PendingNode | null>(null);
+  const [showExplainer, setShowExplainer] = useState(false);
 
   const unlockedSet = new Set(masteryUnlocks);
   const effects = computeMasteryEffects(masteryUnlocks);
@@ -249,65 +240,64 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
     <>
       <Modal title="Mastery" onClose={onClose} accent="#f59e0b">
         {/* Stats bar */}
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-800/30 bg-amber-950/20 px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-lg">✨</span>
-            <div>
-              <div className="text-xs font-bold text-amber-300">{masteryTokens} token{masteryTokens !== 1 ? "s" : ""}</div>
-              <div className="text-[10px] text-slate-500">available to spend</div>
-            </div>
-          </div>
-          <div className="mx-2 h-8 w-px bg-slate-700" />
+        <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-800/30 bg-amber-950/25 px-3 py-2">
           <div>
-            <div className="text-xs font-bold text-purple-300">{masteredCount} mastered</div>
-            <div className="text-[10px] text-slate-500">{totalDiscovered} potions tracked</div>
+            <div className="text-xs font-bold text-amber-300">{masteryTokens} token{masteryTokens !== 1 ? "s" : ""}</div>
+            <div className="text-[10px] text-slate-300">available to spend</div>
           </div>
-          {activeEffects.length > 0 && (
-            <>
-              <div className="mx-2 h-8 w-px bg-slate-700" />
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                {activeEffects.map(([type, val]) => (
-                  <span key={type} className="text-[10px] text-emerald-400">
-                    {formatEffect(type, val)}
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
+          <div className="mx-1 h-8 w-px bg-slate-700" />
+          <div>
+            <div className="text-xs font-bold text-slate-100">{masteredCount} mastered</div>
+            <div className="text-[10px] text-slate-300">{totalDiscovered} potions tracked</div>
+          </div>
+          <button
+            onClick={() => setShowExplainer((x) => !x)}
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-600 text-slate-300 hover:border-amber-500 hover:text-amber-300"
+            title="How Mastery works"
+          >
+            {showExplainer ? <ChevronUp size={13} /> : <HelpCircle size={13} />}
+          </button>
         </div>
 
-        {/* What mastery is — always visible so the screen explains itself */}
-        <div className="mb-3 rounded-lg border border-slate-700/60 bg-slate-800/40 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-          <span className="font-semibold text-amber-800">How Mastery works:</span>{" "}
-          Every brew builds that potion's <span className="text-purple-800 font-medium">Potion Mastery</span> —
-          each level shaves up to <span className="font-medium">15% off its brew time</span> at Lv 10, which also awards
-          a <span className="text-amber-700 font-medium">✨ Mastery Token</span>. Spend tokens below on permanent
-          <span className="font-medium"> Mastery Tree</span> bonuses. Tree and potion bonuses add together
-          (capped at −80% brew time).
-        </div>
+        {showExplainer && (
+          <div className="mb-3 rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-200">
+            Brewing a potion builds its own Mastery — level 10 (~12h brewing that potion) shaves up to 15% off
+            its brew time and awards a token. Spend tokens below on permanent tree bonuses. Tree and potion
+            bonuses stack (capped at −80% brew time). Tap any tier to see its effect and unlock it.
+          </div>
+        )}
+
+        {activeEffects.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {activeEffects.map(([type, val]) => (
+              <span key={type} className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                {formatEffect(type, val)}
+              </span>
+            ))}
+          </div>
+        )}
+
         {masteryTokens === 0 && masteryUnlocks.length === 0 && (
-          <p className="mb-3 rounded-lg bg-slate-800/60 px-3 py-2 text-center text-xs text-slate-500">
+          <p className="mb-3 rounded-lg bg-slate-800/60 px-3 py-2 text-center text-xs text-slate-300">
             Reach mastery level 10 on any potion (roughly 12 hours of brewing it) to earn your first token.
           </p>
         )}
 
-        {/* Tree columns — horizontal scroll on small screens */}
-        <div className="overflow-x-auto pb-2">
-          <div className="flex min-w-max gap-1">
-            {MASTERY_TREES.map((tree) => (
-              <TreeColumn
-                key={tree.id}
-                tree={tree}
-                unlockedSet={unlockedSet}
-                masteryTokens={masteryTokens}
-                onNodeClick={(node, t) => setPending({ node, tree: t })}
-              />
-            ))}
-          </div>
+        {/* Tree bars — every tree visible together, no scrolling needed */}
+        <div className="space-y-2">
+          {MASTERY_TREES.map((tree) => (
+            <TreeBar
+              key={tree.id}
+              tree={tree}
+              unlockedSet={unlockedSet}
+              masteryTokens={masteryTokens}
+              onNodeClick={(node, t) => setPending({ node, tree: t })}
+            />
+          ))}
         </div>
 
-        <p className="mt-3 text-center text-[10px] text-slate-600">
-          Tap any node to preview its effect · unlock parent nodes first
+        <p className="mt-3 text-center text-[10px] text-slate-400">
+          Tap any tier to preview its effect · earlier tiers must be unlocked first
         </p>
       </Modal>
 

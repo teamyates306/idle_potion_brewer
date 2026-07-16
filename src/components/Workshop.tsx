@@ -12,8 +12,11 @@ import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
+import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
 import { parsePotionVisuals, DEFAULT_LIQUID_COLOR } from "../util/potionVisuals";
 import { describePotion } from "../engine/potions";
+import { generateAdventurer, type Adventurer } from "../data/questSprites";
+import { useWalkerTuningStore, type WalkerTuning } from "../store/walkerTuningStore";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
@@ -1098,6 +1101,87 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
     </g>
   );
 }
+// ── Window walkers — an occasional distant adventurer crossing behind the
+// windows (see art/AdventurerSpriteSvg + data/questSprites). Rendered once per
+// window, each clipped to that window's own pane, so the same synchronised
+// CSS translateX animation reads as a single figure walking behind them all.
+interface WallWalkerCfg {
+  id: string;
+  adventurer: Adventurer;
+  direction: "ltr" | "rtl";
+  duration: number; // seconds to cross the whole wall — varies per walker
+  size: number;
+  fromX: number;
+  toX: number;
+  y: number; // feet baseline, in wall-SVG user units
+}
+
+function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning, forceSpawnToken: number): WallWalkerCfg[] {
+  const [walkers, setWalkers] = useState<WallWalkerCfg[]>([]);
+  // Tuning changes shouldn't restart the whole spawn cycle (that would cancel
+  // an in-flight walker) — read the latest values via a ref inside the timer.
+  const tuningRef = useRef(tuning);
+  tuningRef.current = tuning;
+
+  useEffect(() => {
+    if (!enabled) { setWalkers([]); return; }
+    let cancelled = false;
+    let timer = 0;
+    const spawnOne = () => {
+      if (cancelled) return;
+      const t = tuningRef.current;
+      const id = `walker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const adventurer = generateAdventurer(id);
+      if (!adventurer) { timer = window.setTimeout(spawnOne, 20000); return; }
+      const direction: "ltr" | "rtl" = Math.random() < 0.5 ? "ltr" : "rtl";
+      const jitter = 0.85 + Math.random() * 0.3; // ±15%, "slightly varying paces"
+      const size = t.size * jitter;
+      const duration = (width / Math.max(1, t.speed)) * jitter;
+      const off = size * 2;
+      const fromX = direction === "ltr" ? -off : width + off;
+      const toX = direction === "ltr" ? width + off : -off;
+      const y = t.y + Math.random() * 5 - 2.5;
+      const cfg: WallWalkerCfg = { id, adventurer, direction, duration, size, fromX, toX, y };
+      setWalkers((w) => [...w, cfg]);
+      timer = window.setTimeout(() => {
+        if (cancelled) return;
+        setWalkers((w) => w.filter((x) => x.id !== id));
+        timer = window.setTimeout(spawnOne, tuningRef.current.gapSec * 1000 * (0.5 + Math.random()));
+      }, duration * 1000);
+    };
+    timer = window.setTimeout(spawnOne, 2000 + Math.random() * 5000);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tuning read via ref, deliberately excluded
+  }, [enabled, width]);
+
+  // "Spawn now" preview button — bypasses the timer for an immediate extra walker.
+  const skipFirst = useRef(true);
+  useEffect(() => {
+    if (skipFirst.current) { skipFirst.current = false; return; }
+    if (!enabled) return;
+    const t = tuningRef.current;
+    const id = `walker-force-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const adventurer = generateAdventurer(id);
+    if (!adventurer) return;
+    const direction: "ltr" | "rtl" = Math.random() < 0.5 ? "ltr" : "rtl";
+    const size = t.size;
+    const duration = width / Math.max(1, t.speed);
+    const off = size * 2;
+    const fromX = direction === "ltr" ? -off : width + off;
+    const toX = direction === "ltr" ? width + off : -off;
+    const y = t.y + Math.random() * 5 - 2.5;
+    const cfg: WallWalkerCfg = { id, adventurer, direction, duration, size, fromX, toX, y };
+    setWalkers((w) => [...w, cfg]);
+    const cleanupTimer = window.setTimeout(() => {
+      setWalkers((w) => w.filter((x) => x.id !== id));
+    }, duration * 1000);
+    return () => window.clearTimeout(cleanupTimer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tuning read via ref, deliberately excluded
+  }, [forceSpawnToken, enabled, width]);
+
+  return walkers;
+}
+
 // Shared helpers — used by WorkshopWall (SVG) and the overlay layers below
 function computeWindowPositions(width: number): number[] {
   const SPACING = 150;
@@ -1131,7 +1215,7 @@ function WallWindowLight({ cx }: { cx: number }) {
     </g>
   );
 }
-function WallWindow({ cx }: { cx: number }) {
+function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
   const id = `win${Math.round(cx)}`;
   const x = cx - 24, w = 48, y = 70, h = 64;
   return (
@@ -1145,6 +1229,21 @@ function WallWindow({ cx }: { cx: number }) {
           style={{ fill: "var(--dn-hill-far, rgb(80,120,60))", transition: "fill 3s ease-in-out" }} />
         <path d={`M ${x},${y + 52} Q ${cx - 6},${y + 42} ${cx + 4},${y + 47} Q ${cx + 14},${y + 51} ${x + w},${y + 45} L ${x + w},${y + h} L ${x},${y + h} Z`}
           style={{ fill: "var(--dn-hill-near, rgb(58,122,24))", transition: "fill 3s ease-in-out" }} />
+        {/* Distant adventurers crossing the road — behind the window frame, in
+            front of the hills. Same config rendered once per window (each
+            independently clipped) so it reads as one figure walking past. */}
+        {walkers.map((wk) => (
+          <g
+            key={wk.id}
+            style={{
+              ["--walk-from" as string]: `${wk.fromX}px`,
+              ["--walk-to" as string]: `${wk.toX}px`,
+              animation: `wall-walk ${wk.duration}s linear 1 forwards`,
+            }}
+          >
+            <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
+          </g>
+        ))}
         <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0"
           style={{ opacity: "calc(0.7 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
         <circle cx={cx - 2} cy={y + 6} r="1.1" fill="#e0eeff"
@@ -1183,6 +1282,10 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
   const windows = computeWindowPositions(width);
   const lamps = computeLampPositions(width);
   const signX = Math.round(center);
+  const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
+  const walkerTuning = useWalkerTuningStore((s) => ({ size: s.size, speed: s.speed, gapSec: s.gapSec, y: s.y }));
+  const forceSpawnToken = useWalkerTuningStore((s) => s.forceSpawnToken);
+  const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken);
 
   return (
     <button
@@ -1220,7 +1323,7 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
           <WallWindowLight key={x} cx={x} />
         ))}
         {windows.map((x) => (
-          <WallWindow key={x} cx={x} />
+          <WallWindow key={x} cx={x} walkers={walkers} />
         ))}
         {lamps.map((x) => (
           <WallLamp key={x} cx={x} />

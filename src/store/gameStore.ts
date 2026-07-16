@@ -469,14 +469,15 @@ export interface GraphicsSettings {
   wallShadow: boolean;
   lampGlow: boolean;
   windowBeams: boolean;
+  windowWalkers: boolean;
 }
 
 // Canonical presets — each quality level turns on a superset of the one below
 export const QUALITY_PRESETS: GraphicsSettings[] = [
-  { quality: 0, dayNight: true,  vignette: true,  motes: false, throttle_animations: true,  wallShadow: false, lampGlow: false, windowBeams: false },
-  { quality: 1, dayNight: true,  vignette: true,  motes: false, throttle_animations: false, wallShadow: true,  lampGlow: false, windowBeams: false },
-  { quality: 2, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: false },
-  { quality: 3, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: true  },
+  { quality: 0, dayNight: true,  vignette: true,  motes: false, throttle_animations: true,  wallShadow: false, lampGlow: false, windowBeams: false, windowWalkers: false },
+  { quality: 1, dayNight: true,  vignette: true,  motes: false, throttle_animations: false, wallShadow: true,  lampGlow: false, windowBeams: false, windowWalkers: false },
+  { quality: 2, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: false, windowWalkers: true  },
+  { quality: 3, dayNight: true,  vignette: true,  motes: true,  throttle_animations: false, wallShadow: true,  lampGlow: true,  windowBeams: true,  windowWalkers: true  },
 ];
 
 const DEFAULT_GRAPHICS: GraphicsSettings = QUALITY_PRESETS[3];
@@ -1413,6 +1414,29 @@ export const useGameStore = create<GameState>()(
           return;
         }
 
+        const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
+        if (ingredients.length !== slotIds.length) {
+          // Stale recipe: a slot references an ingredient id that no longer
+          // exists (world content changed under an old save). Clear the dead
+          // slots and stop the machine instead of consuming phantom inventory
+          // and brewing a zero-ingredient ghost potion (empty hash "" — shows
+          // in the pile art but never in the potion list).
+          set({
+            machines: s.machines.map((m, i) =>
+              i === mi
+                ? {
+                    ...m,
+                    recipe_slots: m.recipe_slots.map((id) => (id && cfg.ingredients[id] ? id : null)),
+                    running: false,
+                    brew_started_at: null,
+                    brew_stalled: false,
+                  }
+                : m
+            ),
+          });
+          return;
+        }
+
         const need: Record<string, number> = {};
         for (const id of slotIds) need[id] = (need[id] ?? 0) + 1;
         const inv = { ...s.ingredientInv };
@@ -1427,8 +1451,6 @@ export const useGameStore = create<GameState>()(
           }
         }
         for (const [id, n] of Object.entries(need)) inv[id] -= n;
-
-        const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter(Boolean);
         const potion = describePotion(ingredients, cfg.formulas);
         const masteryFx = computeMasteryEffects(s.masteryUnlocks);
         // Global mastery multi-brew is additive ON TOP of the brewer's own %.
@@ -2167,7 +2189,10 @@ export const useGameStore = create<GameState>()(
             const ingredients = slotIds
               .map((id) => cfg.ingredients[id])
               .filter((x): x is Ingredient => !!x);
-            if (ingredients.length === 0) return machine;
+            // Any unresolvable slot id = stale recipe from an old save; skip
+            // rather than consuming phantom inventory / brewing a mismatched
+            // subset (the live completeBrew clears the dead slots on next tick).
+            if (ingredients.length !== slotIds.length) return machine;
 
             const reductionRate = machineReductionPerSec[machine.id] ?? 0;
             const realElapsed = machine.brew_stalled
@@ -2629,6 +2654,54 @@ export const useGameStore = create<GameState>()(
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<GameState> & { machine?: BrewingMachine };
+        // ── Stale-ingredient scrub ─────────────────────────────────────────
+        // Worldgen is seeded-deterministic, so procedural ingredient ids are
+        // stable across loads — but a content update that changes the
+        // generator reshuffles them. A save carrying old ids would otherwise
+        // "ghost brew": recipe slots render empty (lookup fails) while the
+        // loop consumes stale inventory and brews a zero-ingredient phantom
+        // potion under the empty hash "" (visible in the pile art, invisible
+        // in the potion list). Drop every reference to an unknown id up front.
+        {
+          const registry = useConfigStore.getState().ingredients;
+          const known = (id: string) => !!registry[id];
+          const hashOk = (hash: string) => hash.length > 0 && hash.split("+").every(known);
+          if (p.ingredientInv) {
+            p.ingredientInv = Object.fromEntries(
+              Object.entries(p.ingredientInv).filter(([id]) => known(id))
+            );
+          }
+          if (p.discovered) p.discovered = p.discovered.filter(known);
+          if (p.discoveredPotions) p.discoveredPotions = p.discoveredPotions.filter(hashOk);
+          if (p.autoSellHashes) p.autoSellHashes = p.autoSellHashes.filter(hashOk);
+          if (p.potionInv) {
+            p.potionInv = Object.fromEntries(
+              Object.entries(p.potionInv).filter(([hash]) => hashOk(hash))
+            );
+          }
+          if (p.discovered_location_drops) {
+            p.discovered_location_drops = Object.fromEntries(
+              Object.entries(p.discovered_location_drops).map(([loc, ids]) => [loc, ids.filter(known)])
+            );
+          }
+          if (Array.isArray(p.machines)) {
+            p.machines = p.machines.map((m) => ({
+              ...m,
+              recipe_slots: m.recipe_slots.map((id) => (id && known(id) ? id : null)),
+            }));
+          }
+          if (Array.isArray(p.workers)) {
+            p.workers = p.workers.map((w) => {
+              const t = w.trade;
+              if (t && (!known(t.inputIngredientId) || !known(t.outputIngredientId))) {
+                // In-flight trade references a dead ingredient: recall the
+                // worker to idle rather than delivering phantom goods.
+                return { ...w, trade: null, assigned_settlement: null, trip_started_at: null, trip_phase: "idle" as const };
+              }
+              return w;
+            });
+          }
+        }
         const workers = (p.workers ?? current.workers).map((w) => {
           const wp = w as Partial<Worker>;
           return {

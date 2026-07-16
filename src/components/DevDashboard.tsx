@@ -5,9 +5,11 @@ import { useGameStore } from "../store/gameStore";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { masteryLevel, MASTERY_XP_THRESHOLDS } from "../data/masteryTrees";
 import { describeFromHash } from "../engine/potions";
+import { useWalkerTuningStore } from "../store/walkerTuningStore";
+import WindowWalkerPreview from "./dev/WindowWalkerPreview";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -88,7 +90,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-slate-800 bg-slate-900">
-        {(["cheats","formulas","attributes","ingredients","locations"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations","walkers"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -108,6 +110,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "attributes"  && <AttributeMultsTab />}
         {tab === "ingredients" && <IngredientsTab search={search} />}
         {tab === "locations"   && <LocationsTab search={search} />}
+        {tab === "walkers"     && <WalkersTab />}
       </div>
     </div>
   );
@@ -688,6 +691,107 @@ function TextInput({ value, onChange }: { value: string; onChange: (v: string) =
       onChange={(e) => onChange(e.target.value)}
       className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none focus:ring-1 focus:ring-rose-500"
     />
+  );
+}
+
+function Slider({
+  label, value, min, max, step = 1, unit = "", onChange,
+}: {
+  label: string; value: number; min: number; max: number; step?: number; unit?: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-500">
+        <span>{label}</span>
+        <span className="font-mono text-slate-300">{value.toFixed(step < 1 ? 2 : 0)}{unit}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full accent-rose-500"
+      />
+    </div>
+  );
+}
+
+// ── Window Walkers (live-tunable adventurer sprites crossing the wall windows) ──
+function WalkersTab() {
+  const tuning = useWalkerTuningStore();
+  const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers);
+
+  return (
+    <div className="max-w-3xl">
+      <Section title="Window Walkers">
+        {!windowWalkersOn && (
+          <p className="mb-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            Window walkers are off at the current graphics quality (needs Medium or higher) — this preview
+            works regardless, but nothing will render in the real workshop wall until quality is raised.
+          </p>
+        )}
+        <div className="flex flex-wrap items-start gap-6">
+          <div>
+            <WindowWalkerPreview />
+            <p className="mt-1.5 max-w-[280px] text-[10px] leading-snug text-slate-500">
+              Loops continuously (ignores "time between walkers" — that only paces the real in-game spawn
+              timer, not this always-on preview). Dashed red line marks the exact feet baseline from the
+              vertical-position slider.
+            </p>
+          </div>
+          <div className="min-w-[220px] flex-1 space-y-4">
+            <Slider
+              label="Sprite size"
+              value={tuning.size}
+              min={8}
+              max={48}
+              step={1}
+              unit="px"
+              onChange={(v) => tuning.set({ size: v })}
+            />
+            <Slider
+              label="Walk speed"
+              value={tuning.speed}
+              min={5}
+              max={80}
+              step={1}
+              unit="px/s"
+              onChange={(v) => tuning.set({ speed: v })}
+            />
+            <Slider
+              label="Time between walkers"
+              value={tuning.gapSec}
+              min={2}
+              max={60}
+              step={1}
+              unit="s avg"
+              onChange={(v) => tuning.set({ gapSec: v })}
+            />
+            <Slider
+              label="Vertical position"
+              value={tuning.y}
+              min={60}
+              max={150}
+              step={1}
+              unit="y"
+              onChange={(v) => tuning.set({ y: v })}
+            />
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Btn onClick={() => tuning.spawnNow()}>Spawn one now (real wall)</Btn>
+              <Btn onClick={() => tuning.reset()}>Reset to defaults</Btn>
+            </div>
+          </div>
+        </div>
+        <p className="mt-4 max-w-lg text-[11px] text-slate-500">
+          Each walker's actual size/speed is randomised ±15% around these values for "slightly varying
+          paces" — the preview shows the exact base value, not the jittered range. These values reset on
+          reload; once you're happy, tell me the numbers and I'll bake them in as the new defaults.
+        </p>
+      </Section>
+    </div>
   );
 }
 
