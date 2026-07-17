@@ -1,4 +1,4 @@
-import { Bell, BellOff, Layers } from "lucide-react";
+import { Bell, BellOff, Crown, Layers } from "lucide-react";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
 import { useGameStore } from "../store/gameStore";
@@ -42,7 +42,7 @@ function QualitySlider({ quality, onChange }: { quality: 0 | 1 | 2 | 3; onChange
   );
 }
 
-export default function SettingsModal({ onClose }: { onClose: () => void }) {
+export default function SettingsModal({ onClose, onOpenAccount }: { onClose: () => void; onOpenAccount?: () => void }) {
   const { toastsEnabled, toggleToasts } = useSettingsStore();
   const quality    = useGameStore((s) => s.graphics.quality);
   const setQuality = useGameStore((s) => s.setQuality);
@@ -52,7 +52,23 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="Settings" onClose={onClose} accent="#f59e0b">
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Workshop</p>
+        {onOpenAccount && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Online</p>
+            <button
+              onClick={onOpenAccount}
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-600 bg-slate-800/60 px-4 py-3 text-left transition hover:border-amber-600/40"
+            >
+              <span className="text-amber-400"><Crown size={16} /></span>
+              <div className="min-w-0">
+                <div className="text-sm text-slate-200">Account</div>
+                <div className="text-[11px] text-slate-500">Guild registry sign-in, nickname, rivals &amp; data</div>
+              </div>
+            </button>
+          </>
+        )}
+
+        <p className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Workshop</p>
         <div className="flex items-center justify-between rounded-xl border border-slate-600 bg-slate-800/60 px-4 py-3">
           <span className="text-sm text-slate-200">Sign name</span>
           <EditableName

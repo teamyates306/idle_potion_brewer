@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
-import { User, Package, ShoppingBag, Settings2 } from "lucide-react";
+import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
@@ -513,7 +513,7 @@ const MachineColumn = React.memo(function MachineColumn({
           className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-600/70 bg-slate-900/80 text-slate-400 shadow backdrop-blur-sm transition hover:bg-slate-700 hover:text-slate-100 active:scale-90"
           title={`Manage ${machine.name}`}
         >
-          <Settings2 size={11} />
+          <Settings size={11} />
         </button>
 
         <div
@@ -1133,18 +1133,33 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 // ── Workshop wall — repeating windows around a single central door ─────────────
 function WallDoor({ cx }: { cx: number }) {
   const fx = cx - 38; // frame left (76 wide), workers emerge from here
+  // The oval pane in door.svg is already translucent art (grey, ~20% opacity)
+  // rather than opaque — but that only means it TINTS whatever sits behind it,
+  // and until now that was the solid brick backing rect below, so the door's
+  // window just showed dim brick instead of the same outside vista every wall
+  // window shows. Measured from the door art's own pixels: the pane is a clean
+  // oval centred at local (37.5, 20.5), rx≈8.5 ry≈5.5 within the 76×80 canvas.
+  const winCx = fx + 37.5, winCy = 64 + 20.5, winRx = 8.5, winRy = 5.5;
   return (
     <g>
       {/* door.svg has a curved/arched silhouette with real transparent margins
           along its left/right edges. Back it with the same brick texture as the
           rest of the wall so nothing behind it bleeds through those gaps. */}
       <rect x={fx} y={64} width={76} height={80} fill="url(#wallBricks)" />
-      {/* The door's little oval window is fully self-contained in the art
-          itself — a translucent grey pane already baked into door.svg (see
-          public/sprites/door.png) — so unlike the wall windows it needs no
-          extra content layered behind it. (A previous amber "worker active"
-          glow rect was removed here: being rectangular, it spilled past the
-          arched silhouette and read as a mismatched box around the door.) */}
+      {/* Punch a matching gap through that brick backing and show the same
+          shared scene art (+ night dimming) every wall window uses, clipped to
+          the pane's oval — door.png then draws on top, so its translucent
+          glass pixels tint the real outside view instead of flat brick. */}
+      <clipPath id="doorWinClip"><ellipse cx={winCx} cy={winCy} rx={winRx} ry={winRy} /></clipPath>
+      <g clipPath="url(#doorWinClip)">
+        <use href="#wallSceneArt" />
+        <use href="#wallSceneFg" />
+        <rect x={winCx - winRx} y={winCy - winRy} width={winRx * 2} height={winRy * 2} fill="#0a1526"
+          style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
+      </g>
+      {/* (A previous amber "worker active" glow rect was removed here: being
+          rectangular, it spilled past the arched silhouette and read as a
+          mismatched box around the door.) */}
       <image href="/sprites/door.png" x={fx} y={64} width={76} height={80} style={{ imageRendering: "pixelated" }} />
     </g>
   );

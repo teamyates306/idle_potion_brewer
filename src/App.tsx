@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings2, SlidersHorizontal, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark, Gem } from "lucide-react";
+import { Settings, Settings2, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark, Gem, Crown } from "lucide-react";
 import TrophyCaseModal from "./components/TrophyCaseModal";
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
@@ -14,6 +14,11 @@ import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
 import ContentPlanView from "./ContentPlanView";
+import LeaderboardPage from "./LeaderboardPage";
+import UserProfilePage from "./UserProfilePage";
+import LeaderboardModal from "./components/LeaderboardModal";
+import CloudRestoreModal from "./components/CloudRestoreModal";
+import { useOnlineSync } from "./online/useOnlineSync";
 import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
@@ -33,7 +38,7 @@ import { masteryLevel } from "./data/masteryTrees";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | "trophies" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | "trophies" | "leaderboard" | null;
 
 // Core sprites visible the instant the workshop scene mounts — preloaded so
 // they're already decoded by the time the loading screen hands off, instead
@@ -67,6 +72,15 @@ export default function App() {
   if (typeof window !== "undefined" && window.location.pathname === "/content-plan") {
     return <ContentPlanView />;
   }
+  // Public online leaderboard (also reachable via the in-game Rankings button).
+  if (typeof window !== "undefined" && window.location.pathname === "/leaderboard") {
+    return <LeaderboardPage />;
+  }
+  // Public player profile pages: /user/<nickname>
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/user/")) {
+    const nick = decodeURIComponent(window.location.pathname.slice("/user/".length));
+    return <UserProfilePage nickname={nick} />;
+  }
 
   const welcomeBack = useGameStore((s) => s.welcomeBack);
   const applyOffline = useGameStore((s) => s.applyOffline);
@@ -88,6 +102,9 @@ export default function App() {
   const settleGax = useGameStore((s) => s.settleGax);
   const [welcomeTab, setWelcomeTab] = useState<"summary" | "market">("summary");
   const [panel, setPanel] = useState<Panel>(null);
+  // Set only when the leaderboard panel is opened via Settings → Account, so
+  // it lands there instead of the default board/join tab.
+  const [leaderboardInitialTab, setLeaderboardInitialTab] = useState<"board" | "account" | undefined>(undefined);
   const [machineTabId, setMachineTabId] = useState(1);
   const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
   // When the map is opened via "Assign to Location" from a worker, lock it to
@@ -96,6 +113,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const throttleAnims = useGameStore((s) => s.graphics.throttle_animations);
   usePerformanceMonitor();
+  useOnlineSync();
 
   // Loading screen: hold the reveal until the workshop's core sprites are
   // decoded and the day/night CSS vars have been computed at least once —
@@ -161,7 +179,7 @@ export default function App() {
             className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
             title="Settings"
           >
-            <SlidersHorizontal size={16} />
+            <Settings size={16} />
           </button>
         </div>
       </div>
@@ -198,6 +216,14 @@ export default function App() {
         >
           <Trophy size={18} className="text-amber-700" />
           <span>Achievements</span>
+        </button>
+        <button
+          onClick={() => { setLeaderboardInitialTab(undefined); setPanel("leaderboard"); }}
+          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+          title="Guild Rankings — the online leaderboard"
+        >
+          <Crown size={18} className="text-amber-700" />
+          <span>Rankings</span>
         </button>
         <button
           onClick={() => setPanel("trophies")}
@@ -274,6 +300,9 @@ export default function App() {
       {panel === "mastery"  && <MasteryView  onClose={() => setPanel(null)} />}
       {panel === "help"     && <HelpModal    onClose={() => setPanel(null)} />}
       {panel === "gax"      && <GaxDashboard onClose={() => setPanel(null)} />}
+      {panel === "leaderboard" && (
+        <LeaderboardModal onClose={() => setPanel(null)} initialTab={leaderboardInitialTab} />
+      )}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
 
       {/* Onboarding + achievement surfacing */}
@@ -281,7 +310,19 @@ export default function App() {
       <AchievementToasts />
       <HintBanner />
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsModal
+          onClose={() => setSettingsOpen(false)}
+          onOpenAccount={() => {
+            setSettingsOpen(false);
+            setLeaderboardInitialTab("account");
+            setPanel("leaderboard");
+          }}
+        />
+      )}
+
+      {/* Cross-device restore choice after a fresh sign-in */}
+      <CloudRestoreModal />
 
       <FATLayer />
 

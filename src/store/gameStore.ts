@@ -517,6 +517,15 @@ interface GameState {
    *  auto-granted on unlock, so their unlocked achievements count as collected. */
   achv_rewards_v2: boolean;
   total_brews: number;
+  // Lifetime counters for the online leaderboard (persisted, only ever grow).
+  lifetime_coins_earned: number;
+  lifetime_potions_sold: number;
+  lifetime_ingredients_gathered: number;
+  quests_completed_count: number;
+  trades_completed_count: number;
+  best_potion_value: number;
+  /** attribute key → count of potions brewed carrying that attribute (>0). */
+  attr_brews: Record<string, number>;
   lastSeen: number;
   welcomeBack: WelcomeBack | null;
   graphics: GraphicsSettings;
@@ -713,6 +722,13 @@ export const useGameStore = create<GameState>()(
       collected_achievements: [],
       achv_rewards_v2: true,
       total_brews: 0,
+      lifetime_coins_earned: 0,
+      lifetime_potions_sold: 0,
+      lifetime_ingredients_gathered: 0,
+      quests_completed_count: 0,
+      trades_completed_count: 0,
+      best_potion_value: 0,
+      attr_brews: {},
       lastSeen: now(),
       welcomeBack: null,
       questsUnlocked: false,
@@ -1094,6 +1110,7 @@ export const useGameStore = create<GameState>()(
           exploredLocations: Array.from(explored),
           discoveredAttributes,
           discovered_location_drops: locDrops,
+          lifetime_ingredients_gathered: (s.lifetime_ingredients_gathered ?? 0) + count,
           machines,
           workers,
         });
@@ -1259,7 +1276,10 @@ export const useGameStore = create<GameState>()(
             : wk
         );
 
-        set({ ingredientInv: inv, discovered, discoveredAttributes, workers });
+        set({
+          ingredientInv: inv, discovered, discoveredAttributes, workers,
+          trades_completed_count: (s.trades_completed_count ?? 0) + 1,
+        });
         pushGameEvent("trough", `+${trade.outputCount} ${outName}`);
       },
 
@@ -1505,12 +1525,21 @@ export const useGameStore = create<GameState>()(
         };
 
         const totalBrews = (s.total_brews ?? 0) + outputs;
+        // Lifetime counters (leaderboard): tag every attribute this potion carries.
+        const attrBrews = { ...(s.attr_brews ?? {}) };
+        for (const [k, v] of Object.entries(potion.stats)) {
+          if (v > 0) attrBrews[k] = (attrBrews[k] ?? 0) + outputs;
+        }
         set({
           coins,
           ingredientInv: inv,
           potionInv,
           discoveredPotions,
           total_brews: totalBrews,
+          attr_brews: attrBrews,
+          best_potion_value: Math.max(s.best_potion_value ?? 0, potion.value),
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + autoSellEarned,
+          lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + ((s.autoSellHashes ?? []).includes(potion.hash) ? outputs : 0),
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
 
@@ -1539,7 +1568,7 @@ export const useGameStore = create<GameState>()(
           // Discovery bonus: starts at 10 coins, grows with each new potion found.
           const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
           const bonus = Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
-          set((cur) => ({ coins: cur.coins + bonus }));
+          set((cur) => ({ coins: cur.coins + bonus, lifetime_coins_earned: (cur.lifetime_coins_earned ?? 0) + bonus }));
           pushGameEvent("discovery", `✨ ${potion.name} discovered!`);
           pushGameEvent("pile", `+${bonus.toLocaleString()} 🪙 discovery bonus`);
           get().refreshQuests();
@@ -1612,7 +1641,11 @@ export const useGameStore = create<GameState>()(
         }
         const potionInv = { ...s.potionInv };
         delete potionInv[hash];
-        set({ autoSellHashes, potionInv, coins: s.coins + earned });
+        set({
+          autoSellHashes, potionInv, coins: s.coins + earned,
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + earned,
+          lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + have,
+        });
         if (earned > 0) pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
         if (earned > 0) get().checkAchievements("coins", s.coins + earned);
       },
@@ -1641,7 +1674,11 @@ export const useGameStore = create<GameState>()(
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
         const newCoins = s.coins + earned;
-        set({ coins: newCoins, potionInv });
+        set({
+          coins: newCoins, potionInv,
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + earned,
+          lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + n,
+        });
         pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
         get().checkAchievements("coins", newCoins);
         if (newCoins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
@@ -1656,6 +1693,7 @@ export const useGameStore = create<GameState>()(
         const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
         let coins = s.coins;
         let totalEarned = 0;
+        let totalSold = 0;
         for (const [hash, count] of Object.entries(s.potionInv)) {
           const ingredients = hash.split("+").map((id) => cfg.ingredients[id]).filter(Boolean);
           if (ingredients.length === 0) continue;
@@ -1666,8 +1704,13 @@ export const useGameStore = create<GameState>()(
           const earned = Math.round(d.value * sellMult * gaxMult) * count;
           coins += earned;
           totalEarned += earned;
+          totalSold += count;
         }
-        set({ coins, potionInv: {} });
+        set({
+          coins, potionInv: {},
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + totalEarned,
+          lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + totalSold,
+        });
         if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
         if (totalEarned > 0) get().checkAchievements("coins", coins);
         if (totalEarned > 0) {
@@ -1746,7 +1789,11 @@ export const useGameStore = create<GameState>()(
         const activeQuests = s.activeQuests.filter((q) => q.id !== questId);
         const questCooldowns = { ...(s.questCooldowns ?? {}), [quest.difficulty]: now() + QUEST_COOLDOWNS_MS[quest.difficulty] };
 
-        set({ coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns });
+        set({
+          coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns,
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + quest.reward,
+          quests_completed_count: (s.quests_completed_count ?? 0) + 1,
+        });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
         get().checkAchievements("coins", s.coins + quest.reward);
       },
@@ -1864,6 +1911,7 @@ export const useGameStore = create<GameState>()(
         if (!b || !b.readyToClaim) return;
         set({
           coins: s.coins + b.reward,
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + b.reward,
           discoveryBounty: { ...b, readyToClaim: false, cooldownUntil: now() + QUEST_COOLDOWN_MS },
         });
         pushGameEvent("pile-burst", `+${b.reward.toLocaleString()} 🪙`);
@@ -2186,6 +2234,9 @@ export const useGameStore = create<GameState>()(
           let totalMachineXp = 0;
           const offlineMasteryXp: Record<string, number> = {}; // potionName → accumulated mastery XP (pre-mastery brew secs)
           const offlineGaxSold: Record<string, number> = {};   // attr → attribute-points auto-sold while away
+          const offlineAttrBrews: Record<string, number> = {}; // attr → potions brewed carrying that attribute
+          let offlineSoldCount = 0;
+          let offlineBestValue = 0;
           const masteryFx = computeMasteryEffects(s.masteryUnlocks);
 
           const machinesSim = s.machines.map((machine) => {
@@ -2247,6 +2298,11 @@ export const useGameStore = create<GameState>()(
               );
 
               totalPotionsBrewedCount += outputs;
+              offlineBestValue = Math.max(offlineBestValue, potion.value);
+              for (const [ak, av] of Object.entries(potion.stats)) {
+                if (av > 0) offlineAttrBrews[ak] = (offlineAttrBrews[ak] ?? 0) + outputs;
+              }
+              if (isAutoSold) offlineSoldCount += outputs;
               // Mastery XP: pre-mastery seconds per completed cycle (not per output).
               offlineMasteryXp[potion.name] = (offlineMasteryXp[potion.name] ?? 0) + preMasterySecs;
               if (isAutoSold) {
@@ -2407,6 +2463,15 @@ export const useGameStore = create<GameState>()(
             discoveredAttributes,
             discovered_location_drops: discoveredLocDrops,
             total_brews: (s.total_brews ?? 0) + totalPotionsBrewedCount,
+            lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + Math.max(0, coins - s.coins),
+            lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + offlineSoldCount,
+            lifetime_ingredients_gathered: (s.lifetime_ingredients_gathered ?? 0) + totalGathers,
+            best_potion_value: Math.max(s.best_potion_value ?? 0, offlineBestValue),
+            attr_brews: (() => {
+              const merged = { ...(s.attr_brews ?? {}) };
+              for (const [ak, n] of Object.entries(offlineAttrBrews)) merged[ak] = (merged[ak] ?? 0) + n;
+              return merged;
+            })(),
             workers: workersSim,
             machines,
             welcomeBack,
@@ -2519,6 +2584,13 @@ export const useGameStore = create<GameState>()(
           collected_achievements: [],
           achv_rewards_v2: true,
           total_brews: 0,
+          lifetime_coins_earned: 0,
+          lifetime_potions_sold: 0,
+          lifetime_ingredients_gathered: 0,
+          quests_completed_count: 0,
+          trades_completed_count: 0,
+          best_potion_value: 0,
+          attr_brews: {},
           lastSeen: now(),
           welcomeBack: null,
           questsUnlocked: false,
@@ -2594,6 +2666,7 @@ export const useGameStore = create<GameState>()(
         }
         const patch: Partial<GameState> = {
           coins,
+          lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + (coins - s.coins),
           collected_achievements: [...s.collected_achievements, id],
         };
         if (tokenBonus > 0) patch.workers = s.workers.map((w) => ({ ...w, upgrade_tokens: (w.upgrade_tokens ?? 0) + tokenBonus }));
@@ -2647,6 +2720,13 @@ export const useGameStore = create<GameState>()(
         collected_achievements: s.collected_achievements,
         achv_rewards_v2: s.achv_rewards_v2,
         total_brews: s.total_brews,
+        lifetime_coins_earned: s.lifetime_coins_earned,
+        lifetime_potions_sold: s.lifetime_potions_sold,
+        lifetime_ingredients_gathered: s.lifetime_ingredients_gathered,
+        quests_completed_count: s.quests_completed_count,
+        trades_completed_count: s.trades_completed_count,
+        best_potion_value: s.best_potion_value,
+        attr_brews: s.attr_brews,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
@@ -2770,6 +2850,15 @@ export const useGameStore = create<GameState>()(
             : Array.from(new Set([...(p.collected_achievements ?? []), ...(p.unlocked_achievements ?? [])])),
           achv_rewards_v2: true,
           total_brews: p.total_brews ?? 0,
+          // Leaderboard lifetime counters: pre-feature saves start at zero
+          // (only current-state metrics reflect their history).
+          lifetime_coins_earned: p.lifetime_coins_earned ?? 0,
+          lifetime_potions_sold: p.lifetime_potions_sold ?? 0,
+          lifetime_ingredients_gathered: p.lifetime_ingredients_gathered ?? 0,
+          quests_completed_count: p.quests_completed_count ?? 0,
+          trades_completed_count: p.trades_completed_count ?? 0,
+          best_potion_value: p.best_potion_value ?? 0,
+          attr_brews: p.attr_brews ?? {},
           player_click_power_level: p.player_click_power_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
           // Region migration: existing saves grandfather in every region that
