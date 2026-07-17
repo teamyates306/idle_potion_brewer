@@ -701,15 +701,37 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       }
     };
     measure(true);
-    const ro = new ResizeObserver(() => measure(false));
+    // Mobile browsers finish settling their viewport (URL-bar collapse,
+    // visualViewport resize) a few frames AFTER first paint. The one-shot
+    // measure(true) above therefore sometimes centred against a not-yet-final
+    // width, leaving the door/brewers off-centre — and the old ResizeObserver
+    // only *clamped* the stale scroll rather than re-centring, so it stuck
+    // until a refresh happened to race differently (the reported bug). Re-centre
+    // on the next frame and a couple of short delays, and on any outer resize —
+    // but only until the player takes manual control of the horizontal pan, so
+    // we never yank the view back while they're looking around.
+    const recenter = () => measure(!userScrolled.current);
+    const raf1 = requestAnimationFrame(recenter);
+    const t1 = window.setTimeout(recenter, 150);
+    const t2 = window.setTimeout(recenter, 500);
+    const ro = new ResizeObserver(recenter);
     const el = outerRef.current;
     if (el) ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      cancelAnimationFrame(raf1);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [machines.length]);
 
   // Pointer drag-to-scroll
   const drag = useRef({ active: false, startX: 0, startLeft: 0 });
   const [dragging, setDragging] = useState(false);
+  // Set once the player actually pans, so the auto-centring on load/resize
+  // stops fighting them (see the layout effect above). Only a genuine drag
+  // flips it — never our own programmatic scroll, which would defeat centring.
+  const userScrolled = useRef(false);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // Don't hijack clicks on buttons/links inside the scroll area
@@ -725,6 +747,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     if (!drag.current.active) return;
     const el = scrollRef.current;
     if (!el) return;
+    if (e.clientX !== drag.current.startX) userScrolled.current = true; // genuine pan → stop auto-centring
     el.scrollLeft = clampScroll(drag.current.startLeft - (e.clientX - drag.current.startX));
   };
   const onPointerEnd = () => { drag.current.active = false; setDragging(false); };
@@ -878,7 +901,6 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   const graphics        = useGameStore((s) => s.graphics);
   const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
-  const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
   const anyMachineTokens  = machines.some((m) => (m.upgrade_tokens ?? 0) > 0);
@@ -964,7 +986,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           />
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
-          <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
+          <WorkshopWall onClick={() => onOpen("map")} width={contentWidth} />
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -1109,29 +1131,21 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 }
 
 // ── Workshop wall — repeating windows around a single central door ─────────────
-function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
+function WallDoor({ cx }: { cx: number }) {
   const fx = cx - 38; // frame left (76 wide), workers emerge from here
   return (
     <g>
       {/* door.svg has a curved/arched silhouette with real transparent margins
-          along its left/right edges — the two flanking windows' winGlow halo
-          (always there, just previously hidden behind the old fully-opaque
-          rectangular door) bleeds through those gaps. Back the door with the
-          same brick texture as the rest of the wall so it masks the bleed. */}
+          along its left/right edges. Back it with the same brick texture as the
+          rest of the wall so nothing behind it bleeds through those gaps. */}
       <rect x={fx} y={64} width={76} height={80} fill="url(#wallBricks)" />
       {/* The door's little oval window is fully self-contained in the art
           itself — a translucent grey pane already baked into door.svg (see
           public/sprites/door.png) — so unlike the wall windows it needs no
-          extra content layered behind it. An earlier attempt to add one
-          (first a scene-art slice, then a flat tinted rect) didn't line up
-          with the oval and showed as a mismatched rectangular edge. */}
+          extra content layered behind it. (A previous amber "worker active"
+          glow rect was removed here: being rectangular, it spilled past the
+          arched silhouette and read as a mismatched box around the door.) */}
       <image href="/sprites/door.png" x={fx} y={64} width={76} height={80} style={{ imageRendering: "pixelated" }} />
-      {/* Always mounted so workerActive toggling fades the glow in/out instead
-          of popping it — an instant mount/unmount here (e.g. right as a worker
-          finishes a trip and drops off at the trough, flipping this false) read
-          as the door abruptly darkening. */}
-      <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#fbbf24"
-        style={{ opacity: workerActive ? 0.1 : 0, transition: "opacity 0.6s ease-in-out" }} />
     </g>
   );
 }
@@ -1299,13 +1313,14 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
         {/* Hand-painted outside scene — one continuous 2100×144 picture shared
             by every window (see #wallSceneArt below), each aperture clipping
             its own x-slice so it reads as one vista behind the whole building.
-            Dimmed at night via brightness filter, same trick as the walkers. */}
-        <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
-          <use href="#wallSceneArt" />
-        </g>
-        {/* Distant adventurers crossing the road — behind the window frame, in
+            Night dimming is done by the single #0a1526 overlay further down
+            (opacity-driven) rather than a per-layer brightness filter, which
+            silently failed at night — see --dn-scene-dark-op in Atmosphere. */}
+        <use href="#wallSceneArt" />
+        {/* Distant adventurers crossing the road — behind the near-scenery, in
             front of the hills. Same config rendered once per window (each
-            independently clipped) so it reads as one figure walking past. */}
+            independently clipped) so it reads as one figure walking past. The
+            night overlay below dims them together with the rest of the scene. */}
         {walkers.map((wk) => (
           <g
             key={wk.id}
@@ -1315,13 +1330,19 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
               animation: `wall-walk ${wk.duration}s linear 1 forwards`,
             }}
           >
-            {/* Same day/night fade as the hills/sky behind them (--dn-daylight-op:
-                1 at noon, 0 at midnight) — dims in step with the window scene. */}
-            <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
-              <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
-            </g>
+            <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
           </g>
         ))}
+        {/* Near-scenery overlay — same shared 2100×144 picture as the
+            background (see #wallSceneFg below), painted in front of the
+            walkers so they read as passing behind it. */}
+        <use href="#wallSceneFg" />
+        {/* Night dimmer — a single night-blue wash whose opacity tracks the day
+            phase (0 by day, ~0.62 at deep night). Covers the sky, hills, walkers
+            and near-scenery uniformly. Drawn BEFORE the stars so they stay bright
+            and pop against the darkened sky at night. */}
+        <rect x={x} y={y} width={w} height={h} fill="#0a1526"
+          style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
         <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0"
           style={{ opacity: "calc(0.7 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
         <circle cx={cx - 2} cy={y + 6} r="1.1" fill="#e0eeff"
@@ -1330,13 +1351,6 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
           style={{ opacity: "calc(0.5 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
         <circle cx={cx + 6} cy={y + 5} r="0.7" fill="#e0eeff"
           style={{ opacity: "calc(0.55 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
-        {/* Near-scenery overlay — same shared 2100×144 picture as the
-            background (see #wallSceneFg below), painted in front of the
-            walkers/stars so they read as passing behind it. Same day/night
-            dimming as everything else in the window. */}
-        <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
-          <use href="#wallSceneFg" />
-        </g>
       </g>
       {/* Frame + glass texture on top — hand-authored pixel art, same 48×64
           canvas as the clip above so it lines up exactly; its glass pixels
@@ -1375,7 +1389,7 @@ function WorkshopSign({ x }: { x: number }) {
   );
 }
 
-function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; workerActive: boolean; width: number }) {
+function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }) {
   const SPACING = 150;
   const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
@@ -1441,7 +1455,7 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
           <WallLamp key={x} cx={x} />
         ))}
         {/* Single central door — workers emerge here */}
-        <WallDoor cx={center} workerActive={workerActive} />
+        <WallDoor cx={center} />
         {/* Hanging sign plaque + text is an HTML overlay on top of the wall,
             see <WorkshopSign> in the parent — it needs a real <input> to edit
             and needs to grow with the text, neither of which SVG does well. */}

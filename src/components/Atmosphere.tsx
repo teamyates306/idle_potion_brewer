@@ -61,9 +61,15 @@ export function applyDayNightVars() {
   const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength);
   root.setProperty("--dn-beam-op", beamOp.toFixed(3));
 
-  // Workshop wall: stars, lamps. (Window glass + hills used to be procedural
-  // CSS-var-recolored shapes; replaced by a single painted background.svg
-  // that's dimmed at night via brightness filter instead — see Workshop.tsx.)
+  // Workshop wall: stars, lamps, outside-scene night dimming.
+  //
+  // The window/foreground scene is darkened at night by a night-blue overlay
+  // whose OPACITY is driven by this var — NOT by a `filter: brightness(calc(…
+  // var(…) …))`, which silently fails: nesting a var() inside calc() inside a
+  // filter function resolves to the fallback on every engine tested (the scene
+  // stayed at full daytime brightness even at 1am). Opacity + var() is the same
+  // reliable mechanism the stars use, so it tracks the day phase correctly.
+  root.setProperty("--dn-scene-dark-op", ((1 - dn.dayness) * 0.62).toFixed(3));
   root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
   const lf = (0.5 + dn.lampGlow * 0.5).toFixed(2);
   const lg = (dn.lampGlow * 0.18).toFixed(2);
