@@ -1,5 +1,6 @@
 import { Bell, BellOff, Layers } from "lucide-react";
 import Modal from "./ui/Modal";
+import EditableName from "./ui/EditableName";
 import { useGameStore } from "../store/gameStore";
 import { useSettingsStore } from "../store/settingsStore";
 
@@ -45,11 +46,25 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const { toastsEnabled, toggleToasts } = useSettingsStore();
   const quality    = useGameStore((s) => s.graphics.quality);
   const setQuality = useGameStore((s) => s.setQuality);
+  const workshopName   = useGameStore((s) => s.workshopName);
+  const renameWorkshop = useGameStore((s) => s.renameWorkshop);
 
   return (
     <Modal title="Settings" onClose={onClose} accent="#f59e0b">
       <div className="space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Audio &amp; Text</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Workshop</p>
+        <div className="flex items-center justify-between rounded-xl border border-slate-600 bg-slate-800/60 px-4 py-3">
+          <span className="text-sm text-slate-200">Sign name</span>
+          <EditableName
+            value={workshopName}
+            onSave={renameWorkshop}
+            truncate={false}
+            className="text-sm font-semibold text-amber-400"
+            maxLength={18}
+          />
+        </div>
+
+        <p className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Audio &amp; Text</p>
         <button
           onClick={toggleToasts}
           className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${

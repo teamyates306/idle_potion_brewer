@@ -4,7 +4,6 @@ import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
-import EditableName from "./ui/EditableName";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -1361,28 +1360,17 @@ function WallLamp({ cx }: { cx: number }) {
   );
 }
 
-// ── Editable sign name — hanging plaque, centred above the door. The plaque
-// background lives here (not in WorkshopWall's SVG) so it can grow with the
-// text instead of clipping it — a fixed-width box either ellipsized the name
-// or hid the tail of it while typing.
+// ── Sign name — hanging plaque, centred above the door. Read-only (renaming
+// moved to the Settings modal); the plaque background lives here (not in
+// WorkshopWall's SVG) so it grows with the text instead of clipping it.
 function WorkshopSign({ x }: { x: number }) {
   const name = useGameStore((s) => s.workshopName);
-  const renameWorkshop = useGameStore((s) => s.renameWorkshop);
   return (
     <div
-      className="absolute z-[1] flex min-w-[104px] items-center justify-center whitespace-nowrap rounded-[3px] border border-[#6b5035] bg-[#3a2008] px-2 py-0.5"
+      className="pointer-events-none absolute z-[1] flex min-w-[104px] items-center justify-center whitespace-nowrap rounded-[3px] border border-[#6b5035] bg-[#3a2008] px-2 py-0.5"
       style={{ left: x, top: 55.5, transform: "translate(-50%, -50%)" }}
     >
-      <EditableName
-        value={name}
-        onSave={renameWorkshop}
-        truncate={false}
-        className="text-[9px] font-normal uppercase tracking-[0.2em] text-[#c8a050]"
-        inputClassName="text-[9px] leading-none bg-[#2e1a08] border-[#6b5035] text-[#c8a050]"
-        iconClassName="text-[#c8a050]/50 hover:bg-[#2e1a08] hover:text-[#c8a050]"
-        iconSize={9}
-        maxLength={18}
-      />
+      <span className="text-[9px] font-normal uppercase tracking-[0.2em] text-[#c8a050]">{name}</span>
     </div>
   );
 }
