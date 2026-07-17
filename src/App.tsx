@@ -25,7 +25,8 @@ import MasteryView from "./components/MasteryView";
 import HintBanner from "./components/ui/HintBanner";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
-import Atmosphere from "./components/Atmosphere";
+import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
+import LoadingScreen from "./components/LoadingScreen";
 import SettingsModal from "./components/SettingsModal";
 import { useGameStore } from "./store/gameStore";
 import { masteryLevel } from "./data/masteryTrees";
@@ -33,6 +34,27 @@ import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | "trophies" | null;
+
+// Core sprites visible the instant the workshop scene mounts — preloaded so
+// they're already decoded by the time the loading screen hands off, instead
+// of popping in piecemeal (bricks, then windows, then a walker mid-stride…).
+const CORE_SPRITES = [
+  "/sprites/background.png", "/sprites/foreground.png",
+  "/sprites/window.png", "/sprites/door.png",
+  "/sprites/wall-tile.png", "/sprites/floor-tile.png", "/sprites/lamp.png",
+  "/sprites/machine.png", "/sprites/potion-bottle.png",
+  "/sprites/worker.png", "/sprites/worker-manic.png",
+  "/sprites/worker-explorer.png", "/sprites/worker-caravan.png", "/sprites/worker-pounder.png",
+];
+
+function preloadImage(src: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve(); // a missing sprite shouldn't hang the loading screen
+    img.src = src;
+  });
+}
 
 export default function App() {
   // Standalone analytics route: the economy A/B balance report. Checked before
@@ -75,6 +97,19 @@ export default function App() {
   const throttleAnims = useGameStore((s) => s.graphics.throttle_animations);
   usePerformanceMonitor();
 
+  // Loading screen: hold the reveal until the workshop's core sprites are
+  // decoded and the day/night CSS vars have been computed at least once —
+  // otherwise the scene used to paint piecemeal (bricks before windows,
+  // walkers mid-stride) and briefly show fallback colours before Atmosphere's
+  // own effect corrected them a frame later.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    applyDayNightVars();
+    const assets = Promise.all(CORE_SPRITES.map(preloadImage));
+    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
+    Promise.all([assets, minDelay]).then(() => setReady(true));
+  }, []);
+
   useEffect(() => {
     applyOffline();
     refreshQuests();
@@ -102,6 +137,8 @@ export default function App() {
     }, 5000);
     return () => clearInterval(id);
   }, [refreshQuests, settleGax]);
+
+  if (!ready) return <LoadingScreen />;
 
   return (
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>

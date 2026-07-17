@@ -104,9 +104,12 @@ body {
   100% { transform: translate(var(--cpx, 0px), var(--cpy, -22px)) scale(0.2); opacity: 0; }
 }
 
-/* Worker sprite-sheet walk cycle — background-position steps through 4 frames */
+/* Worker sprite-sheet walk cycle — steps through frames via a compositor
+   transform (the sprite is the full sheet, clipped by an overflow:hidden
+   parent) instead of animating background-position, which forces a repaint
+   on every step. */
 @keyframes worker-walk {
-  to { background-position-x: var(--worker-sheet-w, -128px); }
+  to { transform: translate3d(var(--worker-sheet-w, -128px), 0, 0); }
 }
 
 /* Auto-clicker worker bump (duration set inline, tied to click speed) */

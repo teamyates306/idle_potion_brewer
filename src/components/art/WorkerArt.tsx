@@ -38,10 +38,14 @@ export default function WorkerArt({
   const dispSW = Math.round(sheetW   * scale);
 
   return (
-    <div style={{ position: "relative", width: dispW, height: dispH, filter: hueShift ? `hue-rotate(${hueShift}deg)` : undefined }}>
+    <div style={{ position: "relative", width: dispW, height: dispH, overflow: "hidden", filter: hueShift ? `hue-rotate(${hueShift}deg)` : undefined }}>
       <div
         style={{
-          width:              dispW,
+          // The frame window is the outer overflow:hidden box (dispW×dispH);
+          // this inner element is the FULL sheet, stepped left via a compositor
+          // transform (see worker-walk in index.css) instead of animating
+          // background-position, which forces a repaint on every step.
+          width:              dispSW,
           height:             dispH,
           backgroundImage:    `url(${src})`,
           backgroundSize:     `${dispSW}px ${dispH}px`,
@@ -53,6 +57,14 @@ export default function WorkerArt({
           animationDuration:  `${frameCount * FRAME_MS}ms`,
           animationTimingFunction: `steps(${frameCount})`,
           animationIterationCount: "infinite",
+          // Deliberately NOT tied to `active` — toggling will-change in lockstep
+          // with the walk/idle phase promotes and demotes this element's
+          // compositor layer at the exact instant the parent wrapper's own
+          // position transform is also transitioning (e.g. a worker arriving
+          // back and dropping items off at the trough), causing a visible
+          // stall-then-jitter right at that moment. Keep the layer stable for
+          // any sprite that's ever capable of animating.
+          willChange:         frameCount > 1 ? "transform" : undefined,
         } as React.CSSProperties}
       />
 

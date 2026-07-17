@@ -79,11 +79,14 @@ const GENERIC_NAME_POOL = {
   last: ["Wanderer", "Traveler", "Nomad", "Pilgrim", "Drifter", "Farwalker"],
 };
 
-const CLASS_TITLES: Record<AdventurerClass, string> = {
-  mage: "the Spellwright",
-  fighter: "the Blade",
-  monk: "the Serene",
-  ranger: "the Pathfinder",
+// Each class has a few interchangeable title suffixes — one is picked per
+// adventurer (deterministically, via the seeded rng below) so same-class
+// quest-givers don't all read as identical besides their first/last name.
+const CLASS_TITLES: Record<AdventurerClass, string[]> = {
+  mage:    ["the Spellwright", "the Arcanist", "the Hexweaver"],
+  fighter: ["the Blade", "the Ironclad", "the Vanguard"],
+  monk:    ["the Serene", "the Unbroken", "the Still Hand"],
+  ranger:  ["the Pathfinder", "the Trailblazer", "the Longshot"],
 };
 export const CLASS_LABELS: Record<AdventurerClass, string> = {
   mage: "Mage",
@@ -134,6 +137,7 @@ export function generateAdventurer(seed: string): Adventurer | null {
   const hairUrl = pick(rng, set.hairs);
   const bodyUrl = set.bodies[className]!;
   const pool = RACE_NAME_POOLS[race] ?? GENERIC_NAME_POOL;
-  const name = `${pick(rng, pool.first)} ${pick(rng, pool.last)} ${CLASS_TITLES[className]}`;
+  const title = pick(rng, CLASS_TITLES[className]);
+  const name = `${pick(rng, pool.first)} ${pick(rng, pool.last)} ${title}`;
   return { race, className, name, faceUrl, hairUrl, bodyUrl };
 }

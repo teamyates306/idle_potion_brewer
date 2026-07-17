@@ -24,7 +24,10 @@ const MOTES = Array.from({ length: MOTE_COUNT }, () => ({
 //   --dn-warm-tint: always the same amber, alpha driven by sunrise/sunset strength
 //   --dn-cool-tint: always the same night-blue, alpha driven by darkness
 // Each layer only ever changes opacity → CSS can interpolate without weird midpoints.
-function applyDayNightVars() {
+// Exported so App.tsx can run this once, synchronously, before the workshop
+// scene ever paints — otherwise the first frame renders with fallback colours
+// until this component's own effect fires, a brief but visible "recalibration" pop.
+export function applyDayNightVars() {
   const dn   = computeDayNight(getDayPhase());
   const root = document.documentElement.style;
   const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
@@ -58,22 +61,15 @@ function applyDayNightVars() {
   const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength);
   root.setProperty("--dn-beam-op", beamOp.toFixed(3));
 
-  // Workshop wall: window glass, hills, stars, lamps
-  root.setProperty("--dn-window-color", dn.windowColor);
+  // Workshop wall: stars, lamps. (Window glass + hills used to be procedural
+  // CSS-var-recolored shapes; replaced by a single painted background.svg
+  // that's dimmed at night via brightness filter instead — see Workshop.tsx.)
   root.setProperty("--dn-star-op",      String(dn.starOpacity.toFixed(3)));
   const lf = (0.5 + dn.lampGlow * 0.5).toFixed(2);
   const lg = (dn.lampGlow * 0.18).toFixed(2);
   root.setProperty("--dn-lamp-flame",    `rgba(251,191,36,${lf})`);
   root.setProperty("--dn-lamp-glow",     `rgba(251,191,36,${lg})`);
   root.setProperty("--dn-lamp-glow-op",  dn.lampGlow.toFixed(3));
-  const rn = `${Math.round(12 + dy*46 + sr*28 + ss*38)}`;
-  const gn = `${Math.round(28 + dy*94 + sr*18 - ss*18)}`;
-  const bn = `${Math.round(8  + dy*16 - sr*4  - ss*6 )}`;
-  const rf = `${Math.round(28 + dy*52 + sr*35 + ss*45)}`;
-  const gf = `${Math.round(48 + dy*72 + sr*22 - ss*12)}`;
-  const bf = `${Math.round(18 + dy*42 - sr*8  - ss*4 )}`;
-  root.setProperty("--dn-hill-near",  `rgb(${rn},${gn},${bn})`);
-  root.setProperty("--dn-hill-far",   `rgb(${rf},${gf},${bf})`);
 }
 
 export default function Atmosphere() {

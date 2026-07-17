@@ -7,14 +7,14 @@ export interface WalkerTuning {
   sizeMin: number; sizeMax: number;   // sprite height, wall-SVG user units (~= CSS px)
   speedMin: number; speedMax: number; // px/second crossing speed
   yMin: number; yMax: number;         // feet baseline, wall-SVG user units
-  maxConcurrent: number;              // hard cap on simultaneously-active walkers (0-10)
+  maxConcurrent: number;              // hard cap on simultaneously-active walkers (0-20)
 }
 
 export const DEFAULT_WALKER_TUNING: WalkerTuning = {
   sizeMin: 41, sizeMax: 44,
   speedMin: 14, speedMax: 20,
   yMin: 140, yMax: 143,
-  maxConcurrent: 10,
+  maxConcurrent: 20,
 };
 
 interface WalkerTuningState extends WalkerTuning {

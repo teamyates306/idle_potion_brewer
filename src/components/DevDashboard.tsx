@@ -6,10 +6,11 @@ import { ACHIEVEMENTS } from "../data/achievements";
 import { masteryLevel, MASTERY_XP_THRESHOLDS } from "../data/masteryTrees";
 import { describeFromHash } from "../engine/potions";
 import { useWalkerTuningStore } from "../store/walkerTuningStore";
+import { useBeamTuningStore } from "../store/beamTuningStore";
 import WindowWalkerPreview from "./dev/WindowWalkerPreview";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -90,7 +91,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-slate-800 bg-slate-900">
-        {(["cheats","formulas","attributes","ingredients","locations","walkers"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -111,6 +112,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "ingredients" && <IngredientsTab search={search} />}
         {tab === "locations"   && <LocationsTab search={search} />}
         {tab === "walkers"     && <WalkersTab />}
+        {tab === "beams"       && <BeamsTab />}
       </div>
     </div>
   );
@@ -812,7 +814,7 @@ function WalkersTab() {
               label="Max concurrent walkers"
               value={tuning.maxConcurrent}
               min={0}
-              max={10}
+              max={20}
               step={1}
               onChange={(v) => tuning.set({ maxConcurrent: v })}
             />
@@ -828,6 +830,53 @@ function WalkersTab() {
           fixed spawn interval, just a small random check every ~1.4s, so the population feels organic
           rather than metronomic. These values reset on reload; once you're happy, tell me the numbers and
           I'll bake them in as the new defaults.
+        </p>
+      </Section>
+    </div>
+  );
+}
+
+// ── Window light beams (diagonal sun-streak sweeping through the scene) ──
+function BeamsTab() {
+  const tuning = useBeamTuningStore();
+  const windowBeamsOn = useGameStore((s) => s.graphics.windowBeams);
+
+  return (
+    <div className="max-w-xl">
+      <Section title="Window Light Beams">
+        {!windowBeamsOn && (
+          <p className="mb-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+            Window light beams are off in graphics settings — these sliders still update live, but
+            nothing will render in the real workshop wall until they're enabled.
+          </p>
+        )}
+        <div className="space-y-4">
+          <Slider
+            label="Beam width"
+            value={tuning.width}
+            min={10}
+            max={150}
+            step={1}
+            unit="px"
+            onChange={(v) => tuning.set({ width: v })}
+          />
+          <Slider
+            label="Vertical position (top offset)"
+            value={tuning.top}
+            min={60}
+            max={200}
+            step={1}
+            unit="px"
+            onChange={(v) => tuning.set({ top: v })}
+          />
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Btn onClick={() => tuning.reset()}>Reset to defaults</Btn>
+          </div>
+        </div>
+        <p className="mt-4 max-w-lg text-[11px] text-slate-500">
+          Beams are centred on each window's x position and only appear near dawn/dusk (opacity is
+          driven by <code>--dn-beam-op</code>). These values reset on reload; once the alignment looks
+          right against the real wall, tell me the numbers and I'll bake them in as the new defaults.
         </p>
       </Section>
     </div>

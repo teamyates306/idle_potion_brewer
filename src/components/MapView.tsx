@@ -539,7 +539,7 @@ function SettlementNode({
         <div className="absolute z-20 flex items-center" style={{ left: 22, top: -34 }}>
           {workerIds.slice(0, 3).map((id, i) => (
             <span key={i} className="rounded-full" style={{ marginLeft: i === 0 ? 0 : -8, filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.6))" }}>
-              <WorkerArt size={22} active={false} hueShift={workerHue(id)} />
+              <WorkerArt size={20} active={false} hueShift={workerHue(id)} />
             </span>
           ))}
         </div>
@@ -611,7 +611,7 @@ function MapNode({
               className="rounded-full"
               style={{ marginLeft: i === 0 ? 0 : -8, filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.6))" }}
             >
-              <WorkerArt size={22} active={false} hueShift={workerHue(id)} />
+              <WorkerArt size={20} active={false} hueShift={workerHue(id)} />
             </span>
           ))}
           {workerCount > 3 && (
@@ -782,7 +782,7 @@ function LocationDetailModal({
                 <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Assignment</p>
                 <div className="flex items-center gap-3 rounded-xl border border-green-500/40 bg-green-950/20 p-3">
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${lockedWorker.color ?? "#7c3aed"}33` }}>
-                    <WorkerArt size={36} active={false} hueShift={workerHue(lockedWorker.id)} />
+                    <WorkerArt size={32} active={false} hueShift={workerHue(lockedWorker.id)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-100">{lockedWorker.name}</div>
@@ -841,7 +841,7 @@ function LocationDetailModal({
                       <span className="shrink-0 text-green-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
                     )}
                     <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-                      <WorkerArt size={36} active={false} hueShift={workerHue(worker.id)} />
+                      <WorkerArt size={32} active={false} hueShift={workerHue(worker.id)} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold text-slate-100">{worker.name}</div>

@@ -4,6 +4,7 @@ import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoop } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
+import EditableName from "./ui/EditableName";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -17,6 +18,7 @@ import { parsePotionVisuals, DEFAULT_LIQUID_COLOR } from "../util/potionVisuals"
 import { describePotion } from "../engine/potions";
 import { generateAdventurer, type Adventurer } from "../data/questSprites";
 import { useWalkerTuningStore, type WalkerTuning } from "../store/walkerTuningStore";
+import { useBeamTuningStore } from "../store/beamTuningStore";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
@@ -31,7 +33,7 @@ const WORLD_W = MAX_MACHINES * COL_W + EDGE_BUFFER * 2;
 const SCROLL_EXTRA = 140; // a little extra pan past the brewers, once scrolling is unlocked
 // Scrolling stone floor — distinct (darker, horizontal courses) from the lit wall
 // bricks so its motion reads. Lives inside the scroll content, so it travels.
-const FLOOR_BG = "#8a857c url('/sprites/floor-tile.svg')";
+const FLOOR_BG = "#8a857c url('/sprites/floor-tile.png')";
 const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
 const MAX_SPARKS     = 20;
@@ -284,7 +286,7 @@ const MachineColumn = React.memo(function MachineColumn({
   machineIdx,
   loopState,
   workers,
-  onManage,
+  onOpen,
   onBrewStart,
   onBrewComplete,
   onBrewBurst,
@@ -293,11 +295,12 @@ const MachineColumn = React.memo(function MachineColumn({
   machineIdx: number;
   loopState: MachineLoopState;
   workers: Worker[];
-  onManage: () => void;
+  onOpen: (p: Panel, machineId?: number) => void;
   onBrewStart: (cauldronRect: DOMRect, categories: string[]) => void;
   onBrewComplete: (cauldronRect: DOMRect, potionColor: string) => void;
   onBrewBurst: (cx: number, cy: number, color: string) => void;
 }) {
+  const onManage = useCallback(() => onOpen("machine", machine.id), [onOpen, machine.id]);
   const clickBrew = useGameStore((s) => s.clickBrew);
   const player_click_power_level = useGameStore((s) => s.player_click_power_level);
   const cfg = useConfigStore();
@@ -574,7 +577,7 @@ const MachineColumn = React.memo(function MachineColumn({
                   "--wb-rot": side === "left" ? "8deg" : "-8deg",
                 } as React.CSSProperties}
               >
-                <WorkerArt size={52} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
+                <WorkerArt size={47} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
               </div>
             </div>
           );
@@ -608,7 +611,21 @@ const MachineColumn = React.memo(function MachineColumn({
 
     </div>
   );
-});
+}, (prev, next) =>
+  // useGameLoop rebuilds `loopState` as a fresh object every tick even when
+  // its values haven't changed (e.g. idle machines) — compare by value here
+  // so React.memo can actually skip re-rendering the SVG subtree instead of
+  // being defeated by the new object reference every ~125ms.
+  prev.machine === next.machine &&
+  prev.machineIdx === next.machineIdx &&
+  prev.workers === next.workers &&
+  prev.onOpen === next.onOpen &&
+  prev.onBrewStart === next.onBrewStart &&
+  prev.onBrewComplete === next.onBrewComplete &&
+  prev.onBrewBurst === next.onBrewBurst &&
+  prev.loopState.brewProgress === next.loopState.brewProgress &&
+  prev.loopState.brewActive === next.loopState.brewActive
+);
 
 // ── Main Workshop ─────────────────────────────────────────────────────────────
 export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: number) => void }) {
@@ -637,10 +654,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const content = contentRef.current;
       if (!outer) return;
 
-      // Scale content down via CSS zoom so it always fits vertically without scroll
+      // Scale content down via CSS zoom so it always fits vertically without scroll.
+      // Derive natural height from the current zoom factor instead of resetting
+      // zoom to '' and back — resetting forced an unzoomed frame to briefly
+      // render (a visible flash/flicker) whenever this fires mid-animation,
+      // most noticeable on short mobile viewports where zoom<1 is actually active.
       if (content) {
-        content.style.zoom = '';                        // reset to measure natural height
-        const naturalH = content.scrollHeight;
+        const currentZoom = parseFloat(content.style.zoom) || 1;
+        const naturalH = content.scrollHeight / currentZoom;
         const availH = outer.clientHeight;
         const s = naturalH > 0 && availH > 0 ? Math.min(1, availH / naturalH) : 1;
         content.style.zoom = s < 1 ? String(s) : '';
@@ -857,6 +878,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, []);
 
   const graphics        = useGameStore((s) => s.graphics);
+  const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
   const anyWorkerActive = loopProgress.workers.some((w) => w.workerPhase !== "idle");
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
@@ -944,6 +966,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={() => onOpen("map")} workerActive={anyWorkerActive} width={contentWidth} />
+          {/* Editable sign name — HTML overlay so it can host a real <input>;
+              the wooden plaque behind it is still drawn in the wall SVG. */}
+          <WorkshopSign x={Math.round(contentWidth / 2)} />
 
           {/* Wall-to-floor shadow — sits behind light beams (z=2 < beams z=10) */}
           {graphics.wallShadow && (
@@ -985,9 +1010,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute"
               style={{
-                top: 137,
-                left: cx - 28,
-                width: 56,
+                top: beamTuning.top,
+                left: cx - beamTuning.width / 2,
+                width: beamTuning.width,
                 height: 460,
                 background:
                   "linear-gradient(to bottom, rgba(255,235,140,0.32) 0%, rgba(255,235,140,0.14) 30%, rgba(255,235,140,0.04) 65%, transparent 100%)",
@@ -1020,7 +1045,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                     transition: "transform 150ms linear, opacity 150ms linear",
                   }}
                 >
-                  <WorkerArt size={52} specialization={workers[idx]?.specialization} active={active} hueShift={workerHue(workers[idx]?.id ?? 0)} />
+                  <WorkerArt size={47} specialization={workers[idx]?.specialization} active={active} hueShift={workerHue(workers[idx]?.id ?? 0)} />
                 </div>
               );
             })}
@@ -1034,7 +1059,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               return (
                 <div className="relative" style={{ width: w, height: 32 }}>
                   <TroughPile />
-                  <img src={`/sprites/trough-${sw}.svg`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
+                  <img src={`/sprites/trough-${sw}.png`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
                   <div className="pointer-events-none absolute -bottom-4 left-1/2 h-5" style={{ width: "85%", background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(-50%) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
                 </div>
               );
@@ -1049,7 +1074,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 machineIdx={idx}
                 loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
                 workers={workers}
-                onManage={() => onOpen("machine", machine.id)}
+                onOpen={onOpen}
                 onBrewStart={handleBrewStart}
                 onBrewComplete={handleBrewComplete}
                 onBrewBurst={handleBrewBurst}
@@ -1089,15 +1114,25 @@ function WallDoor({ cx, workerActive }: { cx: number; workerActive: boolean }) {
   const fx = cx - 38; // frame left (76 wide), workers emerge from here
   return (
     <g>
-      <rect x={fx} y={64} width={76} height={80} rx={5} fill="#3a2008" />
-      <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#2e1a08" />
-      <rect x={fx + 9} y={73} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
-      <rect x={fx + 41} y={73} width={26} height={28} rx={2} fill="#221408" opacity={0.7} />
-      <rect x={fx + 9} y={106} width={58} height={34} rx={2} fill="#221408" opacity={0.6} />
-      <circle cx={fx + 63} cy={112} r={3.5} fill="#c8a040" />
-      <circle cx={fx + 63} cy={112} r={1.8} fill="#f0c870" />
-      {workerActive && <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#fbbf24" opacity={0.1} />}
-      <rect x={fx} y={64} width={76} height={80} rx={5} fill="none" stroke="#4a3010" strokeWidth={2} />
+      {/* door.svg has a curved/arched silhouette with real transparent margins
+          along its left/right edges — the two flanking windows' winGlow halo
+          (always there, just previously hidden behind the old fully-opaque
+          rectangular door) bleeds through those gaps. Back the door with the
+          same brick texture as the rest of the wall so it masks the bleed. */}
+      <rect x={fx} y={64} width={76} height={80} fill="url(#wallBricks)" />
+      {/* The door's little oval window is fully self-contained in the art
+          itself — a translucent grey pane already baked into door.svg (see
+          public/sprites/door.png) — so unlike the wall windows it needs no
+          extra content layered behind it. An earlier attempt to add one
+          (first a scene-art slice, then a flat tinted rect) didn't line up
+          with the oval and showed as a mismatched rectangular edge. */}
+      <image href="/sprites/door.png" x={fx} y={64} width={76} height={80} style={{ imageRendering: "pixelated" }} />
+      {/* Always mounted so workerActive toggling fades the glow in/out instead
+          of popping it — an instant mount/unmount here (e.g. right as a worker
+          finishes a trip and drops off at the trough, flipping this false) read
+          as the door abruptly darkening. */}
+      <rect x={fx + 5} y={68} width={66} height={76} rx={3} fill="#fbbf24"
+        style={{ opacity: workerActive ? 0.1 : 0, transition: "opacity 0.6s ease-in-out" }} />
     </g>
   );
 }
@@ -1136,7 +1171,7 @@ function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
 }
 
 // Multiple adventurers can be crossing at once now (capped by
-// tuning.maxConcurrent, hard ceiling 10). A lightweight periodic "roll the
+// tuning.maxConcurrent, hard ceiling 20). A lightweight periodic "roll the
 // dice" spawner — not a fixed interval — keeps the live population drifting
 // organically across the whole 0..max range instead of sitting at a flat
 // average, matching "a healthy randomized amount at any one time".
@@ -1151,7 +1186,7 @@ function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
 // "wave" of walkers rather than a healthy spread. Aiming for an average
 // population around half the cap keeps real variance across the full 0..cap
 // range without constantly pinning at the ceiling.
-const HARD_CAP = 10;
+const HARD_CAP = 20;
 const SPAWN_TICK_MS = 1400;
 
 function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning, forceSpawnToken: number): WallWalkerCfg[] {
@@ -1261,14 +1296,14 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
   return (
     <g>
       <clipPath id={id}><rect x={x} y={y} width={w} height={h} rx="7" /></clipPath>
-      <rect x={x - 3} y={y - 2} width={w + 6} height={h + 5} rx="5" fill="#2a1808" />
       <g clipPath={`url(#${id})`}>
-        <rect x={x} y={y} width={w} height={h}
-          style={{ fill: "var(--dn-window-color, #a8d0f0)", transition: "fill 3s ease-in-out" }} />
-        <path d={`M ${x},${y + 42} Q ${cx - 10},${y + 31} ${cx},${y + 37} Q ${cx + 12},${y + 43} ${x + w},${y + 33} L ${x + w},${y + h} L ${x},${y + h} Z`}
-          style={{ fill: "var(--dn-hill-far, rgb(80,120,60))", transition: "fill 3s ease-in-out" }} />
-        <path d={`M ${x},${y + 52} Q ${cx - 6},${y + 42} ${cx + 4},${y + 47} Q ${cx + 14},${y + 51} ${x + w},${y + 45} L ${x + w},${y + h} L ${x},${y + h} Z`}
-          style={{ fill: "var(--dn-hill-near, rgb(58,122,24))", transition: "fill 3s ease-in-out" }} />
+        {/* Hand-painted outside scene — one continuous 2100×144 picture shared
+            by every window (see #wallSceneArt below), each aperture clipping
+            its own x-slice so it reads as one vista behind the whole building.
+            Dimmed at night via brightness filter, same trick as the walkers. */}
+        <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
+          <use href="#wallSceneArt" />
+        </g>
         {/* Distant adventurers crossing the road — behind the window frame, in
             front of the hills. Same config rendered once per window (each
             independently clipped) so it reads as one figure walking past. */}
@@ -1296,17 +1331,25 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
           style={{ opacity: "calc(0.5 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
         <circle cx={cx + 6} cy={y + 5} r="0.7" fill="#e0eeff"
           style={{ opacity: "calc(0.55 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
+        {/* Near-scenery overlay — same shared 2100×144 picture as the
+            background (see #wallSceneFg below), painted in front of the
+            walkers/stars so they read as passing behind it. Same day/night
+            dimming as everything else in the window. */}
+        <g style={{ filter: "brightness(calc(0.45 + var(--dn-daylight-op, 1) * 0.65))", transition: "filter 3s ease-in-out" }}>
+          <use href="#wallSceneFg" />
+        </g>
       </g>
-      <line x1={cx} y1={y} x2={cx} y2={y + h} stroke="#2a1808" strokeWidth="2" />
-      <line x1={x} y1={y + 30} x2={x + w} y2={y + 30} stroke="#2a1808" strokeWidth="2" />
-      <rect x={x - 3} y={y - 2} width={w + 6} height={h + 5} rx="5" fill="none" stroke="#4a3010" strokeWidth="2" />
+      {/* Frame + glass texture on top — hand-authored pixel art, same 48×64
+          canvas as the clip above so it lines up exactly; its glass pixels
+          are semi-transparent so the day/night colour + hills tint through. */}
+      <image href="/sprites/window.png" x={x} y={y} width={w} height={h} style={{ imageRendering: "pixelated" }} />
     </g>
   );
 }
 function WallLamp({ cx }: { cx: number }) {
   return (
     <g transform={`translate(${cx},94)`}>
-      <image href="/sprites/lamp.svg" x="-7" y="-24" width="14" height="28" />
+      <image href="/sprites/lamp.png" x="-7" y="-24" width="14" height="28" />
       {/* Flickering orange glow pool — outer g fades with day/night, inner ellipse animates */}
       <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
         <ellipse cx="0" cy="6" rx="14" ry="5"
@@ -1318,6 +1361,32 @@ function WallLamp({ cx }: { cx: number }) {
   );
 }
 
+// ── Editable sign name — hanging plaque, centred above the door. The plaque
+// background lives here (not in WorkshopWall's SVG) so it can grow with the
+// text instead of clipping it — a fixed-width box either ellipsized the name
+// or hid the tail of it while typing.
+function WorkshopSign({ x }: { x: number }) {
+  const name = useGameStore((s) => s.workshopName);
+  const renameWorkshop = useGameStore((s) => s.renameWorkshop);
+  return (
+    <div
+      className="absolute z-[1] flex min-w-[104px] items-center justify-center whitespace-nowrap rounded-[3px] border border-[#6b5035] bg-[#3a2008] px-2 py-0.5"
+      style={{ left: x, top: 55.5, transform: "translate(-50%, -50%)" }}
+    >
+      <EditableName
+        value={name}
+        onSave={renameWorkshop}
+        truncate={false}
+        className="text-[9px] font-normal uppercase tracking-[0.2em] text-[#c8a050]"
+        inputClassName="text-[9px] leading-none bg-[#2e1a08] border-[#6b5035] text-[#c8a050]"
+        iconClassName="text-[#c8a050]/50 hover:bg-[#2e1a08] hover:text-[#c8a050]"
+        iconSize={9}
+        maxLength={18}
+      />
+    </div>
+  );
+}
+
 function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; workerActive: boolean; width: number }) {
   const SPACING = 150;
   const center = width / 2;
@@ -1325,7 +1394,6 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
   const step = width / n;
   const windows = computeWindowPositions(width);
   const lamps = computeLampPositions(width);
-  const signX = Math.round(center);
   const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
   const walkerTuning = useWalkerTuningStore((s) => ({
     sizeMin: s.sizeMin, sizeMax: s.sizeMax,
@@ -1347,7 +1415,7 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
         <defs>
           <pattern id="wallBricks" width="96" height="48" patternUnits="userSpaceOnUse">
             {/* wall-tile.svg: 96×48 pixel-art tile — swap path when file is updated */}
-            <image href="/sprites/wall-tile.svg" x="0" y="0" width="96" height="48" />
+            <image href="/sprites/wall-tile.png" x="0" y="0" width="96" height="48" />
           </pattern>
           <linearGradient id="wallFade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0.74" stopColor="transparent" />
@@ -1365,6 +1433,13 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
             <stop offset="60%"  stopColor="#ffe8a0" stopOpacity="0.14" />
             <stop offset="100%" stopColor="#ffe8a0" stopOpacity="0" />
           </radialGradient>
+          {/* Hand-painted outside scene (sky + hills), one 2100×144 picture
+              shared by every window and the door's own little pane — each
+              just clips a different x-slice of this same image via <use>. */}
+          <image id="wallSceneArt" href="/sprites/background.png" x="0" y="0" width={width} height="144" style={{ imageRendering: "pixelated" }} />
+          {/* Near-scenery layer, painted in front of the walkers so they read
+              as passing behind it — same sharing/slicing trick as the background. */}
+          <image id="wallSceneFg" href="/sprites/foreground.png" x="0" y="0" width={width} height="144" style={{ imageRendering: "pixelated" }} />
         </defs>
         <rect width={width} height="144" fill="url(#wallBricks)" />
         {/* Light halo rendered before window frames so glow sits behind the woodwork */}
@@ -1379,11 +1454,9 @@ function WorkshopWall({ onClick, workerActive, width }: { onClick: () => void; w
         ))}
         {/* Single central door — workers emerge here */}
         <WallDoor cx={center} workerActive={workerActive} />
-        {/* Hanging sign, centred above the door */}
-        <rect x={signX - 52} y="48.5" width="104" height="14" rx="3" fill="#3a2008" stroke="#6b5035" strokeWidth="1" />
-        <text x={signX} y="59" textAnchor="middle" fill="#c8a050" fontSize="9" fontFamily="serif" letterSpacing="2">
-          THE WORKSHOP
-        </text>
+        {/* Hanging sign plaque + text is an HTML overlay on top of the wall,
+            see <WorkshopSign> in the parent — it needs a real <input> to edit
+            and needs to grow with the text, neither of which SVG does well. */}
         <rect width={width} height="144" fill="url(#wallFade)" />
       </svg>
     </button>
@@ -1395,7 +1468,7 @@ function FlyPotion({ color = "#a855f7" }: { color?: string }) {
   return (
     <svg width="16" height="16" viewBox="-8 -16 16 16" fill="none">
       <polygon points="2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0" fill={color} opacity="0.6" />
-      <image href="/sprites/potion-bottle.svg" x="-8" y="-16" width="16" height="16" />
+      <image href="/sprites/potion-bottle.png" x="-8" y="-16" width="16" height="16" />
     </svg>
   );
 }

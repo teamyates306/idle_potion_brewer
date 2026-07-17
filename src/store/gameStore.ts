@@ -493,6 +493,7 @@ export interface WelcomeBack {
 
 interface GameState {
   coins: number;
+  workshopName: string;
   workers: Worker[];
   machines: BrewingMachine[];
   ingredientInv: IngredientInventory;
@@ -567,6 +568,7 @@ interface GameState {
   hireWorker: () => void;
   renameWorker: (workerIndex: number, name: string) => void;
   renameMachine: (machineId: number, name: string) => void;
+  renameWorkshop: (name: string) => void;
   buyClickSpeed: (workerIndex: number) => void;
   buyClickPower: (workerIndex: number) => void;
   autoClickTick: (dtSeconds: number) => void;
@@ -691,6 +693,7 @@ export const useGameStore = create<GameState>()(
   persist(
     (set, get) => ({
       coins: 100,
+      workshopName: "Workshop",
       workers: [newWorker(0)],
       machines: [newMachine(0)],
       // New initiates start with exactly 10 Rootmoss to brew their first potion.
@@ -1311,6 +1314,13 @@ export const useGameStore = create<GameState>()(
           return {
             machines: s.machines.map((m, i) => (i === mi ? { ...m, name: clean } : m)),
           };
+        }),
+
+      renameWorkshop: (name) =>
+        set(() => {
+          const clean = name.trim().slice(0, 18);
+          if (!clean) return {};
+          return { workshopName: clean };
         }),
 
       hireWorker: () => {
@@ -2618,6 +2628,7 @@ export const useGameStore = create<GameState>()(
       name: "idle-potion-brewer",
       partialize: (s) => ({
         coins: s.coins,
+        workshopName: s.workshopName,
         workers: s.workers,
         machines: s.machines,
         ingredientInv: s.ingredientInv,

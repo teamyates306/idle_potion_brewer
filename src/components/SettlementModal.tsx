@@ -234,7 +234,7 @@ export default function SettlementModal({
                       style={{ background: `${workerHere.w.color ?? "#7c3aed"}33` }}
                       title={`${workerHere.w.name} is trading here`}
                     >
-                      <WorkerArt size={32} active hueShift={workerHue(workerHere.w.id)} />
+                      <WorkerArt size={29} active hueShift={workerHue(workerHere.w.id)} />
                     </div>
                   )}
                 </div>
@@ -256,7 +256,7 @@ export default function SettlementModal({
               {tradingHere.map(({ w, i }) => (
                 <div key={w.id} className="flex items-center gap-3 rounded-xl border border-amber-600/40 bg-amber-950/15 p-3">
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${w.color ?? "#7c3aed"}33` }}>
-                    <WorkerArt size={36} active hueShift={workerHue(w.id)} />
+                    <WorkerArt size={32} active hueShift={workerHue(w.id)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-100">{w.name}</div>
@@ -305,7 +305,7 @@ export default function SettlementModal({
               return (
                 <div key={w.id} className="flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/40 p-3">
                   <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full" style={{ background: `${w.color ?? "#7c3aed"}33` }}>
-                    <WorkerArt size={36} active={false} hueShift={workerHue(w.id)} />
+                    <WorkerArt size={32} active={false} hueShift={workerHue(w.id)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-semibold text-slate-100">

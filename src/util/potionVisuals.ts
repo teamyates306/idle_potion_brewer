@@ -193,7 +193,7 @@ export const SUFFIX_BLEND_COLORS: Record<string, string[]> = {
 // Remaining types will be filled in as polygons are defined.
 export const POTION_TYPE_DATA: Record<string, { sprite: string; liquidPoints: string }> = {
   Tonic: {
-    sprite: "/sprites/potion-bottle.svg",
+    sprite: "/sprites/potion-bottle.png",
     liquidPoints: "2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0",
   },
   Elixir: {

@@ -11,7 +11,10 @@ export default function EditableName({
   onSave,
   className = "",
   inputClassName = "",
+  iconClassName = "text-slate-500 hover:bg-slate-800 hover:text-slate-200",
+  iconSize = 12,
   maxLength = 18,
+  truncate = true,
 }: {
   value: string;
   onSave: (name: string) => void;
@@ -19,7 +22,12 @@ export default function EditableName({
   className?: string;
   /** Applied to the input while editing. */
   inputClassName?: string;
+  /** Applied to the pencil button — override for surfaces darker/lighter than the default slate panel. */
+  iconClassName?: string;
+  iconSize?: number;
   maxLength?: number;
+  /** Ellipsize the display text instead of letting the container grow to fit it. Default true (fixed-width cards); set false when the container should auto-expand, e.g. a hanging sign. */
+  truncate?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -41,14 +49,14 @@ export default function EditableName({
 
   if (!editing) {
     return (
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        <span className={`truncate ${className}`}>{value}</span>
+      <span className={`inline-flex items-center gap-1.5 ${truncate ? "min-w-0" : ""}`}>
+        <span className={`${truncate ? "truncate" : "whitespace-nowrap"} ${className}`}>{value}</span>
         <button
           onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-          className="shrink-0 rounded p-0.5 text-slate-500 transition hover:bg-slate-800 hover:text-slate-200"
+          className={`shrink-0 rounded p-0.5 transition ${iconClassName}`}
           title="Rename"
         >
-          <Pencil size={12} />
+          <Pencil size={iconSize} />
         </button>
       </span>
     );

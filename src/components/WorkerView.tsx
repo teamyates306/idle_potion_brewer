@@ -144,7 +144,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
         <span className="shrink-0 text-cyan-700">{checked ? <CheckSquare size={18} /> : <Square size={18} />}</span>
       )}
       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full overflow-hidden ${tokens > 0 ? "ring-2 ring-yellow-500/50" : ""}`} style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-        <WorkerArt size={44} specialization={worker.specialization} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
+        <WorkerArt size={40} specialization={worker.specialization} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
@@ -574,7 +574,7 @@ function WorkerDetailModal({
         <div className="mb-4 flex items-start justify-between border-b border-slate-700 pb-3" style={{ boxShadow: "inset 0 -2px 0 #22d3ee33" }}>
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 overflow-hidden rounded-full" style={{ background: `${worker.color ?? "#7c3aed"}33` }}>
-              <WorkerArt size={40} specialization={spec} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
+              <WorkerArt size={36} specialization={spec} active={worker.trip_phase !== "idle" || worker.assigned_machine_id != null} hueShift={workerHue(worker.id)} />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-cyan-800">

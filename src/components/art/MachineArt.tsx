@@ -35,7 +35,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
       <ellipse cx="54" cy="54.5" rx="35" ry="9.5" fill={liquidColor} />
 
       {/* 2 — machine sprite (transparent cutout exposes liquid above) */}
-      <image href="/sprites/machine.svg" x="0" y="0" width="110" height="110" />
+      <image href="/sprites/machine.png" x="0" y="0" width="110" height="110" style={{ imageRendering: "pixelated" }} />
 
       {/* 3 — clock needle */}
       <line
