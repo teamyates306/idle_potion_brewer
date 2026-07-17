@@ -42,6 +42,11 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
 
   type InvItem = { id: string; ing: Ingredient; count: number };
 
+  const BASE_SORTS = ["rarity", "name", "count", "value"];
+  const isAttrSort = !BASE_SORTS.includes(sortMode);
+
+  const attrValue = (x: InvItem) => (x.ing.attributes as unknown as Record<string, number>)[sortMode] ?? 0;
+
   const comparator = useMemo((): ((a: InvItem, b: InvItem) => number) => {
     switch (sortMode) {
       case "name":
@@ -53,27 +58,40 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
       case "rarity":
         return (a, b) => (RARITY_ORDER[b.ing.rarity] ?? 0) - (RARITY_ORDER[a.ing.rarity] ?? 0) || b.count - a.count;
       default:
-        // an attribute key: highest magnitude first
-        return (a, b) =>
-          Math.abs((b.ing.attributes as unknown as Record<string, number>)[sortMode] ?? 0) -
-          Math.abs((a.ing.attributes as unknown as Record<string, number>)[sortMode] ?? 0);
+        // an attribute key: highest value first
+        return (a, b) => attrValue(b) - attrValue(a);
     }
   }, [sortMode]);
 
-  // Groups by type; within each group, ordered by the active sort.
-  const groups = useMemo(() => {
+  type Group = { key: string; label: string; color: string; items: InvItem[] };
+
+  // Sorting by attribute abandons category grouping in favor of a single
+  // ranked list, plus an "N/A" bucket for ingredients that don't have the attribute.
+  const groups = useMemo((): Group[] => {
     const all: InvItem[] = discovered
       .map((id) => ({ id, ing: cfg.ingredients[id], count: inv[id] ?? 0 }))
       .filter((x) => x.ing && (!q || x.ing.name.toLowerCase().includes(q)))
       .filter((x) => rarityFilter === "all" || x.ing.rarity === rarityFilter);
 
+    if (isAttrSort) {
+      const ranked = all.filter((x) => attrValue(x) !== 0).sort(comparator);
+      const na = all.filter((x) => attrValue(x) === 0)
+        .sort((a, b) => (RARITY_ORDER[b.ing.rarity] ?? 0) - (RARITY_ORDER[a.ing.rarity] ?? 0) || a.ing.name.localeCompare(b.ing.name));
+      return [
+        { key: "attr-ranked", label: ATTR_LABELS[sortMode] ?? sortMode, color: "#f59e0b", items: ranked },
+        { key: "attr-na", label: "N/A", color: "#64748b", items: na },
+      ].filter((g) => g.items.length > 0);
+    }
+
     return CATEGORY_ORDER
       .map((cat) => ({
-        cat,
+        key: cat,
+        label: CATEGORY_LABEL[cat] ?? cat,
+        color: CATEGORY_COLOR[cat] ?? "#f59e0b",
         items: all.filter((x) => x.ing.category === cat).sort(comparator),
       }))
       .filter((g) => g.items.length > 0);
-  }, [discovered, cfg.ingredients, inv, q, rarityFilter, comparator]);
+  }, [discovered, cfg.ingredients, inv, q, rarityFilter, comparator, isAttrSort, sortMode]);
 
   const rarityOptions = useMemo(
     () => Object.keys(RARITY_ORDER).sort((a, b) => RARITY_ORDER[a] - RARITY_ORDER[b]),
@@ -140,12 +158,12 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
               <p className="py-6 text-center text-sm text-slate-500">Nothing matches “{query}”.</p>
             ) : (
               <div className="space-y-4">
-                {groups.map(({ cat, items }) => (
-                  <section key={cat}>
+                {groups.map(({ key, label, color, items }) => (
+                  <section key={key}>
                     <div className="mb-2 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full" style={{ background: CATEGORY_COLOR[cat] ?? "#f59e0b" }} />
+                      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                        {CATEGORY_LABEL[cat] ?? cat}
+                        {label}
                       </h3>
                       <span className="text-[10px] text-slate-500">{items.length}</span>
                       <div className="ml-1 h-px flex-1 bg-slate-800" />
