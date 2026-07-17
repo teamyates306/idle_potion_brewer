@@ -288,7 +288,7 @@ function MachinePanelBody({
               {isKnownPotion ? (
                 <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{hasSpectacles && !potionExpanded && " · tap for stats"}</>
               ) : (
-                <>{bt.toFixed(2)}s brew · brew it to discover what you've made</>
+                <>???s brew · brew it to discover what you've made</>
               )}
             </div>
             {isKnownPotion && !hasSpectacles && (
