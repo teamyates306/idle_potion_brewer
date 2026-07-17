@@ -276,6 +276,16 @@ body {
   to   { transform: translateX(var(--walk-to)); }
 }
 
+/* Walker wiggle — a goofy little bounce+tilt on top of the crossing motion
+   above. Runs on a separate nested <g> (fill-box, bottom-center origin) so it
+   pivots on the sprite's own feet instead of orbiting the window's origin. */
+@keyframes walker-wiggle {
+  0%,  100% { transform: translateY(0)     rotate(0deg);   }
+  25%        { transform: translateY(-1.4px) rotate(-6deg); }
+  50%        { transform: translateY(0)     rotate(0deg);   }
+  75%        { transform: translateY(-1.4px) rotate(6deg);  }
+}
+
 /* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
 @keyframes lamp-flicker {
   0%,  100% { opacity: 1;    }

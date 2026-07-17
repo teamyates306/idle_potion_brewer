@@ -1162,6 +1162,8 @@ interface WallWalkerCfg {
   fromX: number;
   toX: number;
   y: number; // feet baseline, in wall-SVG user units
+  bobDuration: number; // seconds per up/down wiggle step — independent of crossing duration
+  bobDelay: number;    // negative animation-delay so concurrent walkers don't bob in lockstep
 }
 
 function rand(min: number, max: number): number {
@@ -1180,7 +1182,13 @@ function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
   const fromX = direction === "ltr" ? -off : width + off;
   const toX = direction === "ltr" ? width + off : -off;
   const y = rand(t.yMin, t.yMax);
-  return { id, adventurer, direction, duration, size, fromX, toX, y };
+  // A quick, slightly-varied bounce per walker — faster than any real footstep
+  // cadence on purpose, so it reads as a goofy little wiggle rather than a
+  // proper walk cycle (these are flat single-frame pixel-art sprites, no legs
+  // to actually animate).
+  const bobDuration = rand(0.32, 0.42);
+  const bobDelay = -rand(0, bobDuration); // random phase so walkers don't bounce in sync
+  return { id, adventurer, direction, duration, size, fromX, toX, y, bobDuration, bobDelay };
 }
 
 // Multiple adventurers can be crossing at once now (capped by
@@ -1330,7 +1338,19 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
               animation: `wall-walk ${wk.duration}s linear 1 forwards`,
             }}
           >
-            <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
+            {/* Wiggle wrapper — separate <g> from the crossing translateX above
+                (a single element can only run one `transform` animation at a
+                time) so the bounce/tilt composites independently of the walk.
+                fill-box + bottom-center origin pivots on the sprite's own feet
+                rather than the window's coordinate origin, so it reads as a
+                bounce in place instead of an orbit. */}
+            <g style={{
+              animation: `walker-wiggle ${wk.bobDuration}s ease-in-out ${wk.bobDelay}s infinite`,
+              transformBox: "fill-box",
+              transformOrigin: "50% 100%",
+            } as React.CSSProperties}>
+              <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
+            </g>
           </g>
         ))}
         {/* Near-scenery overlay — same shared 2100×144 picture as the
