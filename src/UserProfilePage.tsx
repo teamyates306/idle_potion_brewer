@@ -9,7 +9,7 @@ export default function UserProfilePage({ nickname }: { nickname: string }) {
   useEffect(() => { init(); }, [init]);
 
   return (
-    <div className="min-h-dvh bg-slate-900 px-4 py-6 text-slate-200">
+    <div className="h-full w-full overflow-y-auto overscroll-contain bg-slate-900 px-4 py-6 text-slate-200">
       <div className="mx-auto max-w-lg">
         <a
           href="/leaderboard"
