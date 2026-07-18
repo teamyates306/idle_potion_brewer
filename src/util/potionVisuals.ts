@@ -275,6 +275,26 @@ export const TIER_LIQUID_STYLE: { saturate: number; brightness: number; prismati
   { saturate: 1.70, brightness: 1.25, prismatic: true  }, // 9 Transcendent — prismatic
 ];
 
+/**
+ * Glow / particle / shimmer strength per prefix tier (0 Diluted … 9
+ * Transcendent). Canonical across every place a potion bottle is drawn
+ * (discovered list, sell stash, workshop pile) — don't fork a second copy of
+ * these numbers, or the same potion reads with different intensity glow
+ * depending on which view shows it.
+ */
+export const TIER_FX: { glow: number; particles: number; shimmer: boolean }[] = [
+  { glow: 0,   particles: 0, shimmer: false },  // 0 Diluted — flat, murky
+  { glow: 0,   particles: 0, shimmer: false },  // 1 Lesser
+  { glow: 1.5, particles: 0, shimmer: false },  // 2 Common
+  { glow: 2.5, particles: 0, shimmer: false },  // 3 Refined
+  { glow: 4,   particles: 0, shimmer: false },  // 4 Greater
+  { glow: 4.5, particles: 1, shimmer: false },  // 5 Superior
+  { glow: 5,   particles: 2, shimmer: false },  // 6 Potent
+  { glow: 6,   particles: 3, shimmer: false },  // 7 Exalted
+  { glow: 7,   particles: 3, shimmer: true  },  // 8 Mythic
+  { glow: 8,   particles: 3, shimmer: true  },  // 9 Transcendent (+ prismatic liquid)
+];
+
 export interface PotionVisuals {
   liquidColor: string;
   prefixTier:  number; // 0-9

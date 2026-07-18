@@ -4,15 +4,16 @@ import { useConfigStore, type BaseFormulas } from "../store/configStore";
 import { useGameStore } from "../store/gameStore";
 import { ACHIEVEMENTS } from "../data/achievements";
 import { masteryLevel, MASTERY_XP_THRESHOLDS } from "../data/masteryTrees";
-import { describeFromHash } from "../engine/potions";
+import { describeFromHash, potionHash } from "../engine/potions";
 import { useWalkerTuningStore } from "../store/walkerTuningStore";
 import { useBeamTuningStore } from "../store/beamTuningStore";
 import WindowWalkerPreview from "./dev/WindowWalkerPreview";
 import SurplusTab from "./dev/SurplusEditor";
 import TroughTab from "./dev/TroughEditor";
+import PotionPileTab from "./dev/PotionPileEditor";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus" | "trough";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus" | "trough" | "potions";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -93,7 +94,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-gray-200 bg-gray-50">
-        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus","trough"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus","trough","potions"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -117,6 +118,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "beams"       && <BeamsTab />}
         {tab === "surplus"     && <SurplusTab onClose={onClose} />}
         {tab === "trough"      && <TroughTab />}
+        {tab === "potions"     && <PotionPileTab />}
       </div>
     </div>
   );
@@ -160,6 +162,24 @@ function CheatsTab() {
     useGameStore.setState({ potionMastery: updates, masteryTokens: (game.masteryTokens ?? 0) + extraTokens });
   };
 
+  // Fills the potion pile with a big varied haul — random ingredient combos
+  // at random counts — so the multi-pile layout (Dev Dashboard → Potions)
+  // has enough volume and colour variety to actually preview against.
+  const populateRandomPotions = () => {
+    const ids = Object.keys(cfg.ingredients);
+    if (ids.length === 0) return;
+    const updates: Record<string, number> = { ...game.potionInv };
+    for (let i = 0; i < 60; i++) {
+      const numIngredients = 1 + Math.floor(Math.random() * 4);
+      const combo = new Set<string>();
+      while (combo.size < numIngredients) combo.add(ids[Math.floor(Math.random() * ids.length)]);
+      const hash = potionHash([...combo]);
+      const addCount = 1 + Math.floor(Math.random() * 8);
+      updates[hash] = (updates[hash] ?? 0) + addCount;
+    }
+    useGameStore.setState({ potionInv: updates });
+  };
+
   return (
     <div className="space-y-6 max-w-lg">
       <Section title="Economy">
@@ -168,6 +188,12 @@ function CheatsTab() {
           <Btn onClick={() => useGameStore.setState({ coins: game.coins + 5000 })}>+5k 🪙</Btn>
           <Btn onClick={() => useGameStore.setState({ coins: game.coins + 100000 })}>+100k 🪙</Btn>
           <Btn onClick={() => useGameStore.setState({ coins: 0 })} danger>Clear coins</Btn>
+        </div>
+      </Section>
+      <Section title="Potions">
+        <div className="flex flex-wrap gap-2">
+          <Btn onClick={populateRandomPotions}>+60 random potions</Btn>
+          <Btn onClick={() => useGameStore.setState({ potionInv: {} })} danger>Clear potion pile</Btn>
         </div>
       </Section>
       <Section title="Machine">

@@ -47,9 +47,23 @@ const CORE_SPRITES = [
   "/sprites/background.png", "/sprites/foreground.png",
   "/sprites/window.png", "/sprites/door.png",
   "/sprites/wall-tile.png", "/sprites/floor-tile.png", "/sprites/lamp.png",
-  "/sprites/machine.png", "/sprites/potion-bottle.png",
+  "/sprites/machine.png",
   "/sprites/worker.png", "/sprites/worker-manic.png",
   "/sprites/worker-explorer.png", "/sprites/worker-caravan.png", "/sprites/worker-pounder.png",
+  // Every potion-type bottle sprite (POTION_TYPE_DATA in potionVisuals.ts) —
+  // only "Tonic" (potion-bottle.png) was preloaded before the potion pile
+  // could show several piles' worth of mixed types at once; the other 9
+  // types were left to lazy-fetch the first time that type appeared,
+  // showing a broken-image flash under any dev-server hiccup.
+  "/sprites/potion-bottle.png", "/sprites/potion-elixir.svg", "/sprites/potion-brew.svg",
+  "/sprites/potion-philter.svg", "/sprites/potion-draught.svg", "/sprites/potion-decoction.svg",
+  "/sprites/potion-concoction.svg", "/sprites/potion-extract.svg", "/sprites/potion-tincture.svg",
+  "/sprites/potion-infusion.svg",
+  // Surplus-stash props (surplusTuningStore.ts) and every trough width variant
+  // (Workshop.tsx picks one of the four based on current machine count).
+  "/sprites/surplus_sprites/sack_open.svg", "/sprites/surplus_sprites/sack_closed.svg",
+  "/sprites/surplus_sprites/barell_open.svg", "/sprites/surplus_sprites/barell_closed.svg",
+  "/sprites/trough-160.png", "/sprites/trough-240.png", "/sprites/trough-320.png", "/sprites/trough-400.png",
 ];
 
 function preloadImage(src: string): Promise<void> {

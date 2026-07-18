@@ -28,11 +28,12 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
   const nx = 54.5 + 5 * Math.cos(angle);
   const ny = 13.5 + 5 * Math.sin(angle);
 
-  // Liquid box: (19,44)→(89,63) → cx=54, cy=53.5, rx=35, ry=9.5
+  // Liquid ellipse: cx=54, cy=46.5, rx=39, ry=10.5 — repositioned/resized to
+  // match the cauldron opening on the redrawn machine sprite.
   return (
     <svg width={size} height={size} viewBox="0 0 110 110" fill="none">
       {/* 1 — liquid: fully opaque, colour saturates with progress */}
-      <ellipse cx="54" cy="54.5" rx="35" ry="9.5" fill={liquidColor} />
+      <ellipse cx="54" cy="46.5" rx="39" ry="10.5" fill={liquidColor} />
 
       {/* 2 — machine sprite (transparent cutout exposes liquid above) */}
       <image href="/sprites/machine.png" x="0" y="0" width="110" height="110" style={{ imageRendering: "pixelated" }} />
@@ -46,12 +47,12 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0 }
         strokeLinecap="round"
       />
 
-      {/* 4 — bubbles */}
+      {/* 4 — bubbles (y shifted -8 to follow the liquid ellipse's new cy) */}
       {brewing && (
         <g>
-          <circle cx="44" cy="51" r="2.4" fill="#bcd9cf" className="animate-bubble" />
-          <circle cx="54" cy="52" r="3"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
-          <circle cx="68" cy="51" r="2"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
+          <circle cx="44" cy="43" r="2.4" fill="#bcd9cf" className="animate-bubble" />
+          <circle cx="54" cy="44" r="3"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.4s" }} />
+          <circle cx="68" cy="43" r="2"   fill="#bcd9cf" className="animate-bubble" style={{ animationDelay: "0.8s" }} />
         </g>
       )}
     </svg>
