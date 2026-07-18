@@ -14,6 +14,7 @@ import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
 import ContentPlanView from "./ContentPlanView";
+import MapEditorView from "./mapEditor/MapEditorView";
 import LeaderboardPage from "./LeaderboardPage";
 import UserProfilePage from "./UserProfilePage";
 import LeaderboardModal from "./components/LeaderboardModal";
@@ -85,6 +86,10 @@ export default function App() {
   // Standalone content & art planning surface (placeholder text/graphics tracker).
   if (typeof window !== "undefined" && window.location.pathname === "/content-plan") {
     return <ContentPlanView />;
+  }
+  // Hand-drawn map authoring surface (paint sprites, edit copy, export JSON).
+  if (typeof window !== "undefined" && window.location.pathname === "/map-editor") {
+    return <MapEditorView />;
   }
   // Public online leaderboard (also reachable via the in-game Rankings button).
   if (typeof window !== "undefined" && window.location.pathname === "/leaderboard") {

@@ -9,6 +9,8 @@ import { gatherRoundTrip } from "../engine/formulas";
 import { REGIONS, regionOfDistance, type RegionDef } from "../data/regions";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import SettlementModal from "./SettlementModal";
+import { useSettingsStore } from "../store/settingsStore";
+import HandDrawnMap, { HAND_DRAWN_CANVAS, type HandDrawnTap } from "../mapEditor/HandDrawnMap";
 import type { Location, Settlement } from "../types";
 
 // ── Region-island layout ──────────────────────────────────────────────────────
@@ -210,6 +212,8 @@ export default function MapView({
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<RegionDef | null>(null);
   const [gaxOpen, setGaxOpen] = useState<"unlock" | "dashboard" | null>(null);
+  const newMapEnabled = useSettingsStore((s) => s.newMapEnabled);
+  const toggleNewMap = useSettingsStore((s) => s.toggleNewMap);
 
   const locations = useMemo(() => Object.values(cfg.locations), [cfg.locations]);
   const settlements = useMemo(() => Object.values(cfg.settlements), [cfg.settlements]);
@@ -225,10 +229,12 @@ export default function MapView({
   useLayoutEffect(() => {
     const vp = vpRef.current;
     if (!vp) return;
-    const home = REGION_LAYOUT.region_home_vale;
+    const home = newMapEnabled
+      ? { cx: HAND_DRAWN_CANVAS / 2, cy: HAND_DRAWN_CANVAS / 2 }
+      : REGION_LAYOUT.region_home_vale;
     vp.scrollLeft = home.cx - vp.clientWidth / 2;
     vp.scrollTop = home.cy - vp.clientHeight / 2;
-  }, []);
+  }, [newMapEnabled]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     const vp = vpRef.current;
@@ -252,6 +258,23 @@ export default function MapView({
     if (moved.current) { e.stopPropagation(); e.preventDefault(); moved.current = false; }
   };
 
+  // The hand-drawn map routes through identical tap semantics as the old one.
+  const handleHandDrawnTap = (tap: HandDrawnTap) => {
+    if (!unlockedRegions.includes(tap.region.id)) {
+      pushHint("map_locked_location");
+      setSelectedRegion(tap.region);
+      return;
+    }
+    if (tap.kind === "gax") {
+      setGaxOpen(useGameStore.getState().gaxUnlocked ? "dashboard" : "unlock");
+    } else if (tap.kind === "settlement") {
+      setSelectedSettlement(tap.settlement);
+    } else {
+      if (!unlocked.includes(tap.loc.id)) pushHint("map_locked_location");
+      setSelected(tap.loc);
+    }
+  };
+
   const handleNodeTap = (node: PlacedNode) => {
     const regionLocked = !unlockedRegions.includes(node.region.id);
     if (regionLocked) {
@@ -272,10 +295,21 @@ export default function MapView({
   return (
     <>
       <Modal title="The Map" onClose={onClose} accent="#5e7a45">
-        <p className="mb-3 text-xs text-slate-400">
-          The known world, region by region. Tap any node to learn more — nothing
-          here has to be unlocked in any particular order.
-        </p>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <p className="text-xs text-slate-400">
+            The known world, region by region. Tap any node to learn more — nothing
+            here has to be unlocked in any particular order.
+          </p>
+          <button
+            onClick={toggleNewMap}
+            className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-wide transition ${
+              newMapEnabled ? "bg-amber-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"
+            }`}
+            title="Preview the new hand-drawn map (work in progress)"
+          >
+            {newMapEnabled ? "New map ✓" : "New map"}
+          </button>
+        </div>
 
         <div
           ref={vpRef}
@@ -287,6 +321,9 @@ export default function MapView({
           className="relative cursor-grab touch-none overflow-auto overscroll-contain rounded-xl border border-slate-800 active:cursor-grabbing"
           style={{ height: VIEWPORT_H, scrollbarWidth: "none" } as React.CSSProperties}
         >
+          {newMapEnabled ? (
+            <HandDrawnMap unlockedRegions={unlockedRegions} onTap={handleHandDrawnTap} />
+          ) : (
           <div
             className="relative"
             style={{
@@ -337,6 +374,7 @@ export default function MapView({
               );
             })}
           </div>
+          )}
         </div>
       </Modal>
 
