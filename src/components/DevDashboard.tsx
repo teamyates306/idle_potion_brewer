@@ -9,9 +9,10 @@ import { useWalkerTuningStore } from "../store/walkerTuningStore";
 import { useBeamTuningStore } from "../store/beamTuningStore";
 import WindowWalkerPreview from "./dev/WindowWalkerPreview";
 import SurplusTab from "./dev/SurplusEditor";
+import TroughTab from "./dev/TroughEditor";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus" | "trough";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -67,37 +68,37 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
   const [search, setSearch] = useState("");
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0a0f1a] text-slate-200">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white text-gray-800">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900 px-4 py-3">
-        <span className="font-mono text-sm font-bold text-rose-400">⚙ Dev Config</span>
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-300 bg-gray-50 px-4 py-3">
+        <span className="font-mono text-sm font-bold text-rose-600">⚙ Dev Config</span>
         <div className="flex items-center gap-3">
           {tab !== "cheats" && tab !== "formulas" && (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5">
-              <Search size={13} className="text-slate-500" />
+            <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-1.5">
+              <Search size={13} className="text-gray-500" />
               <input
-                className="w-40 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-600"
+                className="w-40 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
                 placeholder={`Search ${tab}…`}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              {search && <button onClick={() => setSearch("")}><X size={12} className="text-slate-500" /></button>}
+              {search && <button onClick={() => setSearch("")}><X size={12} className="text-gray-500" /></button>}
             </div>
           )}
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-900">
             <X size={18} />
           </button>
         </div>
       </div>
 
       {/* Tab bar */}
-      <div className="flex shrink-0 border-b border-slate-800 bg-slate-900">
-        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus"] as Tab[]).map((t) => (
+      <div className="flex shrink-0 border-b border-gray-200 bg-gray-50">
+        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus","trough"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
             className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
-              tab === t ? "border-b-2 border-rose-500 text-rose-400" : "text-slate-500 hover:text-slate-300"
+              tab === t ? "border-b-2 border-rose-500 text-rose-600" : "text-gray-500 hover:text-gray-800"
             }`}
           >
             {t}
@@ -115,6 +116,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "walkers"     && <WalkersTab />}
         {tab === "beams"       && <BeamsTab />}
         {tab === "surplus"     && <SurplusTab onClose={onClose} />}
+        {tab === "trough"      && <TroughTab />}
       </div>
     </div>
   );
@@ -207,11 +209,11 @@ function CheatsTab() {
                 onClick={() => game.unlockAchievement(a.id)}
                 disabled={got}
                 className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs transition ${
-                  got ? "cursor-default border-amber-700/40 bg-amber-950/30 text-amber-300/70" : "border-slate-700 bg-slate-800 text-slate-200 hover:border-amber-500/60"
+                  got ? "cursor-default border-amber-300 bg-amber-50 text-amber-800/80" : "border-gray-300 bg-white text-gray-800 hover:border-amber-500/60"
                 }`}
               >
                 <span className="truncate">{a.is_secret ? "🔒 " : ""}{a.name}</span>
-                <span className="shrink-0 text-[10px] text-slate-500">{got ? "✓" : "trigger"}</span>
+                <span className="shrink-0 text-[10px] text-gray-500">{got ? "✓" : "trigger"}</span>
               </button>
             );
           })}
@@ -256,13 +258,13 @@ function AttributeMultsTab() {
   const cfg = useConfigStore();
   return (
     <div className="max-w-lg space-y-6">
-      <p className="text-xs text-slate-500">
-        Each attribute contributes <code className="text-rose-400">(1 + total × mult)</code> to the brewed potion's sell price.
+      <p className="text-xs text-gray-500">
+        Each attribute contributes <code className="text-rose-600">(1 + total × mult)</code> to the brewed potion's sell price.
         Only positive totals count. Toxicity also affects brew time separately.
       </p>
       {ATTR_GROUPS_DISPLAY.map((group) => (
         <div key={group.label}>
-          <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">{group.label}</p>
+          <p className="mb-2 text-[10px] uppercase tracking-wider text-gray-500">{group.label}</p>
           <div className="space-y-1">
             {group.keys.map((attr) => {
               const fKey = `value_mult_${attr}` as keyof BaseFormulas;
@@ -308,7 +310,7 @@ function IngredientsTab({ search }: { search: string }) {
         <select
           value={rarityFilter}
           onChange={(e) => setRarityFilter(e.target.value as Rarity | "all")}
-          className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none"
+          className="rounded bg-white px-2 py-1 text-xs text-gray-800 outline-none"
         >
           <option value="all">All rarities</option>
           {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -316,18 +318,18 @@ function IngredientsTab({ search }: { search: string }) {
         <select
           value={catFilter}
           onChange={(e) => setCatFilter(e.target.value as IngredientCategory | "all")}
-          className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-200 outline-none"
+          className="rounded bg-white px-2 py-1 text-xs text-gray-800 outline-none"
         >
           <option value="all">All categories</option>
           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <span className="ml-auto text-xs text-slate-600">{list.length} ingredients</span>
+        <span className="ml-auto text-xs text-gray-400">{list.length} ingredients</span>
       </div>
 
       {/* Add new */}
       <button
         onClick={() => setAdding(true)}
-        className="mb-4 flex items-center gap-2 rounded-lg border border-dashed border-slate-600 px-4 py-2.5 text-sm text-slate-400 hover:border-rose-500 hover:text-rose-400 transition w-full justify-center"
+        className="mb-4 flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-2.5 text-sm text-gray-500 hover:border-rose-500 hover:text-rose-600 transition w-full justify-center"
       >
         <Plus size={15} /> New Ingredient
       </button>
@@ -343,7 +345,7 @@ function IngredientsTab({ search }: { search: string }) {
 
       <div className="space-y-2">
         {list.map((ing) => (
-          <div key={ing.id} className="rounded-xl border border-slate-700 bg-slate-900/60">
+          <div key={ing.id} className="rounded-xl border border-gray-300 bg-white">
             <button
               className="flex w-full items-center gap-3 p-3 text-left"
               onClick={() => setExpanded(expanded === ing.id ? null : ing.id)}
@@ -351,16 +353,16 @@ function IngredientsTab({ search }: { search: string }) {
               <span style={{ color: RARITY_COLOR[ing.rarity] }} className="text-lg">●</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-semibold text-slate-100">{ing.name}</span>
-                  <span className="text-xs text-slate-500">{ing.category} · {ing.rarity}</span>
+                  <span className="font-semibold text-gray-900">{ing.name}</span>
+                  <span className="text-xs text-gray-500">{ing.category} · {ing.rarity}</span>
                 </div>
-                <div className="truncate text-xs text-slate-500 italic">"{ing.description}"</div>
+                <div className="truncate text-xs text-gray-500 italic">"{ing.description}"</div>
               </div>
-              <span className="text-xs text-slate-500 mr-1">🪙{ing.base_value}</span>
-              {expanded === ing.id ? <ChevronDown size={15} className="text-slate-500" /> : <ChevronRight size={15} className="text-slate-500" />}
+              <span className="text-xs text-gray-500 mr-1">🪙{ing.base_value}</span>
+              {expanded === ing.id ? <ChevronDown size={15} className="text-gray-500" /> : <ChevronRight size={15} className="text-gray-500" />}
             </button>
             {expanded === ing.id && (
-              <div className="border-t border-slate-800 p-3">
+              <div className="border-t border-gray-200 p-3">
                 <IngredientEditor
                   ingredient={ing}
                   isNew={false}
@@ -408,13 +410,13 @@ function IngredientEditor({
         </FieldRow>
         <FieldRow label="Category">
           <select value={draft.category} onChange={(e) => set({ category: e.target.value as IngredientCategory })}
-            className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none">
+            className="w-full rounded bg-white px-2 py-1.5 text-sm text-gray-800 outline-none">
             {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </FieldRow>
         <FieldRow label="Rarity">
           <select value={draft.rarity} onChange={(e) => set({ rarity: e.target.value as Rarity })}
-            className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none">
+            className="w-full rounded bg-white px-2 py-1.5 text-sm text-gray-800 outline-none">
             {RARITIES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </FieldRow>
@@ -428,14 +430,14 @@ function IngredientEditor({
           value={draft.description}
           onChange={(e) => set({ description: e.target.value })}
           rows={2}
-          className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none resize-none focus:ring-1 focus:ring-rose-500"
+          className="w-full rounded bg-white px-2 py-1.5 text-sm text-gray-800 outline-none resize-none focus:ring-1 focus:ring-rose-500"
         />
       </FieldRow>
 
       {/* Attributes */}
       {ATTR_GROUPS.map((group) => (
         <div key={group.label}>
-          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-slate-500">{group.label}</p>
+          <p className="mb-1.5 text-[10px] uppercase tracking-wider text-gray-500">{group.label}</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {group.keys.map((k) => (
               <FieldRow key={k} label={k}>
@@ -446,15 +448,15 @@ function IngredientEditor({
         </div>
       ))}
 
-      <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
         <button onClick={handleSave} className="rounded-lg bg-rose-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-rose-500">
           {isNew ? "Add Ingredient" : "Save Changes"}
         </button>
-        <button onClick={onCancel} className="rounded-lg bg-slate-700 px-4 py-1.5 text-sm text-slate-300 hover:bg-slate-600">
+        <button onClick={onCancel} className="rounded-lg bg-gray-200 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-300">
           {isNew ? "Cancel" : "Discard"}
         </button>
         {onDelete && (
-          <button onClick={onDelete} className="ml-auto flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-rose-500 hover:bg-slate-700">
+          <button onClick={onDelete} className="ml-auto flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm text-rose-500 hover:bg-gray-300">
             <Trash2 size={13} /> Delete
           </button>
         )}
@@ -481,7 +483,7 @@ function LocationsTab({ search }: { search: string }) {
     <div>
       <button
         onClick={() => setAdding(true)}
-        className="mb-4 flex items-center gap-2 rounded-lg border border-dashed border-slate-600 px-4 py-2.5 text-sm text-slate-400 hover:border-rose-500 hover:text-rose-400 transition w-full justify-center"
+        className="mb-4 flex items-center gap-2 rounded-lg border border-dashed border-gray-300 px-4 py-2.5 text-sm text-gray-500 hover:border-rose-500 hover:text-rose-600 transition w-full justify-center"
       >
         <Plus size={15} /> New Location
       </button>
@@ -497,7 +499,7 @@ function LocationsTab({ search }: { search: string }) {
 
       <div className="space-y-2">
         {list.map((loc) => (
-          <div key={loc.id} className="rounded-xl border border-slate-700 bg-slate-900/60">
+          <div key={loc.id} className="rounded-xl border border-gray-300 bg-white">
             <button
               className="flex w-full items-center gap-3 p-3 text-left"
               onClick={() => setExpanded(expanded === loc.id ? null : loc.id)}
@@ -505,15 +507,15 @@ function LocationsTab({ search }: { search: string }) {
               <span className="text-green-400">📍</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-semibold text-slate-100">{loc.name}</span>
-                  <span className="text-xs text-slate-500">dist {loc.distance} · danger {"⚠".repeat(loc.danger + 1)}</span>
+                  <span className="font-semibold text-gray-900">{loc.name}</span>
+                  <span className="text-xs text-gray-500">dist {loc.distance} · danger {"⚠".repeat(loc.danger + 1)}</span>
                 </div>
-                <div className="truncate text-xs text-slate-500 italic">"{loc.flavor}"</div>
+                <div className="truncate text-xs text-gray-500 italic">"{loc.flavor}"</div>
               </div>
-              {expanded === loc.id ? <ChevronDown size={15} className="text-slate-500" /> : <ChevronRight size={15} className="text-slate-500" />}
+              {expanded === loc.id ? <ChevronDown size={15} className="text-gray-500" /> : <ChevronRight size={15} className="text-gray-500" />}
             </button>
             {expanded === loc.id && (
-              <div className="border-t border-slate-800 p-3">
+              <div className="border-t border-gray-200 p-3">
                 <LocationEditor
                   location={loc}
                   isNew={false}
@@ -596,55 +598,55 @@ function LocationEditor({
           value={draft.flavor}
           onChange={(e) => set({ flavor: e.target.value })}
           rows={3}
-          className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none resize-none focus:ring-1 focus:ring-rose-500"
+          className="w-full rounded bg-white px-2 py-1.5 text-sm text-gray-800 outline-none resize-none focus:ring-1 focus:ring-rose-500"
         />
       </FieldRow>
 
       {/* Drops */}
       <div>
-        <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Drop table</p>
+        <p className="mb-2 text-[10px] uppercase tracking-wider text-gray-500">Drop table</p>
         <div className="space-y-1.5">
           {draft.drops.map((drop: DropEntry, idx: number) => (
             <div key={idx} className="flex items-center gap-2">
               <select
                 value={drop.ingredientId}
                 onChange={(e) => setDropIngredient(idx, e.target.value)}
-                className="flex-1 rounded bg-slate-800 px-2 py-1.5 text-xs text-slate-200 outline-none"
+                className="flex-1 rounded bg-white px-2 py-1.5 text-xs text-gray-800 outline-none"
               >
                 {Object.values(cfg.ingredients).map((ing) => (
                   <option key={ing.id} value={ing.id}>{ing.name}</option>
                 ))}
               </select>
-              <div className="flex items-center gap-1 text-xs text-slate-500">
+              <div className="flex items-center gap-1 text-xs text-gray-500">
                 <span>wt</span>
                 <input
                   type="number"
                   value={drop.weight}
                   onChange={(e) => setDropWeight(idx, parseFloat(e.target.value) || 0)}
-                  className="w-16 rounded bg-slate-800 px-2 py-1.5 text-right text-slate-200 outline-none"
+                  className="w-16 rounded bg-white px-2 py-1.5 text-right text-gray-800 outline-none"
                 />
               </div>
-              <button onClick={() => removeDrop(idx)} className="text-slate-600 hover:text-rose-500"><Trash2 size={13} /></button>
+              <button onClick={() => removeDrop(idx)} className="text-gray-400 hover:text-rose-500"><Trash2 size={13} /></button>
             </div>
           ))}
           <button
             onClick={addDrop}
-            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-rose-400 transition"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-rose-600 transition"
           >
             <Plus size={12} /> Add drop
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
         <button onClick={handleSave} className="rounded-lg bg-rose-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-rose-500">
           {isNew ? "Add Location" : "Save Changes"}
         </button>
-        <button onClick={onCancel} className="rounded-lg bg-slate-700 px-4 py-1.5 text-sm text-slate-300 hover:bg-slate-600">
+        <button onClick={onCancel} className="rounded-lg bg-gray-200 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-300">
           {isNew ? "Cancel" : "Discard"}
         </button>
         {onDelete && (
-          <button onClick={onDelete} className="ml-auto flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-sm text-rose-500 hover:bg-slate-700">
+          <button onClick={onDelete} className="ml-auto flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm text-rose-500 hover:bg-gray-300">
             <Trash2 size={13} /> Delete
           </button>
         )}
@@ -658,7 +660,7 @@ function LocationEditor({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">{title}</p>
+      <p className="mb-2 text-[10px] uppercase tracking-wider text-gray-500">{title}</p>
       {children}
     </div>
   );
@@ -667,8 +669,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function FieldRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <label className="text-[10px] uppercase tracking-wider text-slate-500">
-        {label}{hint && <span className="ml-1 normal-case text-slate-700">({hint})</span>}
+      <label className="text-[10px] uppercase tracking-wider text-gray-500">
+        {label}{hint && <span className="ml-1 normal-case text-gray-400">({hint})</span>}
       </label>
       {children}
     </div>
@@ -682,7 +684,7 @@ function NumInput({ value, step = 1, onChange }: { value: number; step?: number;
       step={step}
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-      className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-right text-slate-200 outline-none focus:ring-1 focus:ring-rose-500"
+      className="w-full rounded bg-white px-2 py-1.5 text-sm text-right text-gray-800 outline-none focus:ring-1 focus:ring-rose-500"
     />
   );
 }
@@ -693,7 +695,7 @@ function TextInput({ value, onChange }: { value: string; onChange: (v: string) =
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded bg-slate-800 px-2 py-1.5 text-sm text-slate-200 outline-none focus:ring-1 focus:ring-rose-500"
+      className="w-full rounded bg-white px-2 py-1.5 text-sm text-gray-800 outline-none focus:ring-1 focus:ring-rose-500"
     />
   );
 }
@@ -706,9 +708,9 @@ function Slider({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-500">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-gray-500">
         <span>{label}</span>
-        <span className="font-mono text-slate-300">{value.toFixed(step < 1 ? 2 : 0)}{unit}</span>
+        <span className="font-mono text-gray-700">{value.toFixed(step < 1 ? 2 : 0)}{unit}</span>
       </div>
       <input
         type="range"
@@ -732,9 +734,9 @@ function MinMaxSlider({
   const [boundMin, boundMax] = bounds;
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-slate-500">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-gray-500">
         <span>{label}</span>
-        <span className="font-mono text-slate-300">{lo.toFixed(step < 1 ? 2 : 0)}–{hi.toFixed(step < 1 ? 2 : 0)}{unit}</span>
+        <span className="font-mono text-gray-700">{lo.toFixed(step < 1 ? 2 : 0)}–{hi.toFixed(step < 1 ? 2 : 0)}{unit}</span>
       </div>
       <div className="flex items-center gap-2">
         <input
@@ -771,7 +773,7 @@ function WalkersTab() {
     <div className="max-w-3xl">
       <Section title="Window Walkers">
         {!windowWalkersOn && (
-          <p className="mb-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+          <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Window walkers are off at the current graphics quality (needs Medium or higher) — this preview
             works regardless, but nothing will render in the real workshop wall until quality is raised.
           </p>
@@ -779,7 +781,7 @@ function WalkersTab() {
         <div className="flex flex-wrap items-start gap-6">
           <div>
             <WindowWalkerPreview />
-            <p className="mt-1.5 max-w-[280px] text-[10px] leading-snug text-slate-500">
+            <p className="mt-1.5 max-w-[280px] text-[10px] leading-snug text-gray-500">
               Loops continuously so you don't have to wait. Each loop re-rolls a fresh random value
               within the current min/max ranges. Dashed red line marks the exact feet baseline in play.
             </p>
@@ -826,7 +828,7 @@ function WalkersTab() {
             </div>
           </div>
         </div>
-        <p className="mt-4 max-w-lg text-[11px] text-slate-500">
+        <p className="mt-4 max-w-lg text-[11px] text-gray-500">
           Each walker independently rolls a random size/speed/position within these ranges when it spawns.
           The active count on the real wall drifts on its own between 0 and "max concurrent" — there's no
           fixed spawn interval, just a small random check every ~1.4s, so the population feels organic
@@ -847,7 +849,7 @@ function BeamsTab() {
     <div className="max-w-xl">
       <Section title="Window Light Beams">
         {!windowBeamsOn && (
-          <p className="mb-3 rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
+          <p className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Window light beams are off in graphics settings — these sliders still update live, but
             nothing will render in the real workshop wall until they're enabled.
           </p>
@@ -875,7 +877,7 @@ function BeamsTab() {
             <Btn onClick={() => tuning.reset()}>Reset to defaults</Btn>
           </div>
         </div>
-        <p className="mt-4 max-w-lg text-[11px] text-slate-500">
+        <p className="mt-4 max-w-lg text-[11px] text-gray-500">
           Beams are centred on each window's x position and only appear near dawn/dusk (opacity is
           driven by <code>--dn-beam-op</code>). These values reset on reload; once the alignment looks
           right against the real wall, tell me the numbers and I'll bake them in as the new defaults.
@@ -889,7 +891,7 @@ function Btn({ children, onClick, danger }: { children: React.ReactNode; onClick
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition ${danger ? "bg-rose-700 hover:bg-rose-600" : "bg-slate-700 hover:bg-slate-600"}`}
+      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${danger ? "bg-rose-700 text-white hover:bg-rose-600" : "bg-gray-200 text-gray-800 hover:bg-gray-300"}`}
     >
       {children}
     </button>

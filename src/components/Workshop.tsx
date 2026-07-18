@@ -19,6 +19,10 @@ import { generateAdventurer, type Adventurer } from "../data/questSprites";
 import { useWalkerTuningStore, type WalkerTuning } from "../store/walkerTuningStore";
 import { useBeamTuningStore } from "../store/beamTuningStore";
 import { useSurplusTuningStore, SURPLUS_THRESHOLD, type SurplusKind } from "../store/surplusTuningStore";
+import {
+  useTroughTuningStore, layerForIndex, troughLayerStarts, troughMaxPile,
+  type TroughLayerCfg, type TroughJitterCfg,
+} from "../store/troughTuningStore";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
@@ -129,33 +133,23 @@ function makeBurstDots(count: number): BrewBurstDot[] {
 }
 
 // ── Trough pile ──────────────────────────────────────────────────────────────
+// Layer layout and jitter/rotation ranges are tunable live via Dev Dashboard
+// → Trough (src/store/troughTuningStore.ts).
 
 const RARITY_RANK: Record<Rarity, number> = {
   legendary: 8, fabled: 7, epic: 6, exotic: 5, rare: 4, scarce: 3, uncommon: 2, common: 1,
 };
-// Each layer: x-range narrows as you go up, so higher items always have a base
-// beneath them and nothing floats. Capacities sum to MAX_TROUGH_PILE (20).
-const PILE_LAYER_CFG = [
-  { xMin: 10, xMax: 90, yBase: 4,  capacity: 8 },  // layer 0 — widest base
-  { xMin: 20, xMax: 80, yBase: 13, capacity: 6 },  // layer 1
-  { xMin: 30, xMax: 70, yBase: 22, capacity: 4 },  // layer 2
-  { xMin: 40, xMax: 60, yBase: 31, capacity: 2 },  // layer 3 — narrow peak
-] as const;
-const MAX_TROUGH_PILE = PILE_LAYER_CFG.reduce((s, l) => s + l.capacity, 0); // 20
-
-function layerForSlot(i: number): number {
-  let consumed = 0;
-  for (let l = 0; l < PILE_LAYER_CFG.length; l++) {
-    consumed += PILE_LAYER_CFG[l].capacity;
-    if (i < consumed) return l;
-  }
-  return PILE_LAYER_CFG.length - 1;
-}
 
 function buildTroughSlots(
   inv: Record<string, number>,
   ingredients: Record<string, Ingredient>,
+  layers: TroughLayerCfg[],
+  jitter: TroughJitterCfg,
 ): Array<{ id: string; xPct: number; yOff: number; rot: number; zIdx: number }> {
+  if (layers.length === 0) return [];
+  const maxPile = troughMaxPile(layers);
+  if (maxPile === 0) return [];
+
   const stocked = Object.entries(inv)
     .filter(([, n]) => n > 0)
     .sort(([aid], [bid]) => {
@@ -167,11 +161,11 @@ function buildTroughSlots(
 
   if (stocked.length === 0) return [];
 
-  // Phase 1: one of each unique type (rarest first), up to MAX
-  const display: string[] = stocked.slice(0, MAX_TROUGH_PILE).map(([id]) => id);
+  // Phase 1: one of each unique type (rarest first), up to the pile's capacity
+  const display: string[] = stocked.slice(0, maxPile).map(([id]) => id);
 
   // Phase 2: fill remaining slots proportionally by count, capped at (count-1) extras
-  const gap = MAX_TROUGH_PILE - display.length;
+  const gap = maxPile - display.length;
   if (gap > 0) {
     const total = stocked.reduce((s, [, n]) => s + n, 0);
     const extras: string[] = [];
@@ -184,29 +178,34 @@ function buildTroughSlots(
   }
 
   // Pre-compute where each layer starts in the display array
-  const layerStarts = PILE_LAYER_CFG.map((_, l) =>
-    PILE_LAYER_CFG.slice(0, l).reduce((s, c) => s + c.capacity, 0),
-  );
+  const layerStarts = troughLayerStarts(layers);
 
   return display.map((id, i) => {
-    // Hash purely from slot index — position never changes for a given slot
+    // Seeded purely from slot index — position never changes for a given slot
     // regardless of which ingredient ends up there. This stops the pile
-    // reshuffling when inventory counts shift items between slots.
-    const h = Math.abs(Math.imul(i * 2654435761, 0x9e3779b9));
+    // reshuffling when inventory counts shift items between slots. Draws
+    // three independent values (x/y/rot) from one seeded PRNG rather than
+    // slicing bits off a single hash — see surplusTuningStore's placement
+    // logic for why bit-slicing one hash silently correlates values that are
+    // supposed to be independent.
+    const seed = Math.abs(Math.imul(i * 2654435761, 0x9e3779b9));
+    const rng = seededRng(seed);
+    const rX = rng(), rY = rng(), rRot = rng();
 
-    const l = layerForSlot(i);
-    const cfg = PILE_LAYER_CFG[l];
+    const l = layerForIndex(layers, i);
+    const cfg = layers[l];
     const withinLayer = i - layerStarts[l];
 
     // Zone-based x: divide this layer's range into equal zones, one item per zone.
     // This guarantees even coverage — no gaps — while small jitter keeps it organic.
-    const zoneW = (cfg.xMax - cfg.xMin) / cfg.capacity;
+    const capacity = Math.max(1, cfg.capacity);
+    const zoneW = (cfg.xMax - cfg.xMin) / capacity;
     const zoneCenter = cfg.xMin + (withinLayer + 0.5) * zoneW;
-    const jitter = (((h % 100) / 100) - 0.5) * zoneW * 0.4; // ±20 % of zone width
-    const xPct = zoneCenter + jitter;
+    const jitterX = ((rX % 1000) / 1000 - 0.5) * zoneW * jitter.xJitterFrac;
+    const xPct = zoneCenter + jitterX;
 
-    const yOff = cfg.yBase + ((h >> 4) % 5); // 0–4 px jitter within the layer
-    const rot  = ((h >> 12) % 45) - 22;       // –22 to +22 deg
+    const yOff = cfg.yBase + jitter.yJitterMin + ((rY % 1000) / 1000) * (jitter.yJitterMax - jitter.yJitterMin);
+    const rot = jitter.rotMin + ((rRot % 1000) / 1000) * (jitter.rotMax - jitter.rotMin);
     const zIdx = l * 10 + Math.floor(xPct / 10);
 
     return { id, xPct, yOff, rot, zIdx };
@@ -216,13 +215,21 @@ function buildTroughSlots(
 const TroughPile = React.memo(function TroughPile() {
   const inv = useGameStore((s) => s.ingredientInv);
   const cfg = useConfigStore();
+  const layers = useTroughTuningStore((s) => s.layers);
+  const jitter = useTroughTuningStore((s) => s.jitter);
 
   const slots = useMemo(
-    () => buildTroughSlots(inv, cfg.ingredients),
-    [inv, cfg.ingredients],
+    () => buildTroughSlots(inv, cfg.ingredients, layers, jitter),
+    [inv, cfg.ingredients, layers, jitter],
   );
 
   if (slots.length === 0) return null;
+
+  const size = jitter.iconSize;
+  // Render the SVG at a higher raster size then CSS-scale down so the
+  // browser downsamples → much smoother edges than rendering at `size` directly.
+  const rasterSize = Math.round(size * (24 / 14));
+  const innerScale = size / rasterSize;
 
   return (
     <>
@@ -230,24 +237,21 @@ const TroughPile = React.memo(function TroughPile() {
         const ing = cfg.ingredients[id];
         if (!ing) return null;
         return (
-          // Outer div: 14 px layout box used for centering + positioning.
-          // Inner div: renders the SVG at 24 px then CSS-scales to 14 px so the
-          // browser downsamples a higher-res raster → much smoother edges.
           <div
             key={i}
             className="pointer-events-none absolute"
             style={{
               left: `${xPct}%`,
               top: `${-(6 + yOff)}px`,
-              width: 14,
-              height: 14,
+              width: size,
+              height: size,
               overflow: "visible",
               transform: `translateX(-50%) rotate(${rot}deg)`,
               zIndex: zIdx,
             }}
           >
-            <div style={{ transform: "scale(0.75)", transformOrigin: "top left", lineHeight: 0 }}>
-              <IngredientSvg category={ing.category} size={24} rarity={ing.rarity} />
+            <div style={{ transform: `scale(${innerScale})`, transformOrigin: "top left", lineHeight: 0 }}>
+              <IngredientSvg category={ing.category} size={rasterSize} rarity={ing.rarity} />
             </div>
           </div>
         );
@@ -1683,18 +1687,13 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
         <use href="#wallSceneFg" />
         {/* Night dimmer — a single night-blue wash whose opacity tracks the day
             phase (0 by day, ~0.62 at deep night). Covers the sky, hills, walkers
-            and near-scenery uniformly. Drawn BEFORE the stars so they stay bright
-            and pop against the darkened sky at night. */}
+            and near-scenery uniformly. (Fixed star positions used to sit on top
+            of this, tuned for the old sky-only scene — the current background
+            art has trees/rooftops at those same coordinates, so the stars read
+            as glowing dots stuck in the foliage. Removed rather than re-placed;
+            the hand-painted background can carry its own stars if wanted.) */}
         <rect x={x} y={y} width={w} height={h} fill="#0a1526"
           style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
-        <circle cx={cx - 11} cy={y + 10} r="0.9" fill="#c8dcf0"
-          style={{ opacity: "calc(0.7 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
-        <circle cx={cx - 2} cy={y + 6} r="1.1" fill="#e0eeff"
-          style={{ opacity: "calc(0.6 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
-        <circle cx={cx + 12} cy={y + 11} r="0.9" fill="#c8dcf0"
-          style={{ opacity: "calc(0.5 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
-        <circle cx={cx + 6} cy={y + 5} r="0.7" fill="#e0eeff"
-          style={{ opacity: "calc(0.55 * var(--dn-star-op, 0))", transition: "opacity 3s ease-in-out" }} />
       </g>
       {/* Frame + glass texture on top — hand-authored pixel art, same 48×64
           canvas as the clip above so it lines up exactly; its glass pixels

@@ -64,11 +64,11 @@ export default function WindowWalkerPreview() {
   }, [lap]);
 
   if (!adventurer) {
-    return <p className="text-xs text-slate-500">No sprite races available yet.</p>;
+    return <p className="text-xs text-gray-500">No sprite races available yet.</p>;
   }
 
   return (
-    <div className="inline-block overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
+    <div className="inline-block overflow-hidden rounded-lg border border-gray-300 bg-gray-50">
       {/* viewBox is taller than the window itself so the vertical-position guide
           line stays visible across its full slider range, including positions
           above/below the window pane where the sprite itself would be clipped

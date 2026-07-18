@@ -85,7 +85,7 @@ function FloorZonesEditor() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        className="relative overflow-hidden rounded-lg border border-slate-700"
+        className="relative overflow-hidden rounded-lg border border-gray-300"
         style={{ width: FLOOR_W, height: FLOOR_H, background: "#8a857c" }}
       >
         {/* Reference: door sits centred on the wall directly above */}
@@ -118,20 +118,20 @@ function FloorZonesEditor() {
       <div className="mt-2 flex flex-wrap gap-2">
         <button
           onClick={addZone}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-1.5 text-xs text-slate-400 hover:border-rose-500 hover:text-rose-400"
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:border-rose-500 hover:text-rose-600"
         >
           <Plus size={12} /> Add zone
         </button>
       </div>
       <div className="mt-3 space-y-1.5">
         {zones.map((z, i) => (
-          <div key={z.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1.5 text-xs">
+          <div key={z.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs">
             <span className="w-6 font-mono font-semibold" style={{ color: ZONE_COLORS[i % ZONE_COLORS.length] }}>{z.id}</span>
             <NumField label="x min%" value={z.xMinPct} onChange={(v) => setZone(z.id, { xMinPct: v })} />
             <NumField label="x max%" value={z.xMaxPct} onChange={(v) => setZone(z.id, { xMaxPct: v })} />
             <NumField label="y min" value={z.yMin} onChange={(v) => setZone(z.id, { yMin: v })} />
             <NumField label="y max" value={z.yMax} onChange={(v) => setZone(z.id, { yMax: v })} />
-            <button onClick={() => removeZone(z.id)} className="ml-auto text-slate-600 hover:text-rose-500"><Trash2 size={13} /></button>
+            <button onClick={() => removeZone(z.id)} className="ml-auto text-gray-400 hover:text-rose-500"><Trash2 size={13} /></button>
           </div>
         ))}
       </div>
@@ -141,13 +141,13 @@ function FloorZonesEditor() {
 
 function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="flex items-center gap-1 text-[10px] text-slate-500">
+    <label className="flex items-center gap-1 text-[10px] text-gray-500">
       {label}
       <input
         type="number"
         value={Math.round(value)}
         onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
-        className="w-14 rounded bg-slate-800 px-1.5 py-0.5 text-right text-slate-200 outline-none"
+        className="w-14 rounded bg-white px-1.5 py-0.5 text-right text-gray-800 outline-none"
       />
     </label>
   );
@@ -161,22 +161,22 @@ function RangeField({
   label: string; min: number; max: number; step?: number; onChange: (min: number, max: number) => void;
 }) {
   return (
-    <label className="flex items-center gap-1 text-[10px] text-slate-500">
+    <label className="flex items-center gap-1 text-[10px] text-gray-500">
       {label}
       <input
         type="number"
         step={step}
         value={step < 1 ? min.toFixed(2) : Math.round(min)}
         onChange={(e) => onChange(Math.min(parseFloat(e.target.value) || 0, max), max)}
-        className="w-14 rounded bg-slate-800 px-1.5 py-0.5 text-right text-slate-200 outline-none"
+        className="w-14 rounded bg-white px-1.5 py-0.5 text-right text-gray-800 outline-none"
       />
-      <span className="text-slate-600">–</span>
+      <span className="text-gray-400">–</span>
       <input
         type="number"
         step={step}
         value={step < 1 ? max.toFixed(2) : Math.round(max)}
         onChange={(e) => onChange(min, Math.max(parseFloat(e.target.value) || 0, min))}
-        className="w-14 rounded bg-slate-800 px-1.5 py-0.5 text-right text-slate-200 outline-none"
+        className="w-14 rounded bg-white px-1.5 py-0.5 text-right text-gray-800 outline-none"
       />
     </label>
   );
@@ -229,24 +229,24 @@ function OverlaySpotEditor({ kind }: { kind: SurplusKind }) {
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-xs font-semibold capitalize text-slate-300">{kind}</span>
+        <span className="text-xs font-semibold capitalize text-gray-700">{kind}</span>
         <select
           value={previewCategory}
           onChange={(e) => setPreviewCategory(e.target.value as IngredientCategory)}
-          className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-200 outline-none"
+          className="rounded bg-white px-2 py-1 text-[11px] text-gray-800 outline-none"
         >
           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
       <div className="flex flex-wrap items-start gap-4">
         <div>
-          <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-600">Range editor — drag to move</p>
+          <p className="mb-1 text-[10px] uppercase tracking-wider text-gray-400">Range editor — drag to move</p>
           <div
             ref={boxRef}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            className="relative rounded-lg border border-slate-700 bg-[#3a342b]"
+            className="relative rounded-lg border border-gray-300 bg-[#3a342b]"
             style={{ width: w, height: h }}
           >
             <img
@@ -283,7 +283,7 @@ function OverlaySpotEditor({ kind }: { kind: SurplusKind }) {
         </div>
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <p className="text-[10px] uppercase tracking-wider text-slate-600">Random draw</p>
+            <p className="text-[10px] uppercase tracking-wider text-gray-400">Random draw</p>
             <button
               onClick={() => setRoll(rollPreviewSpots(kindCfg))}
               className="flex items-center gap-1 rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-amber-500"
@@ -293,7 +293,7 @@ function OverlaySpotEditor({ kind }: { kind: SurplusKind }) {
             </button>
           </div>
           <div
-            className="relative rounded-lg border border-slate-700 bg-[#3a342b]"
+            className="relative rounded-lg border border-gray-300 bg-[#3a342b]"
             style={{ width: w, height: h }}
           >
             <img
@@ -314,13 +314,13 @@ function OverlaySpotEditor({ kind }: { kind: SurplusKind }) {
               </div>
             ))}
           </div>
-          <p className="mt-1 max-w-[180px] text-[10px] text-slate-600">{roll.length} spot{roll.length === 1 ? "" : "s"} this draw</p>
+          <p className="mt-1 max-w-[180px] text-[10px] text-gray-400">{roll.length} spot{roll.length === 1 ? "" : "s"} this draw</p>
         </div>
       </div>
       <div className="mt-2 space-y-1.5">
         {kindCfg.spots.map((sp, idx) => (
-          <div key={idx} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1.5 text-xs">
-            <span className="w-4 font-mono text-slate-500">{idx}</span>
+          <div key={idx} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs">
+            <span className="w-4 font-mono text-gray-500">{idx}</span>
             <RangeField label="x%" min={sp.dxPctMin * 100} max={sp.dxPctMax * 100}
               onChange={(lo, hi) => setSpot(kind, idx, { dxPctMin: lo / 100, dxPctMax: hi / 100 })} />
             <RangeField label="y%" min={sp.dyPctMin * 100} max={sp.dyPctMax * 100}
@@ -329,19 +329,19 @@ function OverlaySpotEditor({ kind }: { kind: SurplusKind }) {
               onChange={(lo, hi) => setSpot(kind, idx, { sizeMin: lo, sizeMax: hi })} />
             <RangeField label="rot°" min={sp.rotMin} max={sp.rotMax}
               onChange={(lo, hi) => setSpot(kind, idx, { rotMin: lo, rotMax: hi })} />
-            <button onClick={() => removeSpot(kind, idx)} className="ml-auto text-slate-600 hover:text-rose-500"><Trash2 size={13} /></button>
+            <button onClick={() => removeSpot(kind, idx)} className="ml-auto text-gray-400 hover:text-rose-500"><Trash2 size={13} /></button>
           </div>
         ))}
         <button
           onClick={() => addSpot(kind)}
-          className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-1.5 text-xs text-slate-400 hover:border-rose-500 hover:text-rose-400"
+          className="flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-500 hover:border-rose-500 hover:text-rose-600"
         >
           <Plus size={12} /> Add spill spot
         </button>
-        <div className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/50 px-2.5 py-1.5 text-xs">
+        <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs">
           <RangeField label="spots shown" min={kindCfg.countMin} max={kindCfg.countMax}
             onChange={(lo, hi) => setKindCount(kind, { countMin: Math.round(lo), countMax: Math.round(hi) })} />
-          <span className="text-[10px] text-slate-600">of {kindCfg.spots.length} defined — how many appear per prop, randomised</span>
+          <span className="text-[10px] text-gray-400">of {kindCfg.spots.length} defined — how many appear per prop, randomised</span>
         </div>
       </div>
     </div>
@@ -355,8 +355,8 @@ export default function SurplusTab({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="max-w-4xl space-y-8">
-      <p className="text-xs text-slate-500">
-        Once any ingredient's stash count passes <code className="text-rose-400">{SURPLUS_THRESHOLD}</code>, an
+      <p className="text-xs text-gray-500">
+        Once any ingredient's stash count passes <code className="text-rose-600">{SURPLUS_THRESHOLD}</code>, an
         overflowing sack or barrel prop (randomly chosen, not tied to category) appears somewhere in a spawn zone
         with that ingredient's icon spilling out of it. Every placement value below — position, size, rotation, and
         how many spill spots show — is a min/max <em>range</em>: each prop rolls its own value inside that range, so
@@ -366,7 +366,7 @@ export default function SurplusTab({ onClose }: { onClose: () => void }) {
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500">Floor spawn zones</p>
+          <p className="text-[10px] uppercase tracking-wider text-gray-500">Floor spawn zones</p>
           <button
             onClick={() => { setEditMode(true); onClose(); }}
             className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-500"
@@ -374,7 +374,7 @@ export default function SurplusTab({ onClose }: { onClose: () => void }) {
             Edit on live workshop
           </button>
         </div>
-        <p className="mb-2 text-[10px] text-slate-600">
+        <p className="mb-2 text-[10px] text-gray-400">
           Or skip this preview grid and drag the zones directly on the real workshop floor — closes this dashboard
           and drops draggable boxes right onto the scene, with a "Done" button to come back here.
         </p>
@@ -382,14 +382,14 @@ export default function SurplusTab({ onClose }: { onClose: () => void }) {
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">Spill-overlay placement</p>
+        <p className="mb-2 text-[10px] uppercase tracking-wider text-gray-500">Spill-overlay placement</p>
         <div className="flex flex-wrap gap-8">
           <OverlaySpotEditor kind="sack" />
           <OverlaySpotEditor kind="barell" />
         </div>
       </div>
 
-      <button onClick={reset} className="rounded-lg bg-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-600">
+      <button onClick={reset} className="rounded-lg bg-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-300">
         Reset to defaults
       </button>
     </div>
