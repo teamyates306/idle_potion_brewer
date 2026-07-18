@@ -1075,6 +1075,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     const t1 = window.setTimeout(recenter, 150);
     const t2 = window.setTimeout(recenter, 500);
     const t3 = window.setTimeout(recenter, 1200);
+    // A slow device/network can push sprite decode and webfont layout shifts
+    // past all the timers above — with nothing left to run afterward, an
+    // in-between call would bake a still-settling (too-wide) scrollWidth into
+    // the scroll clamp with no further correction (the "still off-centre on
+    // some loads" bug). One more longer catch-all, plus a real signal for
+    // webfont layout settling rather than guessing a delay for it.
+    const t4 = window.setTimeout(recenter, 3000);
+    document.fonts?.ready?.then(recenter);
     const ro = new ResizeObserver(recenter);
     const el = outerRef.current;
     if (el) ro.observe(el);
@@ -1090,6 +1098,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(t4);
       window.visualViewport?.removeEventListener("resize", recenter);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -1112,7 +1121,30 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     el.setPointerCapture(e.pointerId);
     setDragging(true);
   };
-  const clampScroll = (v: number) => Math.min(scrollRange.current.max, Math.max(scrollRange.current.min, v));
+  // Recompute the legal scroll window fresh from the DOM every time, rather
+  // than trusting scrollRange.current — that ref is only updated by the
+  // layout effect's own triggers, and on a slow device those can all fire
+  // before images/fonts finish settling, baking a transient (too-wide)
+  // scrollWidth into the cached range with nothing left to correct it
+  // afterward (the actual cause of the reported "still off-centre on some
+  // loads" bug — the clamp was self-consistently wrong, not un-clamped).
+  const liveScrollRange = () => {
+    const el = scrollRef.current;
+    if (!el) return scrollRange.current;
+    const vw = el.clientWidth;
+    const sw = el.scrollWidth;
+    const ratio = sw / WORLD_W;
+    const centerScroll = Math.max(0, (sw - vw) / 2);
+    const brewersVis = machines.length * COL_W * ratio;
+    const overflowBase = (brewersVis - vw) / 2;
+    const base = machines.length >= 2 ? Math.max(60 * ratio, overflowBase) : overflowBase;
+    const half = base > 0 ? base + SCROLL_EXTRA * ratio : 0;
+    return { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
+  };
+  const clampScroll = (v: number) => {
+    const r = liveScrollRange();
+    return Math.min(r.max, Math.max(r.min, v));
+  };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current.active) return;
     const el = scrollRef.current;
@@ -1348,7 +1380,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       <div
         ref={scrollRef}
         className={dragging ? "cursor-grabbing overflow-x-scroll" : "cursor-grab overflow-x-scroll"}
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x", height: "100%", overflowY: "hidden" } as React.CSSProperties}
+        style={{
+          scrollbarWidth: "none", msOverflowStyle: "none", touchAction: "pan-x", height: "100%", overflowY: "hidden",
+          // Browsers auto-nudge scrollLeft ("scroll anchoring") whenever
+          // off-screen content resizes — e.g. sprites finishing decode/layout
+          // after our own measure()/recentre already ran. Per spec these
+          // anchoring adjustments don't fire a `scroll` event, so the onScroll
+          // clamp below never sees or corrects them — the actual cause of the
+          // door drifting off-centre after load. This scene is recentred
+          // entirely by our own JS, so the browser's heuristic here only fights it.
+          overflowAnchor: "none",
+        } as React.CSSProperties}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
