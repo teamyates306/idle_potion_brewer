@@ -166,6 +166,23 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
   // worker (its hue never changes), so it always reads as "your" first hire.
   const startingHue = useGameStore((s) => workerHue(s.workers[0]?.id ?? 0));
   const [zoom, setZoom] = useState(false);
+  // The popup used a fixed 7x scale regardless of screen size — on a narrow
+  // mobile viewport that made the enlarged board (BOARD_W*7 ≈ 532px wide)
+  // overflow the screen, so the flex-centred popup just clipped it down to
+  // whatever fit, reading as a single hyper-zoomed-in fragment instead of
+  // the whole board. Cap the scale to what actually fits on screen instead.
+  const [popupScale, setPopupScale] = useState(7);
+  useEffect(() => {
+    if (!zoom) return;
+    const fit = () => {
+      const maxW = window.innerWidth * 0.92;
+      const maxH = window.innerHeight * 0.82;
+      setPopupScale(Math.min(7, maxW / BOARD_W, maxH / BOARD_H));
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [zoom]);
 
   // Dynamic: the hard ("Challenging") quest and its adventurer + reward.
   const hardQuest = useMemo(
@@ -232,9 +249,9 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
             onClick={(e) => { e.stopPropagation(); setZoom(true); }}
             title="Enlarge notice board"
             className="pointer-events-auto absolute flex items-center justify-center text-[#4a2f14] hover:text-[#7a5a2a] active:scale-95"
-            style={{ left: 1, bottom: 1, width: 12, height: 12 }}
+            style={{ left: 1, bottom: 4, width: 14, height: 14 }}
           >
-            <Search size={9} strokeWidth={2.5} />
+            <Search size={11} strokeWidth={2.5} />
           </button>
         </div>
       </div>
@@ -262,9 +279,9 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
             </button>
             <div
               className="rounded-2xl border-4 border-[#3a2410] shadow-2xl"
-              style={{ width: BOARD_W * 7, height: BOARD_H * 7, overflow: "hidden" }}
+              style={{ width: BOARD_W * popupScale, height: BOARD_H * popupScale, overflow: "hidden" }}
             >
-              <div style={{ transform: "scale(7)", transformOrigin: "top left" }}>
+              <div style={{ transform: `scale(${popupScale})`, transformOrigin: "top left" }}>
                 <BoardFace data={data} dayNight={false} />
               </div>
             </div>
