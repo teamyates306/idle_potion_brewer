@@ -995,7 +995,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         const naturalH = content.scrollHeight / currentZoom;
         const availH = outer.clientHeight;
         const s = naturalH > 0 && availH > 0 ? Math.min(1, availH / naturalH) : 1;
-        content.style.zoom = s < 1 ? String(s) : '';
+        // Guard against compounding drift: with several overlapping triggers
+        // (resize observer, visualViewport, timers) a measure() can land
+        // before the previous zoom change has finished reflowing, so
+        // scrollHeight is read stale relative to currentZoom — that produces
+        // a slightly-too-small `s`, which then becomes the new stale
+        // baseline for the next call, progressively zooming out ("zooms out
+        // once, then zooms out again"). Only actually apply a change once
+        // it's past rounding noise.
+        if (Math.abs(s - currentZoom) > 0.01) {
+          content.style.zoom = s < 1 ? String(s) : '';
+        }
       }
 
       // Measure badge Y positions in visual (post-zoom) space
@@ -1042,13 +1052,25 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     // on the next frame and a couple of short delays, and on any outer resize —
     // but only until the player takes manual control of the horizontal pan, so
     // we never yank the view back while they're looking around.
-    const recenter = () => measure(!userScrolled.current);
+    // Several triggers below (resize observer, visualViewport, timers) can
+    // fire within the same burst — e.g. the mobile toolbar collapsing kicks
+    // off both a ResizeObserver callback and a visualViewport resize event.
+    // Coalesce them to at most one measure() per animation frame so a later
+    // call in the same burst never reads a DOM still mid-reflow from an
+    // earlier call in that same burst (see the zoom-drift guard in measure()).
+    let scheduled = false;
+    const schedule = (fn: () => void) => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; fn(); });
+    };
+    const recenter = () => schedule(() => measure(!userScrolled.current));
     // Returning to the game after backgrounding it (switching to an account/
     // leaderboard page, then back) is a fresh "arrival" — force a real
     // recentre here regardless of any earlier manual pan, since the player
     // wasn't looking at the scene while away and expects it centred again,
     // exactly like a reload does.
-    const forceRecenter = () => { userScrolled.current = false; measure(true); };
+    const forceRecenter = () => schedule(() => { userScrolled.current = false; measure(true); });
     const raf1 = requestAnimationFrame(recenter);
     const t1 = window.setTimeout(recenter, 150);
     const t2 = window.setTimeout(recenter, 500);
