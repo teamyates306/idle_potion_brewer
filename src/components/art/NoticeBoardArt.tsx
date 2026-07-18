@@ -199,7 +199,10 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
 
   const data: BoardData = {
     cfg, startingHue, hardQuest, questAdventurer, bountyIngredients,
-    hasBounty: discoveryBounty != null,
+    // Only an *active* bounty gets a paper: once one is claimed it lingers in
+    // state through its cooldown (cooldownUntil set) carrying the old recipe —
+    // drop the paper until a fresh bounty is generated (cooldownUntil === null).
+    hasBounty: discoveryBounty != null && discoveryBounty.cooldownUntil === null,
   };
 
   return (
