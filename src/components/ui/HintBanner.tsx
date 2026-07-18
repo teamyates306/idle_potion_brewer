@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { subscribeHint, type HintData } from "../../util/hintBus";
+import { ICONS } from "./icons";
 
 export default function HintBanner() {
   const [queue, setQueue] = useState<HintData[]>([]);
@@ -25,7 +26,9 @@ export default function HintBanner() {
     <div className="pointer-events-auto fixed bottom-20 left-1/2 z-[75] w-[92%] max-w-sm -translate-x-1/2">
       <div className="hint-pop rounded-2xl border border-amber-700/70 bg-stone-900/97 px-4 py-3 shadow-2xl backdrop-blur">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 text-2xl leading-none">{current.icon}</span>
+          <span className="mt-0.5 text-2xl leading-none text-amber-500">
+            {(() => { const Icon = ICONS[current.icon]; return Icon ? <Icon /> : null; })()}
+          </span>
           <div className="min-w-0 flex-1">
             <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-500/80">
               {current.title}

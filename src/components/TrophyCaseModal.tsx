@@ -8,6 +8,7 @@ import { useConfigStore } from "../store/configStore";
 import { describeFromHash, COMBI_PAIRS, COMBI_TRIPLES, COMBI_QUADS } from "../engine/potions";
 import { attrLabel } from "../engine/gax";
 import { fmt } from "../util/format";
+import { IconCoin } from "./ui/icons";
 
 type Tab = "2way" | "3way" | "4way";
 
@@ -26,7 +27,7 @@ interface ComboEntry {
  * name resolves to that suffix; once discovered, the slot always shows the
  * highest base_value recipe found for that combo so far.
  */
-export default function TrophyCaseModal({ onClose }: { onClose: () => void }) {
+export default function TrophyCaseModal({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const discoveredPotions = useGameStore((s) => s.discoveredPotions);
   const cfg = useConfigStore();
   const [tab, setTab] = useState<Tab>("2way");
@@ -61,28 +62,24 @@ export default function TrophyCaseModal({ onClose }: { onClose: () => void }) {
     { id: "4way", label: `4-Way (${groups["4way"].filter((e) => bestBySuffix.has(e.suffix)).length}/${groups["4way"].length})` },
   ];
 
-  return (
+  const tabBar = (
+    <div className="flex rounded-lg bg-slate-800 p-1">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => setTab(t.id)}
+          className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+            tab === t.id ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const body = (
     <>
-      <Modal
-        title="Trophy Case"
-        onClose={onClose}
-        accent="#e0975c"
-        subHeader={
-          <div className="flex rounded-lg bg-slate-800 p-1">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
-                  tab === t.id ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        }
-      >
         <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
           <Gem size={14} className="text-amber-400" />
           <span className="font-semibold text-amber-500">{foundCount}</span> / {entries.length} combo potions found
@@ -103,7 +100,7 @@ export default function TrophyCaseModal({ onClose }: { onClose: () => void }) {
                     <PotionIcon name={found.name} size={32} />
                   </div>
                   <span className="text-[10px] font-semibold leading-tight text-amber-200">{entry.suffix}</span>
-                  <span className="text-[9px] text-slate-500">🪙 {fmt(found.value)}</span>
+                  <span className="flex items-center gap-0.5 text-[9px] text-slate-500"><IconCoin /> {fmt(found.value)}</span>
                 </button>
               );
             }
@@ -125,7 +122,21 @@ export default function TrophyCaseModal({ onClose }: { onClose: () => void }) {
             );
           })}
         </div>
-      </Modal>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? (
+        <>
+          <div className="mb-3">{tabBar}</div>
+          {body}
+        </>
+      ) : (
+        <Modal title="Trophy Case" onClose={onClose} accent="#e0975c" subHeader={tabBar}>
+          {body}
+        </Modal>
+      )}
 
       {detailName && (
         <PotionDetailsModal potionName={detailName} onClose={() => setDetailName(null)} />

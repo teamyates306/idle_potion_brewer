@@ -31,8 +31,8 @@ export interface Achievement {
   rewards: Reward[];
 }
 
-const coins = (n: number): Reward => ({ type: "coins", amount: n, label: `🪙 ${n.toLocaleString()}` });
-const tokens = (n: number): Reward => ({ type: "tokens", amount: n, label: `✦ ${n} upgrade token${n > 1 ? "s" : ""} (all workers)` });
+const coins = (n: number): Reward => ({ type: "coins", amount: n, label: `${n.toLocaleString()}` });
+const tokens = (n: number): Reward => ({ type: "tokens", amount: n, label: `${n} upgrade token${n > 1 ? "s" : ""} (all workers)` });
 
 export const ACHIEVEMENTS: Achievement[] = [
   // ── Potions discovered (massive exponential tiers) ──

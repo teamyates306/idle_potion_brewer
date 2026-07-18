@@ -8,6 +8,7 @@ import {
   eventPhase,
   gaxDayIndex,
 } from "../../engine/gax";
+import { IconNewspaper, IconColumns } from "./icons";
 
 /**
  * The GAX ticker tape — a global marquee pinned to the bottom of the screen
@@ -32,7 +33,7 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
   const segments = useMemo(() => {
     if (!gaxUnlocked) return [];
     const today = gaxDayIndex(Date.now());
-    const out: { text: string; tone: "news" | "up" | "down" | "flat" }[] = [];
+    const out: { text: string; tone: "news" | "up" | "down" | "flat"; icon?: "newspaper" | "columns" }[] = [];
 
     if (gaxMarket.event) {
       const def = GAX_EVENTS_BY_ID[gaxMarket.event.defId];
@@ -43,7 +44,7 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
           phase === "forecast" ? "FORECAST — markets react tomorrow" :
           phase === "peak" ? `DAY ${day} — MARKETS GRIPPED` :
           "WAVE BREAKING — prices easing";
-        out.push({ text: `📰 ${def.headline} [${tag}]`, tone: "news" });
+        out.push({ text: `${def.headline} [${tag}]`, tone: "news", icon: "newspaper" });
         for (const [attr, eff] of Object.entries(def.effects)) {
           if (phase === "forecast") continue;
           const v = phase === "trailing" ? (eff as number) / 2 : (eff as number);
@@ -69,7 +70,7 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
     }
 
     if (out.length === 0) {
-      out.push({ text: "🏛 GAX: all markets trading calmly at 1.00× — the auditors are bored.", tone: "flat" });
+      out.push({ text: "GAX: all markets trading calmly at 1.00× — the auditors are bored.", tone: "flat", icon: "columns" });
     }
     return out;
   }, [gaxUnlocked, gaxMarket]);
@@ -87,6 +88,8 @@ export default function TickerTape({ onOpen }: { onOpen: () => void }) {
             s.tone === "news" ? "text-amber-200" : "text-slate-300"
           }`}
         >
+          {s.icon === "newspaper" && <IconNewspaper className="mr-1 inline" />}
+          {s.icon === "columns" && <IconColumns className="mr-1 inline" />}
           {s.text}
           <span className="ml-4 text-amber-700/60">◆</span>
         </span>

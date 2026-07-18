@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Settings2, ScrollText, ArrowUpCircle, Trophy, BarChart2, Sparkles, HelpCircle, Landmark, Gem, Crown } from "lucide-react";
-import TrophyCaseModal from "./components/TrophyCaseModal";
+import { Settings, Settings2, ScrollText, Trophy, Sparkles, HelpCircle, Landmark } from "lucide-react";
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
@@ -8,8 +7,6 @@ import GameClock from "./components/ui/GameClock";
 import { attrLabel } from "./engine/gax";
 import Workshop from "./components/Workshop";
 import QuestView from "./components/QuestView";
-import UpgradesView from "./components/UpgradesView";
-import AchievementsModal from "./components/AchievementsModal";
 import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
@@ -24,10 +21,11 @@ import CoinCounter from "./components/ui/CoinCounter";
 import MapView from "./components/MapView";
 import WorkerView from "./components/WorkerView";
 import MachineView from "./components/MachineView";
-import PotionView, { SupplyChainDashboard } from "./components/PotionView";
+import PotionView from "./components/PotionView";
+import { GuildPanel, ProgressPanel } from "./components/HubPanels";
+import { IconCoin, IconChartUp } from "./components/ui/icons";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
-import MasteryView from "./components/MasteryView";
 import HintBanner from "./components/ui/HintBanner";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
@@ -35,11 +33,10 @@ import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
 import LoadingScreen from "./components/LoadingScreen";
 import SettingsModal from "./components/SettingsModal";
 import { useGameStore } from "./store/gameStore";
-import { masteryLevel } from "./data/masteryTrees";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
-type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "upgrades" | "achievements" | "mastery" | "dev" | "supply" | "help" | "gax" | "trophies" | "leaderboard" | null;
+type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "guild" | "progress" | "dev" | "help" | "gax" | "leaderboard" | null;
 
 // Core sprites visible the instant the workshop scene mounts — preloaded so
 // they're already decoded by the time the loading screen hands off, instead
@@ -106,15 +103,11 @@ export default function App() {
   const refreshQuests = useGameStore((s) => s.refreshQuests);
   const reconcileAchievements = useGameStore((s) => s.reconcileAchievements);
   const questsUnlocked = useGameStore((s) => s.questsUnlocked);
-  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
-  const hasAbacus = unlocked_globals.includes("merchants_abacus");
   const masteryTokens = useGameStore((s) => s.masteryTokens);
-  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
-  const potionMastery = useGameStore((s) => s.potionMastery);
-  const hasMastery =
-    masteryTokens > 0 ||
-    masteryUnlocks.length > 0 ||
-    Object.values(potionMastery).some((e) => masteryLevel(e.xp) >= 10);
+  // Uncollected-achievement count surfaces on the Guild dock slot.
+  const claimableAchievements = useGameStore(
+    (s) => s.unlocked_achievements.filter((id) => !s.collected_achievements.includes(id)).length
+  );
   const dismissWelcome = useGameStore((s) => s.dismissWelcome);
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
   const gaxOfflineReport = useGameStore((s) => s.gaxOfflineReport);
@@ -214,84 +207,38 @@ export default function App() {
         <Workshop onOpen={(p, machineId?) => { if (p === "map") setMapLockedWorker(null); if (machineId) setMachineTabId(machineId); setPanel(p); }} />
       </main>
 
-      {/* Left-edge button stack */}
-      <div className="absolute left-2 top-1/2 z-[4] flex -translate-y-1/2 flex-col items-center gap-2">
+      {/* Bottom dock — Guild + Progress hold the centre; Quests and the GAX
+          flank them as they unlock. Sits above the ticker tape. */}
+      <div className={`absolute inset-x-0 z-[4] flex justify-center gap-2 ${gaxUnlocked ? "bottom-9" : "bottom-3"}`}>
         {questsUnlocked && (
-          <button
-            onClick={() => setPanel("quests")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+          <DockButton
+            label="Quests"
+            icon={<ScrollText size={18} className="text-amber-700" />}
             title="Quest Board"
-          >
-            <ScrollText size={18} className="text-amber-700" />
-            <span>Quests</span>
-          </button>
+            onClick={() => setPanel("quests")}
+          />
         )}
-        <button
-          onClick={() => setPanel("upgrades")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-          title="Global Upgrades"
-        >
-          <ArrowUpCircle size={18} className="text-amber-700" />
-          <span>Upgrades</span>
-        </button>
-        <button
-          onClick={() => setPanel("achievements")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-          title="Achievements"
-        >
-          <Trophy size={18} className="text-amber-700" />
-          <span>Achievements</span>
-        </button>
-        <button
-          onClick={() => { setLeaderboardInitialTab(undefined); setPanel("leaderboard"); }}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-          title="Guild Rankings — the online leaderboard"
-        >
-          <Crown size={18} className="text-amber-700" />
-          <span>Rankings</span>
-        </button>
-        <button
-          onClick={() => setPanel("trophies")}
-          className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-          title="Trophy Case"
-        >
-          <Gem size={18} className="text-amber-700" />
-          <span>Trophies</span>
-        </button>
-        {hasMastery && (
-          <button
-            onClick={() => setPanel("mastery")}
-            className="relative flex flex-col items-center gap-1 rounded-xl border border-amber-700/60 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-            title="Mastery"
-          >
-            <Sparkles size={18} className="text-amber-600" />
-            <span>Mastery</span>
-            {masteryTokens > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950">
-                {masteryTokens}
-              </span>
-            )}
-          </button>
-        )}
+        <DockButton
+          label="Guild"
+          icon={<Trophy size={18} className="text-amber-700" />}
+          title="Guild Hall — Achievements, Trophies & Rankings"
+          onClick={() => setPanel("guild")}
+          badge={claimableAchievements > 0 ? claimableAchievements : undefined}
+        />
+        <DockButton
+          label="Progress"
+          icon={<Sparkles size={18} className="text-amber-700" />}
+          title="Progress — Upgrades & Mastery"
+          onClick={() => setPanel("progress")}
+          badge={masteryTokens > 0 ? masteryTokens : undefined}
+        />
         {gaxUnlocked && (
-          <button
-            onClick={() => setPanel("gax")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
+          <DockButton
+            label="GAX"
+            icon={<Landmark size={18} className="text-amber-700" />}
             title="Grand Alchemical Exchange"
-          >
-            <Landmark size={18} className="text-amber-700" />
-            <span>GAX</span>
-          </button>
-        )}
-        {hasAbacus && (
-          <button
-            onClick={() => setPanel("supply")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-emerald-800/50 bg-[#f4e9d0] px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-900 shadow-md backdrop-blur-sm transition hover:bg-[#f4e9d0] active:scale-95"
-            title="Supply Chain"
-          >
-            <BarChart2 size={18} className="text-emerald-700" />
-            <span>Supply</span>
-          </button>
+            onClick={() => setPanel("gax")}
+          />
         )}
       </div>
 
@@ -313,16 +260,9 @@ export default function App() {
       {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setMapLockedWorker(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} initialMachineId={machineTabId} />}
       {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
-      {panel === "supply" && (
-        <Modal title="Supply Chain" onClose={() => setPanel(null)} accent="#22c55e">
-          <SupplyChainDashboard />
-        </Modal>
-      )}
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
-      {panel === "upgrades" && <UpgradesView onClose={() => setPanel(null)} />}
-      {panel === "achievements" && <AchievementsModal onClose={() => setPanel(null)} />}
-      {panel === "trophies" && <TrophyCaseModal onClose={() => setPanel(null)} />}
-      {panel === "mastery"  && <MasteryView  onClose={() => setPanel(null)} />}
+      {panel === "guild"    && <GuildPanel   onClose={() => setPanel(null)} />}
+      {panel === "progress" && <ProgressPanel onClose={() => setPanel(null)} />}
       {panel === "help"     && <HelpModal    onClose={() => setPanel(null)} />}
       {panel === "gax"      && <GaxDashboard onClose={() => setPanel(null)} />}
       {panel === "leaderboard" && (
@@ -376,7 +316,7 @@ export default function App() {
                   welcomeTab === "market" ? "bg-cyan-700 text-white" : "text-slate-400 hover:text-slate-200"
                 }`}
               >
-                📈 Market Events
+                <span className="inline-flex items-center gap-1"><IconChartUp /> Market Events</span>
               </button>
             </div>
           )}
@@ -464,7 +404,7 @@ export default function App() {
               {welcomeBack.coinsEarned > 0 && (
                 <StatRow
                   label="Coins earned"
-                  value={`🪙 ${welcomeBack.coinsEarned.toLocaleString()}`}
+                  value={<span className="inline-flex items-center gap-1"><IconCoin /> {welcomeBack.coinsEarned.toLocaleString()}</span>}
                   color="text-amber-700"
                 />
               )}
@@ -497,7 +437,31 @@ export default function App() {
   );
 }
 
-function StatRow({ label, value, color }: { label: string; value: string; color: string }) {
+function DockButton({ label, icon, title, onClick, badge }: {
+  label: string;
+  icon: React.ReactNode;
+  title: string;
+  onClick: () => void;
+  badge?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95"
+    >
+      {icon}
+      <span>{label}</span>
+      {badge !== undefined && (
+        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950">
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function StatRow({ label, value, color }: { label: string; value: React.ReactNode; color: string }) {
   return (
     <div className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2">
       <span className="text-sm text-slate-400">{label}</span>

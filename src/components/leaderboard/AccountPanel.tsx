@@ -4,6 +4,7 @@ import { onlineAvailable } from "../../online/supabaseClient";
 import { useOnlineStore } from "../../online/onlineStore";
 import { computeStats } from "../../online/stats";
 import { fmt } from "../../util/format";
+import { IconCoin, IconFlask, IconSparkle, IconWorker, IconTrophy, IconWizardHat, type IconProps } from "../ui/icons";
 
 /** Sign-in / nickname / privacy controls — shared by the in-game modal and
  *  the standalone /leaderboard page. */
@@ -50,8 +51,8 @@ export default function AccountPanel() {
           time with "Delete my online data" on this panel.
         </div>
         {linkSent ? (
-          <p className="rounded-lg border border-emerald-800/40 bg-emerald-100/40 px-3 py-2 text-sm text-emerald-800">
-            ✉️ Check your inbox — a sign-in link is on its way to <span className="font-semibold">{email}</span>.
+          <p className="flex items-start gap-1.5 rounded-lg border border-emerald-800/40 bg-emerald-100/40 px-3 py-2 text-sm text-emerald-800">
+            <Mail size={14} className="mt-0.5 shrink-0" /> Check your inbox — a sign-in link is on its way to <span className="font-semibold">{email}</span>.
           </p>
         ) : (
           <form
@@ -133,13 +134,13 @@ export default function AccountPanel() {
 
   // ---- Fully set up ------------------------------------------------------
   const stats = computeStats();
-  const snapshot: Array<[string, string]> = [
-    ["🪙 Coins", fmt(stats.coins)],
-    ["💰 Earned all-time", fmt(stats.lifetime_coins)],
-    ["⚗️ Potions brewed", fmt(stats.total_brews)],
-    ["✨ Discovered", fmt(stats.potions_discovered)],
-    ["🧑‍🌾 Workers", fmt(stats.workers)],
-    ["🏆 Achievements", fmt(stats.achievements)],
+  const snapshot: Array<[(p: IconProps) => JSX.Element, string, string]> = [
+    [IconCoin, "Coins", fmt(stats.coins)],
+    [IconCoin, "Earned all-time", fmt(stats.lifetime_coins)],
+    [IconFlask, "Potions brewed", fmt(stats.total_brews)],
+    [IconSparkle, "Discovered", fmt(stats.potions_discovered)],
+    [IconWorker, "Workers", fmt(stats.workers)],
+    [IconTrophy, "Achievements", fmt(stats.achievements)],
   ];
 
   return (
@@ -148,7 +149,7 @@ export default function AccountPanel() {
       <div className="rounded-xl border border-amber-800/30 bg-slate-800/40 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-lg font-bold text-amber-900">🧙 {nickname}</p>
+            <p className="flex items-center gap-1.5 truncate text-lg font-bold text-amber-900"><IconWizardHat /> {nickname}</p>
             <p className="truncate text-xs text-slate-500">{session.user.email}</p>
           </div>
           <a
@@ -167,9 +168,9 @@ export default function AccountPanel() {
       <div>
         <p className="mb-1.5 text-[10px] uppercase tracking-wider text-amber-700">Your record (as of now)</p>
         <div className="grid grid-cols-2 gap-1.5">
-          {snapshot.map(([label, value]) => (
+          {snapshot.map(([Icon, label, value]) => (
             <div key={label} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-2.5 py-1.5">
-              <span className="mr-2 truncate text-[11px] text-slate-400">{label}</span>
+              <span className="mr-2 flex items-center gap-1 truncate text-[11px] text-slate-400"><Icon /> {label}</span>
               <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-200">{value}</span>
             </div>
           ))}
@@ -206,7 +207,7 @@ export default function AccountPanel() {
           <div className="space-y-1">
             {(rivals ?? []).map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-2.5 py-1.5 text-xs">
-                <span className="truncate text-slate-200">🧙 {r.nickname}</span>
+                <span className="flex items-center gap-1 truncate text-slate-200"><IconWizardHat /> {r.nickname}</span>
                 <button
                   onClick={() => void removeRival(r.id)}
                   className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-800 hover:text-rose-700"

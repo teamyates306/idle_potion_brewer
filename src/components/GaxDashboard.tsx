@@ -12,6 +12,7 @@ import {
   eventPhase,
   gaxDayIndex,
 } from "../engine/gax";
+import { ICONS, IconQuestion } from "./ui/icons";
 
 const PHASE_LABEL: Record<string, string> = {
   forecast: "Day 1 · Forecast — prices move tomorrow, pivot now",
@@ -91,7 +92,7 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
                     : v > 0 ? "bg-emerald-900/60 text-emerald-300" : "bg-rose-900/60 text-rose-300"
                   }`}
                 >
-                  {ATTR_EMOJI[attr]} {attrLabel(attr)} {v > 0 ? "+" : ""}{Math.round(v * 100)}%{!active && " (tomorrow)"}
+                  {(() => { const Icon = ICONS[ATTR_EMOJI[attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(attr)} {v > 0 ? "+" : ""}{Math.round(v * 100)}%{!active && " (tomorrow)"}
                 </span>
               );
             })}
@@ -104,7 +105,7 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* The board — compact: emoji, name, rate. Nothing else. */}
+      {/* The board — compact: icon, name, rate. Nothing else. */}
       {rows.length === 0 ? (
         <p className="rounded-lg bg-slate-800/40 px-3 py-4 text-center text-xs text-slate-500">
           All markets trading calmly at ×1.00.
@@ -116,7 +117,9 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
             const up = pct > 0;
             return (
               <div key={attr} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${isEvent ? "bg-amber-950/30 ring-1 ring-amber-700/40" : "bg-slate-800/50"}`}>
-                <span className="shrink-0 text-base leading-none">{ATTR_EMOJI[attr] ?? "❔"}</span>
+                <span className="shrink-0 text-base leading-none">
+                  {(() => { const Icon = ICONS[ATTR_EMOJI[attr]]; return Icon ? <Icon /> : <IconQuestion />; })()}
+                </span>
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-200">{attrLabel(attr)}</span>
                 <span className={`shrink-0 text-xs font-bold tabular-nums ${up ? "text-emerald-700" : pct < 0 ? "text-rose-600" : "text-slate-400"}`}>
                   {up ? "▲" : pct < 0 ? "▼" : ""} {up ? "+" : ""}{pct}%

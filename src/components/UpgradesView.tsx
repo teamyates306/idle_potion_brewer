@@ -2,8 +2,9 @@ import { useState } from "react";
 import Modal from "./ui/Modal";
 import { useGameStore, playerClickPower, playerClickPowerCost, GLOBAL_UNLOCKS } from "../store/gameStore";
 import { fmt } from "../util/format";
+import { ICONS, IconCoin, IconCheck, IconSparkle } from "./ui/icons";
 
-export default function UpgradesView({ onClose }: { onClose: () => void }) {
+export default function UpgradesView({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const coins = useGameStore((s) => s.coins);
   const level = useGameStore((s) => s.player_click_power_level);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
@@ -15,8 +16,8 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
   const cost = playerClickPowerCost(level);
   const affordable = coins >= cost;
 
-  return (
-    <Modal title="Global Upgrades" onClose={onClose} accent="#7d6a9c">
+  const body = (
+    <>
       {/* ── Section 1: Player Click Power ── */}
       <section className="mb-6">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
@@ -49,13 +50,14 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
           {GLOBAL_UNLOCKS.map((unlock) => {
             const owned = unlocked_globals.includes(unlock.id);
             const canAfford = coins >= unlock.cost;
+            const UnlockIcon = ICONS[unlock.icon];
             return (
               <div
                 key={unlock.id}
                 className="rounded-xl border border-slate-700 bg-slate-800/60 p-4"
               >
                 <div className="mb-3 flex items-start gap-3">
-                  <span className="text-2xl">{unlock.icon}</span>
+                  <span className="text-2xl">{UnlockIcon && <UnlockIcon />}</span>
                   <div>
                     <p className="font-semibold text-slate-200">{unlock.name}</p>
                     <p className="mt-0.5 text-xs text-slate-400">{unlock.description}</p>
@@ -63,19 +65,19 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
                 </div>
                 {owned ? (
                   <div className="flex items-center gap-2 rounded-lg bg-green-900/30 px-3 py-2">
-                    <span className="text-sm text-green-400">✓ Purchased</span>
+                    <span className="flex items-center gap-1 text-sm text-green-400"><IconCheck /> Purchased</span>
                   </div>
                 ) : (
                   <button
                     disabled={!canAfford}
                     onClick={() => buyGlobalUnlock(unlock.id)}
-                    className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition active:scale-95 ${
+                    className={`flex w-full items-center justify-center gap-1 rounded-lg border px-3 py-2 text-sm font-semibold transition active:scale-95 ${
                       canAfford
                         ? "border-violet-500/60 bg-violet-600/20 text-violet-200 hover:bg-violet-600/30"
                         : "border-slate-700 bg-slate-800/40 text-slate-500"
                     }`}
                   >
-                    🪙 {fmt(unlock.cost)}
+                    <IconCoin /> {fmt(unlock.cost)}
                   </button>
                 )}
               </div>
@@ -83,6 +85,13 @@ export default function UpgradesView({ onClose }: { onClose: () => void }) {
           })}
         </div>
       </section>
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <Modal title="Global Upgrades" onClose={onClose} accent="#7d6a9c">
+      {body}
     </Modal>
   );
 }
@@ -119,7 +128,7 @@ function ClickPowerBtn({
           : "border-slate-700 bg-slate-800/40 text-slate-500"
       }`}
     >
-      {spending ? "✨ Upgrading…" : `🪙 ${fmt(cost)}`}
+      {spending ? <span className="flex items-center justify-center gap-1"><IconSparkle /> Upgrading…</span> : <span className="flex items-center justify-center gap-1"><IconCoin /> {fmt(cost)}</span>}
     </button>
   );
 }

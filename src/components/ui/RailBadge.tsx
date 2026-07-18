@@ -6,7 +6,7 @@ interface RailBadgeProps {
   onClick: () => void;
   top: number;
   glow?: boolean;
-  badge?: string;
+  badge?: ReactNode;
   dataTut?: string;
 }
 
@@ -19,7 +19,7 @@ export default function RailBadge({
     <button
       data-tut={dataTut}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex flex-col items-center gap-1 rounded-xl border px-2.5 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
+      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
         glow
           ? "border-amber-500 bg-amber-100 text-amber-900 shadow-[0_0_10px_2px_rgba(202,138,4,0.30)] hover:bg-amber-200"
           : "border-amber-800/50 bg-[#f4e9d0] text-amber-900 shadow-lg hover:bg-[#efe1c2]"

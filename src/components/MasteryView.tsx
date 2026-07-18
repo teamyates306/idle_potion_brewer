@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { ChevronUp, HelpCircle } from "lucide-react";
+import { ChevronUp, HelpCircle, X } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
 import {
@@ -148,7 +148,7 @@ function NodeConfirmModal({
             onClick={onClose}
             className="ml-auto rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -212,7 +212,7 @@ function NodeConfirmModal({
   );
 }
 
-export default function MasteryView({ onClose }: { onClose: () => void }) {
+export default function MasteryView({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const masteryTokens = useGameStore((s) => s.masteryTokens);
   const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
   const potionMastery = useGameStore((s) => s.potionMastery);
@@ -236,9 +236,8 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
     }
   };
 
-  return (
+  const body = (
     <>
-      <Modal title="Mastery" onClose={onClose} accent="#f59e0b">
         {/* Stats bar */}
         <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-800/30 bg-amber-950/25 px-3 py-2">
           <div>
@@ -299,7 +298,16 @@ export default function MasteryView({ onClose }: { onClose: () => void }) {
         <p className="mt-3 text-center text-[10px] text-slate-400">
           Tap any tier to preview its effect · earlier tiers must be unlocked first
         </p>
-      </Modal>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? body : (
+        <Modal title="Mastery" onClose={onClose} accent="#f59e0b">
+          {body}
+        </Modal>
+      )}
 
       {pending && (
         <NodeConfirmModal

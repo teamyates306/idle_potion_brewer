@@ -5,6 +5,7 @@ import { useConfigStore } from "../store/configStore";
 import { describePotion } from "../engine/potions";
 import IngredientSvg from "./art/IngredientSvg";
 import { RARITY_COLOR, fmt } from "../util/format";
+import { IconCoin } from "./ui/icons";
 
 const RARITY_ORDER: Record<string, number> = { common: 0, uncommon: 1, scarce: 2, rare: 3, exotic: 4, epic: 5, fabled: 6, legendary: 7 };
 const CATEGORY_ORDER = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -174,7 +175,7 @@ export default function IngredientSelectionModal({
             {discoveredPotions.includes(preview.hash) ? (
               <>
                 <span className="font-semibold text-amber-800">{preview.name}</span>
-                <span className="text-slate-500"> · 🪙 {fmt(preview.value)}</span>
+                <span className="inline-flex items-center gap-1 text-slate-500"> · <IconCoin /> {fmt(preview.value)}</span>
               </>
             ) : (
               <span className="font-semibold italic text-slate-500 tracking-wider">??? Undiscovered — brew to find out</span>

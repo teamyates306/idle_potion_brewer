@@ -142,28 +142,28 @@ export const GLOBAL_UNLOCKS = [
     name: "Alchemist's Spectacles",
     description: "Unlocks detailed numerical stats in ingredient and potion modals. Without them, only vague alchemical impressions are visible.",
     cost: 10_000,
-    icon: "🔭",
+    icon: "telescope",
   },
   {
     id: "gloves_of_engineering",
     name: "Gloves of Engineering",
     description: "Reveals the true brew rate formula in each cauldron, showing how speed, complexity, toxicity and worker clicks combine.",
     cost: 100_000,
-    icon: "🧤",
+    icon: "gloves",
   },
   {
     id: "cartographers_compass",
     name: "Cartographer's Compass",
     description: "Shows exact drop percentages on map locations for discovered ingredients, and a 'Sourced From' section in ingredient details.",
     cost: 100_000,
-    icon: "🧭",
+    icon: "compass",
   },
   {
     id: "merchants_abacus",
     name: "Merchant's Abacus",
     description: "Unlocks a supply chain dashboard: live income rate, consumption rate, net flow, and bottleneck warnings per ingredient.",
     cost: 1_000_000,
-    icon: "🧮",
+    icon: "abacus",
   },
 ] as const;
 
@@ -1210,7 +1210,7 @@ export const useGameStore = create<GameState>()(
           };
           const newLevel = settlementLevel(settlementProsperity, settlement.id);
           if (newLevel > level) {
-            pushToast(`🏘 ${settlement.name} reached Prosperity Level ${newLevel}!`, "amber");
+            pushToast(`${settlement.name} reached Prosperity Level ${newLevel}!`, "amber");
           }
 
           const workers = s.workers.map((wk, i) =>
@@ -1561,7 +1561,7 @@ export const useGameStore = create<GameState>()(
         const label = outputs > 1 ? `+${outputs} ${potion.name}` : `+1 ${potion.name}`;
         pushGameEvent("cauldron", label, machineId);
         if (autoSell) {
-          pushGameEvent("pile", `+${autoSellEarned.toLocaleString()} 🪙`);
+          pushGameEvent("pile", `+${autoSellEarned.toLocaleString()}`);
         }
 
         if (!prevDiscovered.includes(potion.hash)) {
@@ -1569,8 +1569,8 @@ export const useGameStore = create<GameState>()(
           const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
           const bonus = Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
           set((cur) => ({ coins: cur.coins + bonus, lifetime_coins_earned: (cur.lifetime_coins_earned ?? 0) + bonus }));
-          pushGameEvent("discovery", `✨ ${potion.name} discovered!`);
-          pushGameEvent("pile", `+${bonus.toLocaleString()} 🪙 discovery bonus`);
+          pushGameEvent("discovery", `${potion.name} discovered!`);
+          pushGameEvent("pile", `+${bonus.toLocaleString()} discovery bonus`);
           get().refreshQuests();
 
           // Mark discovery bounty ready to claim if this is the target
@@ -1646,7 +1646,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + earned,
           lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + have,
         });
-        if (earned > 0) pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
+        if (earned > 0) pushGameEvent("pile", `+${earned.toLocaleString()}`);
         if (earned > 0) get().checkAchievements("coins", s.coins + earned);
       },
 
@@ -1679,7 +1679,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + earned,
           lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + n,
         });
-        pushGameEvent("pile", `+${earned.toLocaleString()} 🪙`);
+        pushGameEvent("pile", `+${earned.toLocaleString()}`);
         get().checkAchievements("coins", newCoins);
         if (newCoins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
         const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
@@ -1711,7 +1711,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + totalEarned,
           lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + totalSold,
         });
-        if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()} 🪙`);
+        if (totalEarned > 0) pushGameEvent("pile-burst", `+${totalEarned.toLocaleString()}`);
         if (totalEarned > 0) get().checkAchievements("coins", coins);
         if (totalEarned > 0) {
           if (coins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
@@ -1794,7 +1794,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + quest.reward,
           quests_completed_count: (s.quests_completed_count ?? 0) + 1,
         });
-        pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()} 🪙`);
+        pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()}`);
         get().checkAchievements("coins", s.coins + quest.reward);
       },
 
@@ -1818,7 +1818,7 @@ export const useGameStore = create<GameState>()(
           // the accumulated background satiation, events and multipliers slam
           // into effect the millisecond the Exchange opens — no stale board.
           get().settleGax();
-          pushToast("🏛 The Grand Alchemical Exchange is open! Watch the ticker — the market watches you.", "amber");
+          pushToast("The Grand Alchemical Exchange is open! Watch the ticker — the market watches you.", "amber");
         }
       },
 
@@ -1833,7 +1833,7 @@ export const useGameStore = create<GameState>()(
         if (s.gaxUnlocked && res.eventStarted) {
           const def = GAX_EVENTS_BY_ID[res.eventStarted.defId];
           if (def && eventPhase(res.eventStarted, day) === "forecast") {
-            pushToast(`📰 GAX Forecast: ${def.headline}`, "amber");
+            pushToast(`GAX Forecast: ${def.headline}`, "amber");
           }
         }
       },
@@ -1914,7 +1914,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + b.reward,
           discoveryBounty: { ...b, readyToClaim: false, cooldownUntil: now() + QUEST_COOLDOWN_MS },
         });
-        pushGameEvent("pile-burst", `+${b.reward.toLocaleString()} 🪙`);
+        pushGameEvent("pile-burst", `+${b.reward.toLocaleString()}`);
         get().checkAchievements("coins", s.coins + b.reward);
       },
 
@@ -2532,10 +2532,10 @@ export const useGameStore = create<GameState>()(
           masteryTokens: s.masteryTokens + (justMastered ? 1 : 0),
         });
         if (justMastered) {
-          pushToast(`✨ ${potionName} mastered! +1 Mastery Token`, "amber");
+          pushToast(`${potionName} mastered! +1 Mastery Token`, "amber");
           get().pushHint("first_mastery_token");
         } else if (newLevel > prevLevel && newLevel > 0) {
-          pushToast(`📚 ${potionName} — mastery level ${newLevel}`, "purple");
+          pushToast(`${potionName} — mastery level ${newLevel}`, "purple");
         }
       },
 

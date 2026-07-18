@@ -19,7 +19,7 @@ type Step3Phase = "close-potion-detail" | "close-market" | "workers" | "worker-i
 const STEP0: Record<Step0Phase, { sel: string; text: string }> = {
   brewer: {
     sel: '[data-tut="brewer"]',
-    text: "We've left some Rootmoss in your stash. Click the glowing ⚙ button on the cauldron to open the Brewer.",
+    text: "We've left some Rootmoss in your stash. Click the glowing gear button on the cauldron to open the Brewer.",
   },
   "ingredient-slot": {
     sel: '[data-tut="ingredient-slot"]',
@@ -31,7 +31,7 @@ const STEP0: Record<Step0Phase, { sel: string; text: string }> = {
   },
   "close-ingredient": {
     sel: '[data-tut="close-ingredient"]',
-    text: "Slot filled! Click the glowing ✕ to close this menu.",
+    text: "Slot filled! Click the glowing close button to close this menu.",
   },
   "start-brewing": {
     sel: '[data-tut="start-brewing"]',
@@ -42,7 +42,7 @@ const STEP0: Record<Step0Phase, { sel: string; text: string }> = {
 const STEP1: Record<Step1Phase, { sel: string; text: string }> = {
   "close-brewer": {
     sel: '[data-tut="close-brewer"]',
-    text: "The brew is underway! Click the glowing ✕ to close this panel and watch your cauldron.",
+    text: "The brew is underway! Click the glowing close button to close this panel and watch your cauldron.",
   },
   "tap-cauldron": {
     sel: '[data-tut="cauldron"]',
@@ -68,11 +68,11 @@ const STEP2: Record<Step2Phase, { sel: string; text: string }> = {
 const STEP3: Record<Step3Phase, { sel: string; text: string }> = {
   "close-potion-detail": {
     sel: '[data-tut="close-potion-detail"]',
-    text: "Auto-sell is on! Click the glowing ✕ to close the potion details.",
+    text: "Auto-sell is on! Click the glowing close button to close the potion details.",
   },
   "close-market": {
     sel: '[data-tut="close-market"]',
-    text: "Now click the glowing ✕ to close the Market.",
+    text: "Now click the glowing close button to close the Market.",
   },
   workers: {
     sel: '[data-tut="workers"]',

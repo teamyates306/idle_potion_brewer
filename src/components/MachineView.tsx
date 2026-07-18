@@ -20,6 +20,7 @@ import { dominantAttrSentence } from "../util/potionVisuals";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
 import type { BrewingMachine, Ingredient } from "../types";
+import { IconCoin, IconStarToken } from "./ui/icons";
 
 // Per-machine hue-rotate for the cauldron tint in the tab indicator
 const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
@@ -72,10 +73,10 @@ export default function MachineView({ onClose, initialMachineId = 1 }: { onClose
               ? "border-emerald-500/60 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/70"
               : "cursor-not-allowed border-slate-700 bg-slate-900 text-slate-600"
           }`}
-          title={`Buy Brewer ${machines.length + 1} for 🪙 ${fmt(nextCost)}`}
+          title={`Buy Brewer ${machines.length + 1} for ${fmt(nextCost)} coins`}
         >
           <Plus size={12} />
-          <span>🪙 {fmt(nextCost)}</span>
+          <span className="flex items-center gap-1"><IconCoin /> {fmt(nextCost)}</span>
         </button>
       )}
     </div>
@@ -158,7 +159,7 @@ function MachinePanelBody({
 
       {tokens > 0 && (
         <div className="mb-3 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2 text-sm">
-          <span className="text-amber-600">✦</span>
+          <span className="text-amber-600"><IconStarToken /></span>
           <span className="text-amber-800 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
           <span className="ml-auto text-xs text-amber-700">earned from levelling up</span>
         </div>
@@ -286,7 +287,7 @@ function MachinePanelBody({
             </div>
             <div className="mt-0.5 text-xs text-slate-400">
               {isKnownPotion ? (
-                <>🪙 {fmt(preview.value)} · {bt.toFixed(2)}s brew{hasSpectacles && !potionExpanded && " · tap for stats"}</>
+                <><IconCoin className="inline" /> {fmt(preview.value)} · {bt.toFixed(2)}s brew{hasSpectacles && !potionExpanded && " · tap for stats"}</>
               ) : (
                 <>???s brew · brew it to discover what you've made</>
               )}
@@ -456,7 +457,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-violet-800">{g.name}</span>
-                      <span className="block text-[11px] text-slate-400">{g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""} · best 🪙 {fmt(g.maxValue)}</span>
+                      <span className="flex items-center gap-1 text-[11px] text-slate-400">{g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""} · best <IconCoin /> {fmt(g.maxValue)}</span>
                     </span>
                     <ChevronLeft size={16} className="shrink-0 rotate-180 text-slate-500" />
                   </button>
@@ -482,7 +483,7 @@ function RecipePickerModal({ machine, onPick, onClose }: {
                       }`}
                     >
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-200">🪙 {fmt(d!.value)}</span>
+                        <span className="flex items-center gap-1 text-xs font-semibold text-slate-200"><IconCoin /> {fmt(d!.value)}</span>
                         {!fits && <span className="text-[10px] text-rose-600">needs {ids.length} slots</span>}
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -665,8 +666,8 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
               </span>
-              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
-                🪙 {fmt(opt.cost)}
+              <span className={`flex shrink-0 items-center gap-1 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
+                <IconCoin /> {fmt(opt.cost)}
               </span>
               {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}
             </button>

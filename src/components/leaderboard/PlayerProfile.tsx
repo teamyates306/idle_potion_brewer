@@ -4,6 +4,7 @@ import { useOnlineStore } from "../../online/onlineStore";
 import { fetchPlayerProfile, fetchRanksFor, type PlayerProfileData } from "../../online/api";
 import { METRICS, METRICS_BY_KEY } from "../../online/stats";
 import { fmt } from "../../util/format";
+import { ICONS, IconWizardHat, IconSun } from "../ui/icons";
 
 const HEADLINE_RANK_KEYS = ["lifetime_coins", "total_brews", "potions_discovered"];
 
@@ -72,13 +73,13 @@ export default function PlayerProfile({ nickname, onBack, fullPage }: Props) {
       <div className="mb-3 rounded-xl border border-amber-800/30 bg-slate-800/40 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-lg font-bold text-amber-900">
-              🧙 {profile.nickname}
+            <p className="flex items-center gap-1.5 truncate text-lg font-bold text-amber-900">
+              <IconWizardHat /> {profile.nickname}
               {isMe && <span className="ml-2 align-middle text-[10px] uppercase tracking-wider text-amber-700">you</span>}
             </p>
-            <p className="text-xs text-slate-500">
+            <p className="flex items-center gap-1 text-xs text-slate-500">
               Guild member since {new Date(profile.createdAt).toLocaleDateString()}
-              {!!profile.stats.current_day && <> · ☀️ Day {fmt(profile.stats.current_day)}</>}
+              {!!profile.stats.current_day && <> · <IconSun /> Day {fmt(profile.stats.current_day)}</>}
             </p>
           </div>
           {!fullPage && (
@@ -127,14 +128,19 @@ export default function PlayerProfile({ nickname, onBack, fullPage }: Props) {
 
       {/* General stats */}
       <div className="mb-3 grid grid-cols-2 gap-1.5">
-        {generalMetrics.map((m) => (
+        {generalMetrics.map((m) => {
+          const MetricIcon = ICONS[m.icon];
+          return (
           <div key={m.key} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-2.5 py-1.5">
-            <span className="mr-2 truncate text-[11px] text-slate-400">{m.icon} {m.label}</span>
+            <span className="mr-2 flex items-center gap-1 truncate text-[11px] text-slate-400">
+              {MetricIcon && <MetricIcon />} {m.label}
+            </span>
             <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-200">
               {fmt(profile.stats[m.key] ?? 0)}
             </span>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Attribute specialities */}

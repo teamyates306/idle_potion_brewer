@@ -26,7 +26,11 @@ export default function PotionIcon({ name, size = 20 }: Props) {
   const fx = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)];
   const liq = TIER_LIQUID_STYLE[Math.min(prefixTier, TIER_LIQUID_STYLE.length - 1)];
 
-  const g = fx.glow > 0 ? Math.max(1, +(fx.glow * (size / 30)).toFixed(1)) : 0;
+  // Glow scaled against the workshop pile's bottle (~17px on screen), where
+  // TIER_FX's px values are 1:1 — so the same potion glows with the same
+  // relative intensity here as it does in the pile. The old /30 divisor cut
+  // list-sized (16px) icons to half strength, which read as "no effects".
+  const g = fx.glow > 0 ? Math.max(1, +(fx.glow * (size / 17)).toFixed(1)) : 0;
   const filterParts: string[] = [];
   if (liq.saturate !== 1 || liq.brightness !== 1) {
     filterParts.push(`saturate(${liq.saturate}) brightness(${liq.brightness})`);
@@ -37,7 +41,8 @@ export default function PotionIcon({ name, size = 20 }: Props) {
   }
   const filter = filterParts.length ? filterParts.join(" ") : undefined;
 
-  const pSize = Math.max(2, size * 0.13);
+  // Match the pile's particle scale (r=2.5 SVG units on a 16-unit bottle ≈ 0.16×).
+  const pSize = Math.max(2.5, size * 0.16);
 
   return (
     <span

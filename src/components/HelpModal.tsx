@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Modal from "./ui/Modal";
+import { ICONS, IconSparkle } from "./ui/icons";
 
 // ── Tabbed in-game guide ──────────────────────────────────────────────────────
 // Plain-language explanations of every facet of the game, one tab per topic.
@@ -7,15 +8,15 @@ import Modal from "./ui/Modal";
 type TabId = "basics" | "brewing" | "ingredients" | "workers" | "map" | "market" | "mastery" | "quests" | "tips";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "basics",      label: "Basics",      icon: "🏠" },
-  { id: "brewing",     label: "Brewing",     icon: "⚗️" },
-  { id: "ingredients", label: "Ingredients", icon: "🌿" },
-  { id: "workers",     label: "Workers",     icon: "🧑‍🌾" },
-  { id: "map",         label: "Map & Trade", icon: "🗺️" },
-  { id: "market",      label: "The GAX",     icon: "🏛" },
-  { id: "mastery",     label: "Mastery",     icon: "✨" },
-  { id: "quests",      label: "Quests",      icon: "📜" },
-  { id: "tips",        label: "Tips",        icon: "💡" },
+  { id: "basics",      label: "Basics",      icon: "house" },
+  { id: "brewing",     label: "Brewing",     icon: "flask" },
+  { id: "ingredients", label: "Ingredients", icon: "leaf" },
+  { id: "workers",     label: "Workers",     icon: "worker" },
+  { id: "map",         label: "Map & Trade", icon: "map" },
+  { id: "market",      label: "The GAX",     icon: "columns" },
+  { id: "mastery",     label: "Mastery",     icon: "sparkle" },
+  { id: "quests",      label: "Quests",      icon: "scroll" },
+  { id: "tips",        label: "Tips",        icon: "idea" },
 ];
 
 function H({ children }: { children: React.ReactNode }) {
@@ -195,7 +196,7 @@ const CONTENT: Record<TabId, React.ReactNode> = {
       <P>
         Brewing a potion builds that potion's mastery (based on time spent brewing it,
         not brew count). Each level trims its brew time — up to <Em>−15% at level 10</Em> —
-        and level 10 awards a <Em>✨ Mastery Token</Em>.
+        and level 10 awards a <Em><IconSparkle className="inline" /> Mastery Token</Em>.
       </P>
       <H>Mastery trees</H>
       <P>
@@ -267,7 +268,7 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
               tab === t.id ? "bg-teal-700 text-white shadow" : "bg-slate-800 text-slate-400 hover:text-slate-200"
             }`}
           >
-            <span className="mr-1">{t.icon}</span>
+            <span className="mr-1">{(() => { const Icon = ICONS[t.icon]; return Icon ? <Icon /> : null; })()}</span>
             {t.label}
           </button>
         ))}

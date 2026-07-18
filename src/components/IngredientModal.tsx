@@ -3,6 +3,7 @@ import { useConfigStore } from "../store/configStore";
 import IngredientSvg from "./art/IngredientSvg";
 import { RARITY_COLOR, ATTR_LABELS } from "../util/format";
 import type { Attributes } from "../types";
+import { IconClose, IconCoin, IconPin } from "./ui/icons";
 
 // Generate a vague impression from attribute totals (shown without Spectacles)
 function vagueImpression(attrs: Attributes): string {
@@ -89,7 +90,7 @@ export default function IngredientModal({
             onClick={onClose}
             className="ml-2 rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 
@@ -100,7 +101,7 @@ export default function IngredientModal({
         <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-400">
           <span className="rounded-full bg-slate-800 px-2.5 py-0.5">×{count} in trough</span>
           {hasSpectacles && (
-            <span className="rounded-full bg-slate-800 px-2.5 py-0.5">🪙 {ing.base_value} base value</span>
+            <span className="flex items-center gap-1 rounded-full bg-slate-800 px-2.5 py-0.5"><IconCoin /> {ing.base_value} base value</span>
           )}
         </div>
 
@@ -147,7 +148,7 @@ export default function IngredientModal({
                 const isDiscovered = discovered_location_drops[loc.id]?.includes(ingredientId);
                 return (
                   <div key={loc.id} className="flex items-center justify-between rounded-lg bg-slate-800/60 px-3 py-2 text-xs">
-                    <span className="text-slate-300">📍 {loc.name}</span>
+                    <span className="flex items-center gap-1 text-slate-300"><IconPin /> {loc.name}</span>
                     {isDiscovered ? (
                       <span className="text-emerald-400 font-semibold">{pct}% drop</span>
                     ) : (

@@ -89,18 +89,24 @@ describe("RailBadge — glow effect for token upgrades", () => {
 });
 
 describe("RailBadge — token badge sub-label", () => {
-  it("renders badge text when provided", () => {
+  it("renders badge content when provided (icon + count, no emoji)", () => {
     render(
-      <RailBadge icon={<Icon />} label="Workers" onClick={() => {}} top={100} badge="✦3" />
+      <RailBadge
+        icon={<Icon />}
+        label="Workers"
+        onClick={() => {}}
+        top={100}
+        badge={<span data-testid="token-badge">3</span>}
+      />
     );
-    expect(screen.getByText("✦3")).toBeInTheDocument();
+    expect(screen.getByTestId("token-badge")).toBeInTheDocument();
   });
 
   it("does not render badge element when badge prop is absent", () => {
     render(
       <RailBadge icon={<Icon />} label="Workers" onClick={() => {}} top={100} />
     );
-    expect(screen.queryByText(/✦/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("token-badge")).not.toBeInTheDocument();
   });
 });
 

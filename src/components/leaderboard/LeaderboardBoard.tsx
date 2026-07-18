@@ -5,6 +5,7 @@ import { useOnlineStore } from "../../online/onlineStore";
 import { METRICS, METRICS_BY_KEY } from "../../online/stats";
 import { fetchBoardWindow, searchPlayers, type BoardResult, type BoardView, type PlayerSummary } from "../../online/api";
 import { fmt } from "../../util/format";
+import { IconWizardHat, IconGlobe, IconMedal } from "../ui/icons";
 
 type Scope = "public" | "rivals";
 
@@ -115,7 +116,7 @@ export default function LeaderboardBoard({ onSelectPlayer }: Props) {
                 onClick={() => { setQuery(""); onSelectPlayer?.(r.nickname); }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
               >
-                🧙 {r.nickname}
+                <IconWizardHat /> {r.nickname}
                 {r.nickname === nickname && <span className="text-[10px] uppercase tracking-wider text-amber-700">you</span>}
               </button>
             ))}
@@ -132,8 +133,9 @@ export default function LeaderboardBoard({ onSelectPlayer }: Props) {
         >
           {grouped.map(({ group, metrics }) => (
             <optgroup key={group} label={group}>
+              {/* <option> text can't render SVG icons — label only */}
               {metrics.map((m) => (
-                <option key={m.key} value={m.key}>{m.icon} {m.label}</option>
+                <option key={m.key} value={m.key}>{m.label}</option>
               ))}
             </optgroup>
           ))}
@@ -152,9 +154,9 @@ export default function LeaderboardBoard({ onSelectPlayer }: Props) {
         <div className="flex rounded-lg bg-slate-800 p-0.5">
           <button
             onClick={() => setScope("public")}
-            className={`rounded-md px-2.5 py-1 text-xs font-semibold ${scope === "public" ? "bg-amber-700 text-white" : "text-slate-400"}`}
+            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold ${scope === "public" ? "bg-amber-700 text-white" : "text-slate-400"}`}
           >
-            🌍 Public
+            <IconGlobe /> Public
           </button>
           <button
             onClick={() => myUserId && setScope("rivals")}
@@ -228,10 +230,10 @@ export default function LeaderboardBoard({ onSelectPlayer }: Props) {
                   isMe ? "border border-amber-700/50 bg-amber-950/25" : "bg-slate-800/50 hover:bg-slate-800"
                 }`}
               >
-                <span className={`w-9 shrink-0 text-right font-bold tabular-nums ${
+                <span className={`flex w-9 shrink-0 items-center justify-end gap-0.5 text-right font-bold tabular-nums ${
                   r.rank === 1 ? "text-amber-600" : r.rank === 2 ? "text-slate-400" : r.rank === 3 ? "text-amber-800" : "text-slate-500"
                 }`}>
-                  {r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : `#${fmt(r.rank)}`}
+                  {r.rank <= 3 ? <IconMedal /> : `#${fmt(r.rank)}`}
                 </span>
                 <span className={`min-w-0 flex-1 truncate font-medium ${isMe ? "text-amber-900" : "text-slate-200"}`}>
                   {r.nickname}{isMe && <span className="ml-1 text-[10px] uppercase tracking-wider text-amber-700">you</span>}

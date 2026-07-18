@@ -5,6 +5,7 @@ import { useGameStore } from "../store/gameStore";
 import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type Achievement, type AchievementTrigger } from "../data/achievements";
 import { fmt } from "../util/format";
 import { spawnFAT } from "../util/fat";
+import { IconCoin, IconStarToken, IconCheck } from "./ui/icons";
 
 function requirementText(a: Achievement): string {
   const t = a.target_value;
@@ -30,7 +31,7 @@ const GROUPS: { name: string; ids: string[] }[] = [
   { name: "Secret",           ids: ["secret_clickspeed", "secret_voidsoup", "secret_liquidasset"] },
 ];
 
-export default function AchievementsModal({ onClose }: { onClose: () => void }) {
+export default function AchievementsModal({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const unlocked = useGameStore((s) => s.unlocked_achievements);
   const collected = useGameStore((s) => s.collected_achievements);
   const unlockedSet = useMemo(() => new Set(unlocked), [unlocked]);
@@ -41,10 +42,9 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
   const toggleGroup = (name: string) =>
     setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }));
 
-  return (
+  const body = (
     <>
-      <Modal title="Achievements" onClose={onClose} accent="#fbbf24">
-        <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
+      <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
           <Trophy size={14} className="text-amber-400" />
           <span className="font-semibold text-amber-700">{unlocked.length}</span> / {ACHIEVEMENTS.length} unlocked
         </div>
@@ -114,7 +114,9 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
                             </button>
                           )}
                           {isUnlocked && isCollected && (
-                            <span className="shrink-0 text-xs font-medium text-green-600">Collected ✓</span>
+                            <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-green-600">
+                              Collected <IconCheck />
+                            </span>
                           )}
                         </div>
                       );
@@ -125,7 +127,16 @@ export default function AchievementsModal({ onClose }: { onClose: () => void }) 
             );
           })}
         </div>
-      </Modal>
+    </>
+  );
+
+  return (
+    <>
+      {embedded ? body : (
+        <Modal title="Achievements" onClose={onClose} accent="#fbbf24">
+          {body}
+        </Modal>
+      )}
 
       {collectTarget && (
         <CollectRewardModal
@@ -152,7 +163,7 @@ function CollectRewardModal({ a, onClose }: { a: Achievement; onClose: () => voi
       spawnFAT({
         x: cx + (Math.random() - 0.5) * 160,
         y: cy + (Math.random() - 0.5) * 120,
-        text: hasTokens ? "✦" : "🪙",
+        text: hasTokens ? "✦" : "●", // four-point star / filled coin dot — plain glyphs, not emoji
         color: "#fbbf24",
         arcX: (Math.random() - 0.5) * 120,
         delay: Math.floor(Math.random() * 300),
@@ -193,7 +204,8 @@ function CollectRewardModal({ a, onClose }: { a: Achievement; onClose: () => voi
           <div className="mb-1.5 text-[10px] uppercase tracking-wider text-slate-500">Rewards</div>
           <div className="flex flex-wrap gap-2">
             {a.rewards.map((r, i) => (
-              <span key={i} className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              <span key={i} className="flex items-center gap-1 rounded-full bg-amber-200 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                {r.type === "tokens" ? <IconStarToken /> : <IconCoin />}
                 {r.label}
               </span>
             ))}

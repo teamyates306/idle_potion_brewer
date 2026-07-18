@@ -1,8 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
-import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE } from "../../util/potionVisuals";
+import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE, TIER_FX } from "../../util/potionVisuals";
 import PotionLiquidFill from "./PotionLiquidFill";
 import {
   usePotionPileTuningStore, buildPilePositions, pileForIndex, pileStarts, totalPileCapacity,
@@ -16,10 +16,10 @@ const TOP_MARGIN = 8;
 const BOT_MARGIN = 12;
 const SCALE      = 130 / 120;
 
-// Glow strength per prefix tier (px blur radius) — 0 Diluted … 9 Transcendent
-const TIER_GLOW = [0, 0, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5];
-// Particle count per tier
-const TIER_PARTICLES = [0, 0, 0, 0, 0, 1, 2, 3, 3, 3];
+// Glow/particle strengths come from the shared TIER_FX table in
+// potionVisuals.ts — the same numbers PotionIcon uses — so a potion reads
+// with identical intensity in the pile, the discovered list and the sell
+// stash. (This file used to fork its own copies; they drifted.)
 // Particle spawn spots — start above the bottle neck (y < -13) so they rise clear of the sprite
 const PARTICLE_SPOTS = [
   { dx:  0, dy: -14, delay: 0   },
@@ -31,7 +31,8 @@ function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColo
   x: number; y: number; liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number;
   blendColors?: string[];
 }) {
-  const glowPx = TIER_GLOW[Math.min(prefixTier, TIER_GLOW.length - 1)];
+  const fx = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)];
+  const glowPx = fx.glow;
   const liq = TIER_LIQUID_STYLE[Math.min(prefixTier, TIER_LIQUID_STYLE.length - 1)];
   // Same tier-driven saturate/brightness as PotionIcon (the discovered-list
   // and sell-stash icon) — without this a bottle in the pile read flat/plain
@@ -41,7 +42,7 @@ function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColo
   if (liq.saturate !== 1 || liq.brightness !== 1) filterParts.push(`saturate(${liq.saturate}) brightness(${liq.brightness})`);
   if (glowPx > 0) {
     filterParts.push(`drop-shadow(0 0 ${glowPx}px ${liquidColor})`);
-    if (glowPx >= 5) filterParts.push(`drop-shadow(0 0 ${+(glowPx * 1.6).toFixed(1)}px ${liquidColor})`);
+    if (glowPx >= 5) filterParts.push(`drop-shadow(0 0 ${+(glowPx * 1.8).toFixed(1)}px ${liquidColor})`);
   }
   const filter = filterParts.length ? filterParts.join(" ") : undefined;
   return (
@@ -60,7 +61,7 @@ function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColo
 function BottleParticles({ x, y, liquidColor, prefixTier }: {
   x: number; y: number; liquidColor: string; prefixTier: number;
 }) {
-  const numParticles = TIER_PARTICLES[Math.min(prefixTier, TIER_PARTICLES.length - 1)];
+  const numParticles = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)].particles;
   if (numParticles === 0) return null;
   return (
     <>
@@ -81,22 +82,60 @@ export default function PotionPileArt() {
   const piles = usePotionPileTuningStore((s) => s.piles);
   const spacing = usePotionPileTuningStore((s) => s.spacing);
 
+  // Slot GEOMETRY (pilePositions below) is index-driven and stable, but slot
+  // CONTENTS used to be rebuilt from scratch on every inventory change: the
+  // hash-sorted expansion means a newly-brewed hash inserts mid-array and
+  // shifts every later bottle's identity by one slot, so each brew/sell
+  // swapped many sprites at once — the same "flicker" the trough had.
+  // Reconcile against the previous per-slot assignment: a slot keeps its
+  // bottle as long as that potion is still owed a slot; only genuinely
+  // new / departed bottles change.
+  const prevSlotHashesRef = useRef<string[]>([]);
   const bottleData = useMemo(() => {
     const sorted = Object.entries(potionInv)
       .filter(([, c]) => c > 0)
       .sort(([a], [b]) => a.localeCompare(b));
 
-    const entries: { liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number; blendColors?: string[] }[] = [];
+    // Desired multiset of hashes (one entry per bottle) + visuals per hash.
+    const desired: string[] = [];
+    const visualsByHash = new Map<string, { liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number; blendColors?: string[] }>();
     for (const [hash, count] of sorted) {
       const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
       const visuals = d ? parsePotionVisuals(d.name) : null;
       const typeData = visuals ? getPotionTypeData(visuals.potionType) : getPotionTypeData("Tonic");
-      const liquidColor = visuals ? visuals.liquidColor : DEFAULT_LIQUID_COLOR;
-      const prefixTier = visuals ? visuals.prefixTier : 0;
-      const blendColors = visuals?.blendColors;
-      for (let i = 0; i < count; i++) entries.push({ liquidColor, prefixTier, blendColors, ...typeData });
+      visualsByHash.set(hash, {
+        liquidColor: visuals ? visuals.liquidColor : DEFAULT_LIQUID_COLOR,
+        prefixTier: visuals ? visuals.prefixTier : 0,
+        blendColors: visuals?.blendColors,
+        ...typeData,
+      });
+      for (let i = 0; i < count; i++) desired.push(hash);
     }
-    return entries;
+
+    const remaining = new Map<string, number>();
+    for (const h of desired) remaining.set(h, (remaining.get(h) ?? 0) + 1);
+
+    const prev = prevSlotHashesRef.current;
+    const slots: (string | null)[] = new Array(desired.length).fill(null);
+    for (let i = 0; i < slots.length; i++) {
+      const p = prev[i];
+      if (p && (remaining.get(p) ?? 0) > 0) {
+        slots[i] = p;
+        remaining.set(p, remaining.get(p)! - 1);
+      }
+    }
+    const fill: string[] = [];
+    for (const h of desired) {
+      if ((remaining.get(h) ?? 0) > 0) {
+        fill.push(h);
+        remaining.set(h, remaining.get(h)! - 1);
+      }
+    }
+    let f = 0;
+    for (let i = 0; i < slots.length; i++) if (slots[i] == null) slots[i] = fill[f++];
+
+    prevSlotHashesRef.current = slots as string[];
+    return (slots as string[]).map((h) => visualsByHash.get(h)!);
   }, [potionInv, cfg.ingredients, cfg.formulas]);
 
   // Per-pile local layouts (centred on their own x=0), plus how many bottles

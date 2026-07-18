@@ -8,6 +8,7 @@ import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
 import { generateAdventurer, CLASS_LABELS } from "../data/questSprites";
 import { fmt } from "../util/format";
+import { IconCoin } from "./ui/icons";
 
 // Dark ink shades — the light -300 pastels were near-invisible on parchment cards.
 const DIFF_STYLE: Record<QuestDifficulty, { text: string; bg: string; bar: string; spark: string }> = {
@@ -166,11 +167,11 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
                         }`}
                         title="Post a different bounty (costs half this bounty's reward)"
                       >
-                        <RotateCcw size={11} /> 🪙 {fmt(Math.floor(discoveryBounty.reward / 2))}
+                        <RotateCcw size={11} /> <IconCoin /> {fmt(Math.floor(discoveryBounty.reward / 2))}
                       </button>
                     )}
                     <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">
-                      🪙 {fmt(discoveryBounty.reward)}
+                      <IconCoin /> {fmt(discoveryBounty.reward)}
                     </span>
                   </span>
                 </div>
@@ -280,9 +281,9 @@ function QuestCard({
             }`}
             title={`Swap for a new ${quest.difficulty.toLowerCase()} commission (costs half its reward)`}
           >
-            <RotateCcw size={11} /> 🪙 {fmt(rerollCost)}
+            <RotateCcw size={11} /> <IconCoin /> {fmt(rerollCost)}
           </button>
-          <span className="flex items-center gap-1 text-sm font-semibold text-amber-700">🪙 {fmt(quest.reward)}</span>
+          <span className="flex items-center gap-1 text-sm font-semibold text-amber-700"><IconCoin /> {fmt(quest.reward)}</span>
         </span>
       </div>
 

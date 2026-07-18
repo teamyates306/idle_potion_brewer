@@ -14,7 +14,8 @@ import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
 import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
 import NoticeBoardArt from "./art/NoticeBoardArt";
-import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE } from "../util/potionVisuals";
+import { IconStarToken, IconSleep } from "./ui/icons";
+import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE, TIER_FX } from "../util/potionVisuals";
 import PotionLiquidFill from "./art/PotionLiquidFill";
 import { describePotion } from "../engine/potions";
 import { generateAdventurer, type Adventurer } from "../data/questSprites";
@@ -232,10 +233,42 @@ const TroughPile = React.memo(function TroughPile() {
   const layers = useTroughTuningStore((s) => s.layers);
   const jitter = useTroughTuningStore((s) => s.jitter);
 
-  const slots = useMemo(
-    () => buildTroughSlots(inv, cfg.ingredients, layers, jitter),
-    [inv, cfg.ingredients, layers, jitter],
-  );
+  // Slot GEOMETRY is index-seeded and stable, but slot CONTENTS used to be
+  // rebuilt from scratch on every inventory change: a newly-stocked unique
+  // shifts every later slot by one, and the proportional "extras" fill
+  // redistributes on any count change — so each worker deposit swapped
+  // several sprites at once (the visible trough "flicker" whenever walkers
+  // were delivering). Reconcile against the previous assignment: any slot
+  // whose ingredient is still owed a slot keeps it; only genuinely new /
+  // departed items change sprite.
+  const prevDisplayRef = useRef<string[]>([]);
+  const slots = useMemo(() => {
+    const raw = buildTroughSlots(inv, cfg.ingredients, layers, jitter);
+    const remaining = new Map<string, number>();
+    for (const s of raw) remaining.set(s.id, (remaining.get(s.id) ?? 0) + 1);
+
+    const prev = prevDisplayRef.current;
+    const out: (string | null)[] = new Array(raw.length).fill(null);
+    for (let i = 0; i < out.length; i++) {
+      const p = prev[i];
+      if (p && (remaining.get(p) ?? 0) > 0) {
+        out[i] = p;
+        remaining.set(p, remaining.get(p)! - 1);
+      }
+    }
+    const fill: string[] = [];
+    for (const s of raw) {
+      if ((remaining.get(s.id) ?? 0) > 0) {
+        fill.push(s.id);
+        remaining.set(s.id, remaining.get(s.id)! - 1);
+      }
+    }
+    let f = 0;
+    for (let i = 0; i < out.length; i++) if (out[i] == null) out[i] = fill[f++];
+
+    prevDisplayRef.current = out as string[];
+    return raw.map((s, i) => ({ ...s, id: out[i]! }));
+  }, [inv, cfg.ingredients, layers, jitter]);
 
   if (slots.length === 0) return null;
 
@@ -917,8 +950,8 @@ const MachineColumn = React.memo(function MachineColumn({
 
       {/* Upgrade token indicator */}
       {hasTokens && (
-        <span className="mt-0.5 rounded-full bg-yellow-500 px-2 text-[9px] font-bold text-black leading-tight">
-          ✦ {machine.upgrade_tokens}
+        <span className="mt-0.5 flex items-center gap-0.5 rounded-full bg-yellow-500 px-2 text-[9px] font-bold text-black leading-tight">
+          <IconStarToken /> {machine.upgrade_tokens}
         </span>
       )}
 
@@ -1038,8 +1071,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         const centerScroll = Math.max(0, (sw - vw) / 2);
         const brewersVis = machines.length * COL_W;
         const overflowBase = (brewersVis - vw) / 2;       // >0 only when brewers exceed the viewport
-        // With 2+ machines always give at least 60px of scroll room so the wider sprite is reachable.
-        const base = machines.length >= 2 ? Math.max(60, overflowBase) : overflowBase;
+        // Always allow at least 60px of scroll room — even with a single brewer.
+        // A fully-locked window (half = 0) proved brittle on iOS Safari: if any
+        // late viewport settle left scrollLeft a few px off-centre after every
+        // recentre trigger had fired, the clamp then *held* it there with no
+        // way for the player to drag it back. A small open window makes that
+        // state self-healing instead of permanent.
+        const base = Math.max(60, overflowBase);
         const half = base > 0 ? base + SCROLL_EXTRA : 0;
         scrollRange.current = { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
         sc.scrollLeft = recenter
@@ -1142,7 +1180,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     const centerScroll = Math.max(0, (sw - vw) / 2);
     const brewersVis = machines.length * COL_W;
     const overflowBase = (brewersVis - vw) / 2;
-    const base = machines.length >= 2 ? Math.max(60, overflowBase) : overflowBase;
+    const base = Math.max(60, overflowBase); // min window even for 1 brewer — see measure()
     const half = base > 0 ? base + SCROLL_EXTRA : 0;
     return { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
   };
@@ -1354,7 +1392,11 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           onClick={() => onOpen("worker")}
           top={badgeY.workers}
           glow={anyTokens}
-          badge={anyTokens ? `✦${totalWorkerTokens}` : idleWorkerCount > 0 ? `💤${idleWorkerCount}` : undefined}
+          badge={anyTokens
+            ? <span className="flex items-center gap-0.5"><IconStarToken />{totalWorkerTokens}</span>
+            : idleWorkerCount > 0
+            ? <span className="flex items-center gap-0.5"><IconSleep />{idleWorkerCount}</span>
+            : undefined}
           dataTut="workers"
         />
         <RailBadge
@@ -1369,7 +1411,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           onClick={() => onOpen("machine")}
           top={badgeY.brewing}
           glow={anyMachineTokens}
-          badge={anyMachineTokens ? `✦${machines.reduce((a, m) => a + (m.upgrade_tokens ?? 0), 0)}` : undefined}
+          badge={anyMachineTokens
+            ? <span className="flex items-center gap-0.5"><IconStarToken />{machines.reduce((a, m) => a + (m.upgrade_tokens ?? 0), 0)}</span>
+            : undefined}
           dataTut="brewing"
         />
         <RailBadge
@@ -1950,9 +1994,16 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
 // potion that lands there — not a generic flat-colour Tonic placeholder.
 function FlyPotion({ potion }: { potion: PotionBrewVisuals }) {
   const liq = TIER_LIQUID_STYLE[Math.min(potion.prefixTier, TIER_LIQUID_STYLE.length - 1)];
-  const filter = liq.saturate !== 1 || liq.brightness !== 1
-    ? `saturate(${liq.saturate}) brightness(${liq.brightness})`
-    : undefined;
+  const fx = TIER_FX[Math.min(potion.prefixTier, TIER_FX.length - 1)];
+  // Identical filter construction to PotionPileArt's Bottle — saturation AND
+  // glow — so the bottle in flight is pixel-for-pixel the one that lands.
+  const filterParts: string[] = [];
+  if (liq.saturate !== 1 || liq.brightness !== 1) filterParts.push(`saturate(${liq.saturate}) brightness(${liq.brightness})`);
+  if (fx.glow > 0) {
+    filterParts.push(`drop-shadow(0 0 ${fx.glow}px ${potion.liquidColor})`);
+    if (fx.glow >= 5) filterParts.push(`drop-shadow(0 0 ${+(fx.glow * 1.8).toFixed(1)}px ${potion.liquidColor})`);
+  }
+  const filter = filterParts.length ? filterParts.join(" ") : undefined;
   return (
     <svg width="16" height="16" viewBox="-8 -16 16 16" fill="none">
       {/* Prismatic hue-cycle (Transcendent tier) on its own outer group — a

@@ -20,6 +20,7 @@ import {
 import { fmt, fmtDuration } from "../util/format";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
+import { IconCoin, IconStarToken, IconClose, IconHammer, IconSparkle, ICONS } from "./ui/icons";
 
 /**
  * Logistics Formula Breakdown — the exact travel-time and cargo-capacity
@@ -51,7 +52,7 @@ function LogisticsBreakdown({ worker, distance }: { worker: Worker; distance: nu
         <span className="flex items-center gap-1.5 text-xs text-slate-400">
           <ArrowUpCircle size={13} /> Round Trip
         </span>
-        <span className="text-[10px] text-cyan-700">{open ? "hide formula ▲" : "📐 show formula ▼"}</span>
+        <span className="text-[10px] text-cyan-700">{open ? "hide formula ▲" : "show formula ▼"}</span>
       </button>
       <div className="mt-0.5 font-semibold text-slate-100">{fmtDuration(finalSecs)}</div>
       {open && (
@@ -150,7 +151,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
         <div className="flex items-baseline gap-2">
           <span className="font-semibold text-slate-100">{worker.name}</span>
           <span className="text-xs text-cyan-700">Lvl {worker.level}</span>
-          {tokens > 0 && <span className="ml-auto text-xs font-semibold text-yellow-700">✦ {tokens}</span>}
+          {tokens > 0 && <span className="ml-auto flex items-center gap-0.5 text-xs font-semibold text-yellow-700"><IconStarToken /> {tokens}</span>}
         </div>
         <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
@@ -388,7 +389,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
               >
                 <option value="">Move selected to…</option>
                 {activeGroup !== "gatherer" && machines.map((m) => (
-                  <option key={m.id} value={`machine:${m.id}`}>⚒ {m.name} (brew)</option>
+                  <option key={m.id} value={`machine:${m.id}`}>{m.name} (brew)</option>
                 ))}
                 <option value="recall">Recall (unassign)</option>
                 {activeGroup !== "brewer" && unlockedLocations.map((id) => (
@@ -428,7 +429,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             }`}
           >
             <span>Hire Worker #{workers.length + 1}</span>
-            <span>🪙 {fmt(hireCost)}</span>
+            <span className="flex items-center gap-1"><IconCoin /> {fmt(hireCost)}</span>
           </button>
         </div>
       </Modal>
@@ -470,8 +471,8 @@ function PendingTokensPanel({
 
   return (
     <div className="mb-3 rounded-xl border border-yellow-700/40 bg-yellow-950/20 p-3 space-y-2">
-      <div className="text-xs font-bold text-yellow-700">
-        ✦ {totalTokens} upgrade token{totalTokens !== 1 ? "s" : ""} ready
+      <div className="flex items-center gap-1 text-xs font-bold text-yellow-700">
+        <IconStarToken /> {totalTokens} upgrade token{totalTokens !== 1 ? "s" : ""} ready
         <span className="ml-2 text-[10px] font-normal text-slate-500">one tap upgrades every worker</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -489,8 +490,8 @@ function PendingTokensPanel({
               <Icon size={13} className="shrink-0" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold leading-tight">{label}</span>
-                <span className="block text-[10px] text-amber-800">
-                  ✦{plan.totalTokens} · {workerCount} worker{workerCount !== 1 ? "s" : ""} · 🪙{fmt(plan.totalCost)}
+                <span className="flex items-center gap-0.5 text-[10px] text-amber-800">
+                  <IconStarToken />{plan.totalTokens} · {workerCount} worker{workerCount !== 1 ? "s" : ""} · <IconCoin />{fmt(plan.totalCost)}
                 </span>
               </span>
             </button>
@@ -589,7 +590,7 @@ function WorkerDetailModal({
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><IconClose /></button>
         </div>
 
         <div className="mb-4 rounded-lg bg-slate-800/60 p-3">
@@ -603,7 +604,7 @@ function WorkerDetailModal({
 
         {tokens > 0 && (
           <div className="mb-4 flex items-center gap-2 rounded-lg border border-yellow-600/40 bg-yellow-950/30 px-3 py-2.5 text-sm">
-            <span className="text-yellow-400">✦</span>
+            <span className="text-yellow-400"><IconStarToken /></span>
             <span className="text-amber-800 font-medium">{tokens} upgrade token{tokens > 1 ? "s" : ""} available</span>
             <span className="ml-auto text-xs text-yellow-600">earned from levelling up</span>
           </div>
@@ -814,7 +815,7 @@ const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string;
   {
     choice: "explorer",
     label: "Explorer",
-    icon: "🏃",
+    icon: "run",
     desc: "Swift and light — built for speed over cargo.",
     buffs: "2× gather speed · +20% speed upgrades",
     nerfs: "½ carry size · −20% size upgrades",
@@ -823,7 +824,7 @@ const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string;
   {
     choice: "caravan",
     label: "Caravan",
-    icon: "🎒",
+    icon: "backpack",
     desc: "Slow but carries a mountain each trip.",
     buffs: "2× carry size · +20% size upgrades",
     nerfs: "½ gather speed · −20% speed upgrades",
@@ -832,7 +833,7 @@ const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string;
   {
     choice: "pounder",
     label: "Pounder",
-    icon: "⚒️",
+    icon: "hammer",
     desc: "Hits with tremendous force, once per strike.",
     buffs: "2× click power · +20% power upgrades",
     nerfs: "½ click speed · −20% speed upgrades",
@@ -841,7 +842,7 @@ const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string;
   {
     choice: "manic",
     label: "Manic",
-    icon: "⚡",
+    icon: "bolt",
     desc: "Frantic blur of activity — trades power for pace.",
     buffs: "2× click speed · +20% speed upgrades",
     nerfs: "½ click power · −20% power upgrades",
@@ -850,7 +851,7 @@ const SPEC_OPTIONS: { choice: WorkerSpecialization; label: string; icon: string;
   {
     choice: "standard",
     label: "Standard",
-    icon: "⚖️",
+    icon: "scale",
     desc: "No change. Keeps all options open.",
     buffs: "Jack-of-all-trades",
     nerfs: "No specialization bonuses",
@@ -865,7 +866,7 @@ function SpecializationPicker({ onPick }: { onPick: (choice: WorkerSpecializatio
   return (
     <div className="mb-4 rounded-xl border border-violet-500/40 bg-violet-950/30 p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-base">✨</span>
+        <span className="text-base"><IconSparkle /></span>
         <span className="font-semibold text-violet-800">Choose a Specialization</span>
         <span className="ml-auto text-[10px] text-violet-500">Level 10 milestone · permanent</span>
       </div>
@@ -880,7 +881,7 @@ function SpecializationPicker({ onPick }: { onPick: (choice: WorkerSpecializatio
               onClick={() => { onPick(confirm); setConfirm(null); }}
               className="flex-1 rounded-lg bg-violet-600 py-2 text-sm font-semibold text-white hover:bg-violet-500"
             >
-              Confirm {choice!.icon} {choice!.label}
+              Confirm {(() => { const Icon = ICONS[choice!.icon]; return Icon ? <Icon /> : null; })()} {choice!.label}
             </button>
             <button
               onClick={() => setConfirm(null)}
@@ -898,7 +899,7 @@ function SpecializationPicker({ onPick }: { onPick: (choice: WorkerSpecializatio
               onClick={() => setConfirm(opt.choice)}
               className="flex w-full items-start gap-3 rounded-lg border border-slate-700 bg-slate-800/60 p-3 text-left transition hover:border-violet-500/60 hover:bg-violet-950/20 active:scale-[0.99]"
             >
-              <span className="text-xl shrink-0">{opt.icon}</span>
+              <span className="text-xl shrink-0">{(() => { const Icon = ICONS[opt.icon]; return Icon ? <Icon /> : null; })()}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-slate-100 text-sm">{opt.label}</div>
                 <div className="text-[11px] text-slate-400 mt-0.5">{opt.desc}</div>
@@ -963,8 +964,8 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
               </span>
-              <span className={`shrink-0 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
-                🪙 {fmt(opt.cost)}
+              <span className={`flex shrink-0 items-center gap-1 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
+                <IconCoin /> {fmt(opt.cost)}
               </span>
               {isSpending && <span className="token-sparkle pointer-events-none absolute inset-0" />}
             </button>

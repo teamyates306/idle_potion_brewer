@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, Footprints, Plus, Store, TrendingUp, X } from "lucide-react";
+import { IconHorse, IconBox, IconStar, IconCoin } from "./ui/icons";
 import {
   useGameStore, ingredientMatchesTradeInput, tradeInputLabel,
   activeTradeSlots, settlementRoles,
@@ -96,7 +97,7 @@ export default function SettlementModal({
               <Footprints size={11} /> Distance {settlement.distance} · {region.name} · Trading Post
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
 
         <p className="mb-3 text-sm italic text-slate-400">"{settlement.flavor}"</p>
@@ -107,8 +108,8 @@ export default function SettlementModal({
             <span className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
               <TrendingUp size={13} /> Prosperity Level {prosperity.level}{prosperity.level >= PROSPERITY_MAX_LEVEL ? " · MAX" : ""}
             </span>
-            <span className="text-[10px] text-slate-500">
-              {role === "speed" ? "🏇 Waypoint Town" : "📦 Cargo Supply Town"} · +{(prosperity.level * PROSPERITY_REGIONAL_PCT_PER_LEVEL).toFixed(1)}% regional {role === "speed" ? "travel speed" : "carry"}
+            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+              {role === "speed" ? <><IconHorse /> Waypoint Town</> : <><IconBox /> Cargo Supply Town</>} · +{(prosperity.level * PROSPERITY_REGIONAL_PCT_PER_LEVEL).toFixed(1)}% regional {role === "speed" ? "travel speed" : "carry"}
             </span>
           </div>
           {prosperity.level < PROSPERITY_MAX_LEVEL && (
@@ -177,7 +178,7 @@ export default function SettlementModal({
                     Wants: <span className="text-amber-800 font-semibold">{tradeInputLabel(slot.input)}</span>
                   </span>
                   {slot.unlockLevel && (
-                    <span className="rounded-full bg-amber-800/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-300">★ L{slot.unlockLevel} bonus offer</span>
+                    <span className="flex items-center gap-0.5 rounded-full bg-amber-800/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-300"><IconStar /> L{slot.unlockLevel} bonus offer</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2.5">
@@ -222,8 +223,8 @@ export default function SettlementModal({
                       <span className="block truncate text-xs font-semibold" style={{ color: outIng ? RARITY_COLOR[outIng.rarity] : undefined }}>
                         {outIng?.name ?? slot.output.ingredientId}
                       </span>
-                      <span className="block text-[10px] text-slate-400">
-                        ×{slot.output.count} · {outIng ? outIng.rarity : ""} · 🪙 {outIng ? fmt(outIng.base_value) : "?"} each
+                      <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                        ×{slot.output.count} · {outIng ? outIng.rarity : ""} · <IconCoin /> {outIng ? fmt(outIng.base_value) : "?"} each
                       </span>
                     </span>
                   </span>

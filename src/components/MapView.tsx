@@ -12,6 +12,7 @@ import SettlementModal from "./SettlementModal";
 import { useSettingsStore } from "../store/settingsStore";
 import HandDrawnMap, { HAND_DRAWN_CANVAS, type HandDrawnTap } from "../mapEditor/HandDrawnMap";
 import type { Location, Settlement } from "../types";
+import { IconCoin, IconWarning } from "./ui/icons";
 
 // ── Region-island layout ──────────────────────────────────────────────────────
 // Each region is its own irregular "island" scattered across the parchment —
@@ -155,8 +156,23 @@ function RegionIslands({ unlockedRegions }: { unlockedRegions: string[] }) {
                 filter: "drop-shadow(0 1px 0 rgba(246,238,218,0.8))",
               }}
             >
-              {locked ? "🔒 " : ""}{region.name.toUpperCase()}
+              {region.name.toUpperCase()}
             </text>
+            {/* Small padlock glyph (plain SVG, not emoji) above locked region labels */}
+            {locked && (
+              <g
+                transform={`translate(${layout.cx - 6} ${layout.cy - layout.r - 30})`}
+                stroke="#7d7361"
+                strokeWidth="1.6"
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={0.85}
+              >
+                <rect x="0" y="5" width="12" height="8" rx="1.5" />
+                <path d="M2.5 5V3.5a3.5 3.5 0 0 1 7 0V5" />
+              </g>
+            )}
           </g>
         );
       })}
@@ -307,7 +323,7 @@ export default function MapView({
             }`}
             title="Preview the new hand-drawn map (work in progress)"
           >
-            {newMapEnabled ? "New map ✓" : "New map"}
+            {newMapEnabled ? <span className="inline-flex items-center gap-1">New map <Check size={11} /></span> : "New map"}
           </button>
         </div>
 
@@ -461,7 +477,7 @@ function GaxUnlockModal({ onClose, onUnlocked }: { onClose: () => void; onUnlock
             </h2>
             <p className="text-xs text-slate-500">Chartered institution · no workers required</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
         <p className="mb-3 text-sm italic text-slate-400">
           "A marble hall where potion prices are argued into existence. Buy a seat
@@ -480,7 +496,9 @@ function GaxUnlockModal({ onClose, onUnlocked }: { onClose: () => void; onUnlock
             canAfford ? "bg-amber-600 text-white hover:bg-amber-500 active:scale-[0.99]" : "cursor-not-allowed bg-slate-800 text-slate-500"
           }`}
         >
-          {canAfford ? `Buy a Seat on the Exchange · 🪙 ${fmt(GAX_UNLOCK_COST)}` : `Requires 🪙 ${fmt(GAX_UNLOCK_COST)} — have ${fmt(coins)}`}
+          {canAfford
+            ? <span className="inline-flex items-center gap-1">Buy a Seat on the Exchange · <IconCoin /> {fmt(GAX_UNLOCK_COST)}</span>
+            : <span className="inline-flex items-center gap-1">Requires <IconCoin /> {fmt(GAX_UNLOCK_COST)} — have {fmt(coins)}</span>}
         </button>
       </div>
     </div>
@@ -520,7 +538,7 @@ function RegionUnlockModal({ region, onClose }: { region: RegionDef; onClose: ()
             <h2 className="text-lg font-semibold" style={{ color: region.color }}>{region.name}</h2>
             <p className="text-xs text-slate-500">{isUnlocked ? "Region explored" : "Locked region"}</p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
 
         <p className="mb-4 text-sm italic text-slate-400">"{region.flavor}"</p>
@@ -533,7 +551,7 @@ function RegionUnlockModal({ region, onClose }: { region: RegionDef; onClose: ()
           <>
             <p className="mb-2 text-[10px] uppercase tracking-wider text-slate-500">To explore this region you need</p>
             <div className="space-y-1.5">
-              <Row ok={status.coins} label={`🪙 ${fmt(region.unlockCost)} expedition funding`} have={`have ${fmt(coins)}`} />
+              <Row ok={status.coins} label={`${fmt(region.unlockCost)} coins for expedition funding`} have={`have ${fmt(coins)}`} />
               {c.potionsDiscovered > 0 && (
                 <Row ok={status.potions} label={`${c.potionsDiscovered} potions discovered`} have={`${discoveredPotions.length}`} />
               )}
@@ -552,7 +570,7 @@ function RegionUnlockModal({ region, onClose }: { region: RegionDef; onClose: ()
               }`}
               style={status.met ? { background: region.color } : undefined}
             >
-              {status.met ? `Fund the Expedition · 🪙 ${fmt(region.unlockCost)}` : "Requirements not yet met"}
+              {status.met ? <span className="inline-flex items-center gap-1">Fund the Expedition · <IconCoin /> {fmt(region.unlockCost)}</span> : "Requirements not yet met"}
             </button>
           </>
         )}
@@ -754,7 +772,7 @@ function LocationDetailModal({
               <Footprints size={11} /> Distance {loc.distance} · {region.name}
             </p>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200">✕</button>
+          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"><X size={18} /></button>
         </div>
 
         {/* Flavor text */}
@@ -768,7 +786,11 @@ function LocationDetailModal({
           </div>
           <div className="rounded-lg bg-slate-800/60 p-2.5">
             <div className="text-xs text-slate-500">Danger tier</div>
-            <div className="mt-0.5 font-semibold text-slate-100">{"⚠".repeat(loc.danger + 1) || "Safe"}</div>
+            <div className="mt-0.5 flex items-center gap-0.5 font-semibold text-slate-100">
+              {loc.danger + 1 > 0
+                ? Array.from({ length: loc.danger + 1 }, (_, i) => <IconWarning key={i} />)
+                : "Safe"}
+            </div>
           </div>
         </div>
 
@@ -807,7 +829,7 @@ function LocationDetailModal({
                 coins >= loc.unlockCost ? "bg-green-700 text-white hover:bg-green-600" : "cursor-not-allowed bg-slate-800 text-slate-500"
               }`}
             >
-              Unlock 🪙 {fmt(loc.unlockCost)}
+              <span className="inline-flex items-center gap-1">Unlock <IconCoin /> {fmt(loc.unlockCost)}</span>
             </button>
           </div>
         ) : lockedWorker ? (

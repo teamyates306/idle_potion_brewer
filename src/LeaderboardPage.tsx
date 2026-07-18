@@ -5,6 +5,7 @@ import AccountPanel from "./components/leaderboard/AccountPanel";
 import CloudRestoreModal from "./components/CloudRestoreModal";
 import { useOnlineStore } from "./online/onlineStore";
 import { useOnlineSync } from "./online/useOnlineSync";
+import { IconTrophy } from "./components/ui/icons";
 
 /** Standalone public leaderboard at /leaderboard — readable without signing
  *  in; signing in from here works too (magic links land back on this page). */
@@ -22,7 +23,7 @@ export default function LeaderboardPage() {
         >
           <ArrowLeft size={16} /> Back to the workshop
         </a>
-        <h1 className="mb-1 text-2xl font-bold text-amber-900">🏆 Guild Rankings</h1>
+        <h1 className="mb-1 flex items-center gap-2 text-2xl font-bold text-amber-900"><IconTrophy /> Guild Rankings</h1>
         <p className="mb-5 text-sm italic text-slate-400">
           The registry of every brewmaster who has signed the guild ledger.
         </p>

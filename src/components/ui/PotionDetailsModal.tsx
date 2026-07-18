@@ -9,6 +9,7 @@ import IngredientSvg from "../art/IngredientSvg";
 import PotionIcon from "../art/PotionIcon";
 import { dominantAttrSentence } from "../../util/potionVisuals";
 import type { Attributes } from "../../types";
+import { ICONS, IconCoin, IconClose, IconSparkle, IconColumns } from "./icons";
 
 /**
  * The lazy financial breakdown — computed ONLY when a potion's detail modal is
@@ -43,7 +44,7 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
   return (
     <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-950/15 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-wider text-amber-600">🏛 Market value</p>
+        <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-amber-600"><IconColumns /> Market value</p>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
           pct > 100 ? "bg-emerald-900/60 text-emerald-300" : pct < 100 ? "bg-rose-900/60 text-rose-300" : "bg-slate-800 text-slate-400"
         }`}>
@@ -53,7 +54,7 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
       <div className="space-y-1 text-[11px]">
         <div className="flex justify-between text-slate-400">
           <span>Base value</span>
-          <span className="font-semibold text-slate-300">🪙 {fmt(baseValue)}</span>
+          <span className="flex items-center gap-1 font-semibold text-slate-300"><IconCoin /> {fmt(baseValue)}</span>
         </div>
         {(() => {
           // Each attribute contributes weight/totalWeight of the blended rate,
@@ -75,14 +76,14 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
             const coinDelta = coinDeltaByAttr[r.attr];
             return (
               <div key={r.attr} className="flex justify-between">
-                <span className="text-slate-400">
-                  {ATTR_EMOJI[r.attr]} {attrLabel(r.attr)}
+                <span className="flex items-center gap-1 text-slate-400">
+                  {(() => { const Icon = ICONS[ATTR_EMOJI[r.attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(r.attr)}
                   <span className="ml-1 text-[10px] text-slate-500">({REASON_LABEL[r.reason]})</span>
                 </span>
                 <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
                   {d > 0 ? "+" : ""}{d}%
-                  <span className="ml-1.5 text-[10px] opacity-80">
-                    ({coinDelta > 0 ? "+" : ""}{fmt(coinDelta)}🪙)
+                  <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] opacity-80">
+                    ({coinDelta > 0 ? "+" : ""}{fmt(coinDelta)}<IconCoin />)
                   </span>
                 </span>
               </div>
@@ -94,7 +95,7 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
         )}
         <div className="mt-1.5 flex justify-between border-t border-amber-800/30 pt-1.5 font-semibold text-amber-800">
           <span>×{quote.mult.toFixed(2)} — selling for</span>
-          <span>🪙 {fmt(sellNow)} each</span>
+          <span className="flex items-center gap-1"><IconCoin /> {fmt(sellNow)} each</span>
         </div>
       </div>
     </div>
@@ -176,8 +177,8 @@ export default function PotionDetailsModal({
             <PotionIcon name={potion.name} size={48} />
             <div>
               <h3 className="text-lg font-bold text-purple-800">{potion.name}</h3>
-              <p className="text-xs text-slate-400">
-                ×{count} in inventory · 🪙 {fmt(potion.value)} each
+              <p className="flex items-center gap-1 text-xs text-slate-400">
+                ×{count} in inventory · <IconCoin /> {fmt(potion.value)} each
               </p>
             </div>
           </div>
@@ -186,7 +187,7 @@ export default function PotionDetailsModal({
             data-tut="close-potion-detail"
             className="ml-2 rounded-lg p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 
@@ -210,7 +211,7 @@ export default function PotionDetailsModal({
                     }`}
                     title={r.hash}
                   >
-                    #{i + 1} · 🪙 {fmt(r.value)}
+                    #{i + 1} · <IconCoin className="inline" /> {fmt(r.value)}
                   </button>
                 );
               })}
@@ -235,7 +236,7 @@ export default function PotionDetailsModal({
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                   level >= 10 ? "bg-amber-500 text-amber-950" : "bg-slate-700 text-amber-300"
                 }`}>
-                  {level >= 10 ? "✨ MASTERED" : `Level ${level} / 10`}
+                  {level >= 10 ? <span className="flex items-center gap-1"><IconSparkle /> MASTERED</span> : `Level ${level} / 10`}
                 </span>
               </div>
               {level < 10 && progress && (
@@ -260,7 +261,7 @@ export default function PotionDetailsModal({
               )}
               {level < 10 && speedBuff === 0 && (
                 <p className="mt-2 text-[11px] text-slate-500">
-                  Brewing this potion builds mastery — up to −15% brew time at Lv 10, plus a ✨ Mastery Token.
+                  Brewing this potion builds mastery — up to −15% brew time at Lv 10, plus a <IconSparkle className="inline" /> Mastery Token.
                 </p>
               )}
             </div>
@@ -307,8 +308,8 @@ export default function PotionDetailsModal({
                   </div>
                 ))}
             </div>
-            <div className="mb-4 text-xs text-slate-400">
-              Total value in stock: 🪙 {fmt(potion.value * count)}
+            <div className="mb-4 flex items-center gap-1 text-xs text-slate-400">
+              Total value in stock: <IconCoin /> {fmt(potion.value * count)}
             </div>
           </>
         ) : (

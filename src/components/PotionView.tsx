@@ -16,6 +16,7 @@ import { gatherRoundTrip, brewTime, effectiveMultiBrew } from "../engine/formula
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { gaxDayIndex, potionPriceMultiplier } from "../engine/gax";
 import type { Attributes } from "../types";
+import { IconCoin, IconSparkle, IconWarning, IconChartUp, IconAbacus } from "./ui/icons";
 
 type Tab = "sell" | "discovered" | "supply";
 type Detail = { hash: string } | { name: string } | null;

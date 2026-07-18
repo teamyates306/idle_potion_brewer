@@ -12,6 +12,7 @@ import { fmt } from "../../util/format";
 import type { Ingredient } from "../../types";
 import type { Adventurer } from "../../data/questSprites";
 import type { NoticeBoardTuning } from "../../store/noticeBoardTuningStore";
+import { IconCoin } from "../ui/icons";
 
 // Native pixel size of notice_board_blank.png. The board is drawn at this size
 // and the whole thing is scaled via a CSS transform so paper offsets stay in
@@ -113,7 +114,7 @@ function BoardFace({ data, dayNight }: { data: BoardData; dayNight: boolean }) {
           <Paper sheet={SHEET_LARGE_LS} w={30} h={26} className="px-0.5 py-0.5">
             <AdventurerSprite adventurer={questAdventurer} size={16} />
             <div className="flex items-center gap-px text-[4px] font-bold leading-none text-[#6a3d10]">
-              🪙{fmt(hardQuest.reward)}
+              <IconCoin style={{ width: "4px", height: "4px" }} />{fmt(hardQuest.reward)}
             </div>
           </Paper>
         </div>

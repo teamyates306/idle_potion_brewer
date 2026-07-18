@@ -489,12 +489,12 @@ export function attrLabel(attr: string): string {
   return attr.charAt(0).toUpperCase() + attr.slice(1);
 }
 
-/** Small emoji per attribute for compact market rows. */
+/** Icon key (into ui/icons.tsx ICONS map) per attribute for compact market rows. */
 export const ATTR_EMOJI: Record<string, string> = {
-  strength: "💪", speed: "🏃", vitality: "🌿", density: "🪨", elasticity: "🎗️",
-  focus: "🎯", mana: "🔮", resonance: "🎶", insight: "👁️", luck: "🍀",
-  heat: "🔥", cold: "❄️", shock: "⚡", aqua: "💧", terra: "⛰️", aero: "🌬️",
-  radiance: "☀️", void: "🕳️", toxicity: "☠️", volatility: "💥", acidity: "🧪",
-  alkalinity: "🧂", viscosity: "🍯", stability: "⚖️", solvency: "🫧",
-  chrono: "⏳", gravitas: "🌌", entropy: "🥀", soul: "👻", mutation: "🧬",
+  strength: "strength", speed: "run", vitality: "leaf", density: "rock", elasticity: "ribbon",
+  focus: "target", mana: "orb", resonance: "music", insight: "eye", luck: "clover",
+  heat: "flame", cold: "snowflake", shock: "bolt", aqua: "droplet", terra: "mountain", aero: "wind",
+  radiance: "sun", void: "void", toxicity: "skull", volatility: "explosion", acidity: "flask",
+  alkalinity: "gem", viscosity: "droplet", stability: "scale", solvency: "bubbles",
+  chrono: "hourglass", gravitas: "galaxy", entropy: "wilt", soul: "ghost", mutation: "dna",
 };
