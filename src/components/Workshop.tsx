@@ -18,6 +18,7 @@ import { describePotion } from "../engine/potions";
 import { generateAdventurer, type Adventurer } from "../data/questSprites";
 import { useWalkerTuningStore, type WalkerTuning } from "../store/walkerTuningStore";
 import { useBeamTuningStore } from "../store/beamTuningStore";
+import { useSurplusTuningStore, SURPLUS_THRESHOLD, type SurplusKind } from "../store/surplusTuningStore";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
@@ -254,6 +255,309 @@ const TroughPile = React.memo(function TroughPile() {
     </>
   );
 });
+
+// ── Surplus props ────────────────────────────────────────────────────────────
+// Once an ingredient's stash count passes SURPLUS_THRESHOLD, an overflowing
+// sack/barrel prop appears somewhere on the workshop floor with that
+// ingredient's icon spilling out of it. Placement zones and spill-icon spots
+// are tunable live via Dev Dashboard → Surplus (src/store/surplusTuningStore.ts).
+const SURPLUS_NATIVE_SIZE: Record<SurplusKind, { w: number; h: number }> = {
+  sack: { w: 24, h: 24 },
+  barell: { w: 24, h: 32 },
+};
+const SURPLUS_RENDER_SCALE = 1.6;
+
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = Math.imul(31, h) + s.charCodeAt(i) | 0;
+  return Math.abs(Math.imul(h, 0x9e3779b9));
+}
+
+// Deterministic per-ingredient PRNG (mulberry32) for surplus-prop placement.
+// hashStr() alone isn't enough to draw several independent-looking values for
+// one ingredient: it's an affine transform of a simple rolling hash, so
+// salting the input string (e.g. `${id}|kind` vs `${id}|zone`) still leaves
+// the low bits of the two outputs linearly related — in practice, zone index
+// and container kind came out perfectly correlated (every sack landing in
+// the same zones as every other sack). Feeding one hash through a real PRNG
+// and drawing successive outputs actually decorrelates them.
+function seededRng(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) >>> 0;
+    return (r ^ (r >>> 14)) >>> 0;
+  };
+}
+
+function pickSurplusIngredients(
+  inv: Record<string, number>,
+  ingredients: Record<string, Ingredient>,
+): string[] {
+  // Alphabetical, not by count — a stable order so a stack's layout doesn't
+  // reshuffle every time an already-surplus ingredient's count changes.
+  return Object.entries(inv)
+    .filter(([id, n]) => n > SURPLUS_THRESHOLD && ingredients[id])
+    .map(([id]) => id)
+    .sort();
+}
+
+interface ResolvedOverlaySpot {
+  dxPct: number; dyPct: number; size: number; rot: number;
+}
+
+interface SurplusPropGeom {
+  ingId: string;
+  kind: SurplusKind;
+  isOpen: boolean;
+  xPct: number;
+  y: number;
+  w: number;
+  hgt: number;
+  zIndex: number;
+  resolvedSpots: ResolvedOverlaySpot[];
+}
+
+function computeSurplusPropGeom(
+  active: string[],
+  zones: import("../store/surplusTuningStore").SurplusZoneCfg[],
+  overlays: Record<SurplusKind, import("../store/surplusTuningStore").SurplusKindCfg>,
+): SurplusPropGeom[] {
+  // Every ingredient over the threshold gets its own prop — no cap. Each
+  // draws a sequence of values from its own seeded PRNG (zone, kind, variant,
+  // x/y position, spill-spot count + placement) so container kind is
+  // genuinely independent of which zone it lands in — sacks and barrels
+  // intermingle within and across zones instead of clustering by type — and
+  // position is a uniform random point anywhere in the zone's box, not
+  // anchored to one edge of it.
+  const list: Omit<SurplusPropGeom, "zIndex">[] = active.map((ingId) => {
+    const rng = seededRng(hashStr(ingId));
+    const rZone = rng(), rKind = rng(), rVariant = rng(), rX = rng(), rY = rng();
+    const zoneIdx = rZone % zones.length;
+    const zone = zones[zoneIdx];
+
+    const kind: SurplusKind = (rKind & 1) === 0 ? "sack" : "barell";
+    const isOpen = rVariant % 3 !== 0; // ~2/3 open (spilling), 1/3 closed (plain clutter)
+
+    const native = SURPLUS_NATIVE_SIZE[kind];
+    const w = native.w * SURPLUS_RENDER_SCALE;
+    const hgt = native.h * SURPLUS_RENDER_SCALE;
+
+    const xFrac = (rX % 1000) / 1000;
+    const yFrac = (rY % 1000) / 1000;
+    const xPct = zone.xMinPct + xFrac * (zone.xMaxPct - zone.xMinPct);
+    const y = zone.yMin + yFrac * (zone.yMax - zone.yMin);
+
+    // How many spill spots show, and where each one lands within its range —
+    // rolled from the same per-ingredient sequence so it's stable across
+    // re-renders but still varies prop-to-prop.
+    let resolvedSpots: ResolvedOverlaySpot[] = [];
+    const kindCfg = overlays[kind];
+    if (isOpen && kindCfg.spots.length > 0) {
+      const rCount = rng();
+      const countMax = Math.min(kindCfg.countMax, kindCfg.spots.length);
+      const countMin = Math.min(kindCfg.countMin, countMax);
+      const count = countMin + (rCount % Math.max(1, countMax - countMin + 1));
+      resolvedSpots = kindCfg.spots.slice(0, count).map((sp) => {
+        const rDx = rng(), rDy = rng(), rSize = rng(), rRot = rng();
+        return {
+          dxPct: sp.dxPctMin + ((rDx % 1000) / 1000) * (sp.dxPctMax - sp.dxPctMin),
+          dyPct: sp.dyPctMin + ((rDy % 1000) / 1000) * (sp.dyPctMax - sp.dyPctMin),
+          size: sp.sizeMin + ((rSize % 1000) / 1000) * (sp.sizeMax - sp.sizeMin),
+          rot: sp.rotMin + ((rRot % 1000) / 1000) * (sp.rotMax - sp.rotMin),
+        };
+      });
+    }
+
+    return { ingId, kind, isOpen, xPct, y, w, hgt, resolvedSpots };
+  });
+
+  // Depth-sort by each prop's bottom edge (y + height): a prop sitting lower
+  // on the floor reads as nearer the viewer, so it must paint on top of
+  // anything whose bottom edge sits higher up, or the pile looks like it's
+  // floating. z-index is assigned by rank in this global order, not by the
+  // prop's row within its own zone (which only sorted within-zone).
+  const byDepth = [...list].sort((a, b) => (a.y + a.hgt) - (b.y + b.hgt));
+  const zIndexById = new Map(byDepth.map((it, i) => [it.ingId, 10 + i]));
+
+  return list.map((it) => ({ ...it, zIndex: zIndexById.get(it.ingId)! }));
+}
+
+const SurplusProps = React.memo(function SurplusProps() {
+  const inv = useGameStore((s) => s.ingredientInv);
+  const cfg = useConfigStore();
+  const zones = useSurplusTuningStore((s) => s.zones);
+  const overlays = useSurplusTuningStore((s) => s.overlays);
+
+  const active = useMemo(
+    () => pickSurplusIngredients(inv, cfg.ingredients),
+    [inv, cfg.ingredients],
+  );
+  const items = useMemo(
+    () => computeSurplusPropGeom(active, zones, overlays),
+    [active, zones, overlays],
+  );
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 z-[1]" style={{ top: 140, bottom: 0 }}>
+      {items.map(({ ingId, kind, isOpen, xPct, y, w, hgt, zIndex, resolvedSpots }) => {
+        const ing = cfg.ingredients[ingId];
+        if (!ing) return null;
+        return (
+          <div
+            key={ingId}
+            className="absolute"
+            style={{ left: `${xPct}%`, top: y, width: w, height: hgt, transform: "translateX(-50%)", zIndex }}
+          >
+            <img
+              src={`/sprites/surplus_sprites/${kind}_${isOpen ? "open" : "closed"}.svg`}
+              width={w}
+              height={hgt}
+              alt=""
+              draggable={false}
+              style={{ display: "block", imageRendering: "pixelated" }}
+            />
+            {resolvedSpots.map((spot, si) => (
+              <div
+                key={si}
+                className="absolute"
+                style={{
+                  left: `${spot.dxPct * 100}%`,
+                  top: `${spot.dyPct * 100}%`,
+                  transform: `translate(-50%, -50%) rotate(${spot.rot}deg)`,
+                  lineHeight: 0,
+                }}
+              >
+                <IngredientSvg category={ing.category} size={spot.size} rarity={ing.rarity} />
+              </div>
+            ))}
+            {/* Ground shadow */}
+            <div
+              className="pointer-events-none absolute left-1/2"
+              style={{
+                bottom: -3, width: w * 0.8, height: 6,
+                background: "radial-gradient(ellipse at center, rgba(0,0,0,0.4) 0%, transparent 70%)",
+                transform: "translateX(-50%)",
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+});
+
+// ── Live surplus-zone editor overlay ────────────────────────────────────────
+// Same drag/resize interaction as the Dev Dashboard's Surplus tab, but drawn
+// directly on the real workshop floor so zones can be placed against the
+// actual scene instead of a stand-in preview. Toggled from Dev Dashboard →
+// Surplus → "Edit on live workshop".
+const ZONE_EDIT_COLORS = ["#f59e0b", "#60a5fa", "#4ade80", "#c084fc", "#fb7185", "#2dd4bf"];
+
+function SurplusZoneOverlay({ floorWidth }: { floorWidth: number }) {
+  const zones = useSurplusTuningStore((s) => s.zones);
+  const setZone = useSurplusTuningStore((s) => s.setZone);
+  const addZone = useSurplusTuningStore((s) => s.addZone);
+  const removeZone = useSurplusTuningStore((s) => s.removeZone);
+  const setEditMode = useSurplusTuningStore((s) => s.setEditMode);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: string; mode: "move" | "resize"; startX: number; startY: number; orig: import("../store/surplusTuningStore").SurplusZoneCfg } | null>(null);
+
+  // The floor box is rendered inside the same zoom-scaled `content` wrapper as
+  // the rest of the scene, so its on-screen rect can be smaller than its own
+  // `floorWidth` layout px — this ratio is the current zoom factor, used to
+  // convert screen-pixel drag deltas for y (which is stored in layout px)
+  // back into layout space. x uses % of the box's own width, which is
+  // zoom-invariant, so it needs no correction.
+  const zoomFactor = () => {
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!rect || floorWidth === 0) return 1;
+    return rect.width / floorWidth;
+  };
+
+  const onPointerDown = (e: React.PointerEvent, zone: import("../store/surplusTuningStore").SurplusZoneCfg, mode: "move" | "resize") => {
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = { id: zone.id, mode, startX: e.clientX, startY: e.clientY, orig: { ...zone } };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const dxPct = ((e.clientX - d.startX) / rect.width) * 100;
+    const dy = (e.clientY - d.startY) / zoomFactor();
+    if (d.mode === "move") {
+      const width = d.orig.xMaxPct - d.orig.xMinPct;
+      const height = d.orig.yMax - d.orig.yMin;
+      const xMinPct = Math.max(0, Math.min(100 - width, d.orig.xMinPct + dxPct));
+      const yMin = Math.max(0, Math.min(1000 - height, d.orig.yMin + dy));
+      setZone(d.id, { xMinPct, xMaxPct: xMinPct + width, yMin, yMax: yMin + height });
+    } else {
+      const xMaxPct = Math.max(d.orig.xMinPct + 4, Math.min(100, d.orig.xMaxPct + dxPct));
+      const yMax = Math.max(d.orig.yMin + 8, d.orig.yMax + dy);
+      setZone(d.id, { xMaxPct, yMax });
+    }
+  };
+  const onPointerUp = () => { drag.current = null; };
+
+  return (
+    <>
+      <div
+        ref={boxRef}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className="absolute inset-x-0 z-[60]"
+        style={{ top: 140, bottom: 0 }}
+      >
+        {zones.map((z, i) => {
+          const color = ZONE_EDIT_COLORS[i % ZONE_EDIT_COLORS.length];
+          return (
+            <div
+              key={z.id}
+              onPointerDown={(e) => onPointerDown(e, z, "move")}
+              className="absolute cursor-move select-none rounded border-2 border-dashed"
+              style={{
+                left: `${z.xMinPct}%`, top: z.yMin,
+                width: `${z.xMaxPct - z.xMinPct}%`, height: z.yMax - z.yMin,
+                borderColor: color, background: `${color}33`,
+              }}
+            >
+              <span className="pointer-events-none absolute left-1 top-0.5 text-[9px] font-semibold" style={{ color, textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>{z.id}</span>
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => removeZone(z.id)}
+                className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/60 text-[9px] leading-none text-white hover:bg-rose-600"
+                title="Remove zone"
+              >
+                ×
+              </button>
+              <div
+                onPointerDown={(e) => onPointerDown(e, z, "resize")}
+                className="absolute bottom-0 right-0 h-3 w-3 cursor-nwse-resize rounded-tl"
+                style={{ background: color }}
+                title="Drag to resize"
+              />
+            </div>
+          );
+        })}
+      </div>
+      {/* Floating toolbar — fixed to the viewport, escapes the scroll/zoom scene */}
+      <div className="pointer-events-auto fixed inset-x-0 top-2 z-[61] flex justify-center">
+        <div className="flex items-center gap-2 rounded-full border border-amber-500/50 bg-slate-900/95 px-3 py-1.5 text-xs text-slate-200 shadow-lg backdrop-blur-sm">
+          <span className="font-semibold text-amber-400">Editing surplus zones</span>
+          <span className="hidden text-slate-400 sm:inline">— drag to move, corner to resize</span>
+          <button onClick={addZone} className="rounded-full bg-slate-700 px-2.5 py-1 font-semibold hover:bg-slate-600">+ Add zone</button>
+          <button onClick={() => setEditMode(false)} className="rounded-full bg-amber-600 px-2.5 py-1 font-semibold text-white hover:bg-amber-500">Done</button>
+        </div>
+      </div>
+    </>
+  );
+}
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory";
 
@@ -900,6 +1204,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, []);
 
   const graphics        = useGameStore((s) => s.graphics);
+  const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
   const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
@@ -984,6 +1289,10 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
             className="pointer-events-none absolute inset-x-0 z-0"
             style={{ top: 140, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 12px 20px -12px rgba(60,54,46,0.30)" }}
           />
+
+          {/* Surplus props — overflowing sacks/barrels for stashes over threshold */}
+          <SurplusProps />
+          {surplusEditMode && <SurplusZoneOverlay floorWidth={contentWidth} />}
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={() => onOpen("map")} width={contentWidth} />

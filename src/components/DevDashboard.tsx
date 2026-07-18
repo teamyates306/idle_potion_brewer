@@ -8,9 +8,10 @@ import { describeFromHash } from "../engine/potions";
 import { useWalkerTuningStore } from "../store/walkerTuningStore";
 import { useBeamTuningStore } from "../store/beamTuningStore";
 import WindowWalkerPreview from "./dev/WindowWalkerPreview";
+import SurplusTab from "./dev/SurplusEditor";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -91,7 +92,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-slate-800 bg-slate-900">
-        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -113,6 +114,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "locations"   && <LocationsTab search={search} />}
         {tab === "walkers"     && <WalkersTab />}
         {tab === "beams"       && <BeamsTab />}
+        {tab === "surplus"     && <SurplusTab onClose={onClose} />}
       </div>
     </div>
   );
