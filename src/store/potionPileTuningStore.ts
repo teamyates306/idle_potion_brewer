@@ -25,7 +25,7 @@ export interface PotionPileSpacing {
 // of potions reads as several natural heaps rather than one endlessly
 // growing pyramid.
 const DEFAULT_PILES: PotionPileCfg[] = [
-  { id: "p0", xOffset: 0,    yOffset: 7,   maxBase: 12, maxRows: 6 },
+  { id: "p0", xOffset: 0,    yOffset: 0,   maxBase: 12, maxRows: 6 },
   { id: "p1", xOffset: -133, yOffset: -62, maxBase: 8,  maxRows: 4 },
   { id: "p2", xOffset: 133,  yOffset: -62, maxBase: 8,  maxRows: 4 },
   { id: "p3", xOffset: 145,  yOffset: 12,  maxBase: 6,  maxRows: 3 },

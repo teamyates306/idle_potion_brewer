@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
 import WorkerArt, { workerHue } from "./WorkerArt";
 import AdventurerSprite from "./AdventurerSprite";
@@ -142,22 +143,15 @@ function BoardFace({ data, dayNight }: { data: BoardData; dayNight: boolean }) {
         </div>
       )}
 
-      {/* ── Day/night ambience — same CSS variables the wall windows use, so the
-          board dims into night and warms up by day along with the whole scene.
-          Overlaid last so it tints the papers uniformly too. */}
+      {/* ── Day/night ambience — same night-blue dimmer the wall windows use
+          (no separate daylight wash — a soft-light blend over the whole board
+          made it read as oversaturated by day instead of blending into the
+          wall), so the board just dims into night along with the scene. */}
       {dayNight && (
-        <>
-          {/* Warm daylight wash (var → 0 at night). */}
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{ background: "#ffd98a", mixBlendMode: "soft-light", opacity: "var(--dn-daylight-op, 0)", transition: "opacity 3.5s ease-in-out" }}
-          />
-          {/* Night-blue dimmer (var → 0 by day) — mirrors the window overlay. */}
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{ background: "#0a1526", opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }}
-          />
-        </>
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "#0a1526", opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }}
+        />
       )}
     </div>
   );
@@ -237,20 +231,25 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
           <button
             onClick={(e) => { e.stopPropagation(); setZoom(true); }}
             title="Enlarge notice board"
-            className="pointer-events-auto absolute flex items-center justify-center rounded-full border border-[#4a2f14]/60 bg-[#f4e4c1] text-[#4a2f14] shadow-sm hover:bg-[#fff3d6] active:scale-95"
+            className="pointer-events-auto absolute flex items-center justify-center text-[#4a2f14] hover:text-[#7a5a2a] active:scale-95"
             style={{ left: 1, bottom: 1, width: 12, height: 12 }}
           >
-            <Search size={8} strokeWidth={2.5} />
+            <Search size={9} strokeWidth={2.5} />
           </button>
         </div>
       </div>
 
       {/* Zoom popup — a large, clean view of the whole board. Click-away or
           Escape closes it. Day/night ambience is intentionally off here so the
-          board's real colours are legible. */}
-      {zoom && (
+          board's real colours are legible. Rendered via portal straight onto
+          document.body — the board lives inside the zoomed/scaled workshop
+          scene wrapper, and a `position: fixed` descendant of an ancestor with
+          a `zoom`/`transform` style is still confined (and clipped by
+          overflow-hidden) to that ancestor's box, so a plain fixed div here
+          would sit *under* the rest of the UI instead of above it. */}
+      {zoom && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#2a1c0e]/70 backdrop-blur-sm"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-[#2a1c0e]/70 backdrop-blur-sm"
           onClick={() => setZoom(false)}
         >
           <div className="relative" onClick={(e) => e.stopPropagation()}>
@@ -270,7 +269,8 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

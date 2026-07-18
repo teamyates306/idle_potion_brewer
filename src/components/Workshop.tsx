@@ -1043,17 +1043,33 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     // but only until the player takes manual control of the horizontal pan, so
     // we never yank the view back while they're looking around.
     const recenter = () => measure(!userScrolled.current);
+    // Returning to the game after backgrounding it (switching to an account/
+    // leaderboard page, then back) is a fresh "arrival" — force a real
+    // recentre here regardless of any earlier manual pan, since the player
+    // wasn't looking at the scene while away and expects it centred again,
+    // exactly like a reload does.
+    const forceRecenter = () => { userScrolled.current = false; measure(true); };
     const raf1 = requestAnimationFrame(recenter);
     const t1 = window.setTimeout(recenter, 150);
     const t2 = window.setTimeout(recenter, 500);
+    const t3 = window.setTimeout(recenter, 1200);
     const ro = new ResizeObserver(recenter);
     const el = outerRef.current;
     if (el) ro.observe(el);
+    // ResizeObserver on outerRef covers most cases, but iOS Safari's dynamic
+    // toolbar can change the *visual* viewport without outerRef's own layout
+    // box changing — listen directly as a fallback.
+    window.visualViewport?.addEventListener("resize", recenter);
+    const onVisible = () => { if (document.visibilityState === "visible") forceRecenter(); };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       ro.disconnect();
       cancelAnimationFrame(raf1);
       clearTimeout(t1);
       clearTimeout(t2);
+      clearTimeout(t3);
+      window.visualViewport?.removeEventListener("resize", recenter);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [machines.length]);
 
