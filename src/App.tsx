@@ -122,6 +122,12 @@ export default function App() {
   // own effect corrected them a frame later.
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    // Defensive reset: a page navigated to us (e.g. "Back to the workshop"
+    // from the leaderboard) can arrive with a stray scroll/pan position —
+    // most commonly iOS Safari carrying over a pinch-zoom from a focused
+    // input on the previous page. The workshop is a fixed single-viewport
+    // app, so it should always start pinned at the origin.
+    window.scrollTo(0, 0);
     applyDayNightVars();
     const assets = Promise.all(CORE_SPRITES.map(preloadImage));
     const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));

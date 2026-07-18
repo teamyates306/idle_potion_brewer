@@ -18,6 +18,19 @@ body {
   overflow: hidden;
 }
 
+/* iOS Safari force-zooms in on any text input/select with font-size < 16px,
+   ignoring the viewport's user-scalable=no — and if you navigate away (e.g.
+   tapping "Back to the workshop") before it un-zooms, that pan/zoom carries
+   into the next page, leaving the whole app visibly shifted/off-centre.
+   The UI's retro type scale runs smaller than that everywhere else, so pin
+   just the effective input font-size on mobile to defeat the zoom without
+   changing how anything actually looks. */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Warm "Parchment & Ink" chrome: scrollbars + text selection. */
 * { scrollbar-color: #c7ad82 transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
