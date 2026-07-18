@@ -985,27 +985,29 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const content = contentRef.current;
       if (!outer) return;
 
-      // Scale content down via CSS zoom so it always fits vertically without scroll.
-      // Derive natural height from the current zoom factor instead of resetting
-      // zoom to '' and back — resetting forced an unzoomed frame to briefly
-      // render (a visible flash/flicker) whenever this fires mid-animation,
-      // most noticeable on short mobile viewports where zoom<1 is actually active.
+      // Scale content down via a CSS transform so it always fits vertically
+      // without scroll. Deliberately `transform`, not the non-standard `zoom`
+      // property this used previously: `zoom` changes the element's own
+      // layout size, so reading it back (scrollHeight) reflects whatever
+      // scale was last applied — every call had to divide that back out via
+      // a separately-tracked "current zoom" to recover the true natural
+      // height. On real devices (most visibly iOS Safari, which has always
+      // had inconsistent `zoom` support) a call landing mid-reflow could read
+      // that self-referential state as stale, compute a too-small scale, and
+      // have that become the new baseline for the next call — a feedback
+      // loop with nothing bounding it, progressively shrinking the scene the
+      // longer the page stayed open. `transform` is purely a paint-time
+      // effect: it never touches layout, so `content.scrollHeight` is always
+      // the untransformed natural height regardless of any scale already
+      // applied — there is no stale state to read, so the whole class of
+      // bug is structurally impossible here, not just guarded against.
       if (content) {
-        const currentZoom = parseFloat(content.style.zoom) || 1;
-        const naturalH = content.scrollHeight / currentZoom;
+        const naturalH = content.scrollHeight;
         const availH = outer.clientHeight;
         const s = naturalH > 0 && availH > 0 ? Math.min(1, availH / naturalH) : 1;
-        // Guard against compounding drift: with several overlapping triggers
-        // (resize observer, visualViewport, timers) a measure() can land
-        // before the previous zoom change has finished reflowing, so
-        // scrollHeight is read stale relative to currentZoom — that produces
-        // a slightly-too-small `s`, which then becomes the new stale
-        // baseline for the next call, progressively zooming out ("zooms out
-        // once, then zooms out again"). Only actually apply a change once
-        // it's past rounding noise.
-        if (Math.abs(s - currentZoom) > 0.01) {
-          content.style.zoom = s < 1 ? String(s) : '';
-        }
+        const nextTransform = s < 1 ? `scale(${s})` : '';
+        if (content.style.transform !== nextTransform) content.style.transform = nextTransform;
+        content.style.transformOrigin = 'top center';
       }
 
       // Measure badge Y positions in visual (post-zoom) space
@@ -1025,17 +1027,20 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       // Horizontal scroll window: centre on the brewers; only open it up once the
       // brewers are wider than the viewport (so 1 brewer never scrolls). The fixed
       // world is much wider, so the texture edges are never reachable.
+      // (scrollWidth reflects contentRef's own layout size regardless of the
+      // vertical-fit transform above — transform is paint-only, so unlike the
+      // old zoom-based version this needs no compensating ratio between
+      // scroll px and world layout px; they're the same thing now.)
       const sc = scrollRef.current;
       if (sc) {
         const vw = sc.clientWidth;
         const sw = sc.scrollWidth;
-        const ratio = sw / WORLD_W;                       // scroll px per world layout px (handles vertical zoom)
         const centerScroll = Math.max(0, (sw - vw) / 2);
-        const brewersVis = machines.length * COL_W * ratio;
+        const brewersVis = machines.length * COL_W;
         const overflowBase = (brewersVis - vw) / 2;       // >0 only when brewers exceed the viewport
         // With 2+ machines always give at least 60px of scroll room so the wider sprite is reachable.
-        const base = machines.length >= 2 ? Math.max(60 * ratio, overflowBase) : overflowBase;
-        const half = base > 0 ? base + SCROLL_EXTRA * ratio : 0;
+        const base = machines.length >= 2 ? Math.max(60, overflowBase) : overflowBase;
+        const half = base > 0 ? base + SCROLL_EXTRA : 0;
         scrollRange.current = { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
         sc.scrollLeft = recenter
           ? centerScroll
@@ -1055,22 +1060,23 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     // Several triggers below (resize observer, visualViewport, timers) can
     // fire within the same burst — e.g. the mobile toolbar collapsing kicks
     // off both a ResizeObserver callback and a visualViewport resize event.
-    // Coalesce them to at most one measure() per animation frame so a later
-    // call in the same burst never reads a DOM still mid-reflow from an
-    // earlier call in that same burst (see the zoom-drift guard in measure()).
-    let scheduled = false;
-    const schedule = (fn: () => void) => {
-      if (scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(() => { scheduled = false; fn(); });
-    };
-    const recenter = () => schedule(() => measure(!userScrolled.current));
+    // These deliberately are NOT coalesced/debounced into a single call: an
+    // earlier attempt at that ("run at most once per animation frame, drop
+    // the rest") could silently drop the *last* event in a burst — the one
+    // carrying the final, settled size — whenever it landed in the same
+    // frame as an earlier, still-mid-transition one, leaving the stale read
+    // as the one that stuck. measure() reads everything fresh from the live
+    // DOM and (with the transform-based fit above) has no state that can
+    // compound from being called redundantly, so every trigger just runs it
+    // directly — a little redundant work is far cheaper than dropping the
+    // one call that had the right numbers.
+    const recenter = () => measure(!userScrolled.current);
     // Returning to the game after backgrounding it (switching to an account/
     // leaderboard page, then back) is a fresh "arrival" — force a real
     // recentre here regardless of any earlier manual pan, since the player
     // wasn't looking at the scene while away and expects it centred again,
     // exactly like a reload does.
-    const forceRecenter = () => schedule(() => { userScrolled.current = false; measure(true); });
+    const forceRecenter = () => { userScrolled.current = false; measure(true); };
     const raf1 = requestAnimationFrame(recenter);
     const t1 = window.setTimeout(recenter, 150);
     const t2 = window.setTimeout(recenter, 500);
@@ -1133,12 +1139,11 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     if (!el) return scrollRange.current;
     const vw = el.clientWidth;
     const sw = el.scrollWidth;
-    const ratio = sw / WORLD_W;
     const centerScroll = Math.max(0, (sw - vw) / 2);
-    const brewersVis = machines.length * COL_W * ratio;
+    const brewersVis = machines.length * COL_W;
     const overflowBase = (brewersVis - vw) / 2;
-    const base = machines.length >= 2 ? Math.max(60 * ratio, overflowBase) : overflowBase;
-    const half = base > 0 ? base + SCROLL_EXTRA * ratio : 0;
+    const base = machines.length >= 2 ? Math.max(60, overflowBase) : overflowBase;
+    const half = base > 0 ? base + SCROLL_EXTRA : 0;
     return { min: centerScroll - half, max: centerScroll + half, center: centerScroll };
   };
   const clampScroll = (v: number) => {
