@@ -29,7 +29,7 @@ export function generateDiscoveryBounty(
   ingredientRegistry: Record<string, Ingredient>,
   formulas: BaseFormulas,
   maxComboSize: number,
-): { targetName: string; reward: number } | null {
+): { targetName: string; reward: number; recipeIds: string[] } | null {
   const validIds = discovered.filter((id) => !!ingredientRegistry[id]);
   // Cap to what the player can actually brew (unlocked machine slots).
   const effectiveMax = Math.min(maxComboSize, validIds.length);
@@ -55,6 +55,10 @@ export function generateDiscoveryBounty(
         return {
           targetName: potion.name,
           reward: Math.max(50, Math.round(potion.value * REWARD_MULTIPLIER)),
+          // The specific recipe that yields this name — surfaced on the
+          // workshop notice board as an ingredient equation. (Multiple recipes
+          // can share a name; this is simply the one that was rolled.)
+          recipeIds: ids,
         };
       }
     }

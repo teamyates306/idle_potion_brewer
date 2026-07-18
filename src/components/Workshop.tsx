@@ -13,7 +13,9 @@ import MachineArt from "./art/MachineArt";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
 import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
-import { parsePotionVisuals, DEFAULT_LIQUID_COLOR } from "../util/potionVisuals";
+import NoticeBoardArt from "./art/NoticeBoardArt";
+import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE } from "../util/potionVisuals";
+import PotionLiquidFill from "./art/PotionLiquidFill";
 import { describePotion } from "../engine/potions";
 import { generateAdventurer, type Adventurer } from "../data/questSprites";
 import { useWalkerTuningStore, type WalkerTuning } from "../store/walkerTuningStore";
@@ -64,6 +66,18 @@ interface Spark {
   createdAt: number;
 }
 
+// Full visual treatment for the potion a brew just produced — the same
+// fields PotionPileArt's Bottle uses — so the cauldron splash and the
+// fly-to-pile bottle read as the exact same potion as the one that lands in
+// the pile, instead of a generic flat-colour placeholder.
+interface PotionBrewVisuals {
+  liquidColor: string;
+  prefixTier: number;
+  sprite: string;
+  liquidPoints: string;
+  blendColors?: string[];
+}
+
 interface FlyingParticle {
   id: number;
   type: "ingredient" | "potion";
@@ -73,17 +87,17 @@ interface FlyingParticle {
   dy: number;
   arcX: number;   // horizontal arc mid-point offset
   category?: string;
-  color?: string;
+  potion?: PotionBrewVisuals;
   delay: number;  // ms
   duration: number;
 }
 
 interface BrewBurstDot { bx: number; by: number; size: number; duration: number; delay: number; }
-interface BrewBurst { id: number; cx: number; cy: number; color: string; dots: BrewBurstDot[] }
+interface BrewBurst { id: number; cx: number; cy: number; color: string; filter?: string; dots: BrewBurstDot[] }
 
 function BrewBurstEl({ b }: { b: BrewBurst }) {
   return (
-    <div style={{ position: "absolute", left: b.cx, top: b.cy, width: 0, height: 0 }}>
+    <div style={{ position: "absolute", left: b.cx, top: b.cy, width: 0, height: 0, filter: b.filter }}>
       {/* Shockwave ring */}
       <div style={{
         position: "absolute", width: 140, height: 140,
@@ -604,8 +618,8 @@ const MachineColumn = React.memo(function MachineColumn({
   workers: Worker[];
   onOpen: (p: Panel, machineId?: number) => void;
   onBrewStart: (cauldronRect: DOMRect, categories: string[]) => void;
-  onBrewComplete: (cauldronRect: DOMRect, potionColor: string) => void;
-  onBrewBurst: (cx: number, cy: number, color: string) => void;
+  onBrewComplete: (cauldronRect: DOMRect, visuals: PotionBrewVisuals) => void;
+  onBrewBurst: (cx: number, cy: number, visuals: PotionBrewVisuals) => void;
 }) {
   const onManage = useCallback(() => onOpen("machine", machine.id), [onOpen, machine.id]);
   const clickBrew = useGameStore((s) => s.clickBrew);
@@ -678,7 +692,10 @@ const MachineColumn = React.memo(function MachineColumn({
           size: "md",
         });
       }
-      // Potion-exit animation: derive color from the actual brewed potion's suffix
+      // Potion-exit animation: derive full visuals (not just colour) from the
+      // actual brewed potion, exactly like PotionPileArt's Bottle — otherwise
+      // the splash/fly-to-pile animation shows a generic flat-colour Tonic
+      // bottle that doesn't match the potion that actually lands in the pile.
       const state = useGameStore.getState();
       const m = state.machines.find((mc) => mc.id === machine.id);
       const recipeIngredients = (m?.recipe_slots ?? [])
@@ -688,9 +705,16 @@ const MachineColumn = React.memo(function MachineColumn({
       const desc = recipeIngredients.length > 0
         ? describePotion(recipeIngredients, useConfigStore.getState().formulas)
         : null;
-      const potionColor = desc ? parsePotionVisuals(desc.name).liquidColor : DEFAULT_LIQUID_COLOR;
-      onBrewComplete(rect, potionColor);
-      onBrewBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, potionColor);
+      const parsedVisuals = desc ? parsePotionVisuals(desc.name) : null;
+      const typeData = getPotionTypeData(parsedVisuals?.potionType ?? "Tonic");
+      const visuals: PotionBrewVisuals = {
+        liquidColor: parsedVisuals ? parsedVisuals.liquidColor : DEFAULT_LIQUID_COLOR,
+        prefixTier: parsedVisuals ? parsedVisuals.prefixTier : 0,
+        blendColors: parsedVisuals?.blendColors,
+        ...typeData,
+      };
+      onBrewComplete(rect, visuals);
+      onBrewBurst(rect.left + rect.width / 2, rect.top + rect.height / 2, visuals);
     });
   }, [machine.id, onBrewComplete, onBrewBurst]);
 
@@ -1177,16 +1201,23 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   const [brewBursts, setBrewBursts] = useState<BrewBurst[]>([]);
   const burstIdRef = useRef(0);
-  const handleBrewBurst = useCallback((cx: number, cy: number, color: string) => {
+  const handleBrewBurst = useCallback((cx: number, cy: number, visuals: PotionBrewVisuals) => {
     if (useGameStore.getState().graphics.throttle_animations) return;
     const id = burstIdRef.current++;
+    // Same tier-driven saturate/brightness as the pile bottle, applied as a
+    // CSS filter over the whole burst (ring + particles) since they're plain
+    // coloured divs, not an SVG shape, so there's nothing to swap the fill on.
+    const liq = TIER_LIQUID_STYLE[Math.min(visuals.prefixTier, TIER_LIQUID_STYLE.length - 1)];
+    const filter = liq.saturate !== 1 || liq.brightness !== 1
+      ? `saturate(${liq.saturate}) brightness(${liq.brightness})`
+      : undefined;
     // Cap concurrent bursts (22 dots each) — five brewers finishing together
     // used to stack 100+ animated dots.
-    setBrewBursts(prev => (prev.length >= 4 ? prev : [...prev, { id, cx, cy, color, dots: makeBurstDots(22) }]));
+    setBrewBursts(prev => (prev.length >= 4 ? prev : [...prev, { id, cx, cy, color: visuals.liquidColor, filter, dots: makeBurstDots(22) }]));
     setTimeout(() => setBrewBursts(prev => prev.filter(b => b.id !== id)), 950);
   }, []);
 
-  const handleBrewComplete = useCallback((cauldronRect: DOMRect, potionColor: string) => {
+  const handleBrewComplete = useCallback((cauldronRect: DOMRect, visuals: PotionBrewVisuals) => {
     const pile = pileSectionRef.current;
     if (!pile) return;
     const pileRect = pile.getBoundingClientRect();
@@ -1200,7 +1231,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       x: startX, y: startY,
       dx: endX - startX, dy: endY - startY,
       arcX: (Math.random() - 0.5) * 20,
-      color: potionColor,
+      potion: visuals,
       delay: 0, duration: POTION_FLY_MS,
     };
     setFlyingParticles((prev) => (prev.length > 40 ? prev : [...prev, particle]));
@@ -1303,6 +1334,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
+          {/* Notice board — hangs in the gap between the first and second
+              right-hand window (replaces that gap's lantern). Decorative +
+              live-data overlay; pointer-events-none so wall clicks still open
+              the map. Tunable via Dev Dashboard → Board. */}
+          {(() => {
+            const nbX = computeNoticeBoardPosition(contentWidth);
+            return nbX == null ? null : <NoticeBoardArt centerX={nbX} />;
+          })()}
 
           {/* Wall-to-floor shadow — sits behind light beams (z=2 < beams z=10) */}
           {graphics.wallShadow && (
@@ -1621,9 +1660,21 @@ function computeLampPositions(width: number): number[] {
   const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
   const step = width / n;
+  const nb = computeNoticeBoardPosition(width);
   return Array.from({ length: n - 1 }, (_, i) => Math.round(step * (i + 1))).filter(
     (x) => Math.abs(x - center) > 70,
-  );
+  ).filter((x) => nb == null || Math.abs(x - nb) > 4); // the notice board replaces its lantern
+}
+
+// The workshop notice board hangs in the gap between the first and second
+// window to the *right* of the central door — i.e. the lamp position that sits
+// midway between those two windows. Returns null if the wall is too narrow to
+// have two right-hand windows.
+function computeNoticeBoardPosition(width: number): number | null {
+  const center = width / 2;
+  const right = computeWindowPositions(width).filter((x) => x > center).sort((a, b) => a - b);
+  if (right.length < 2) return null;
+  return Math.round((right[0] + right[1]) / 2);
 }
 
 function WallWindowLight({ cx }: { cx: number }) {
@@ -1809,11 +1860,26 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
 }
 
 // ── Flying brew particles ─────────────────────────────────────────────────────
-function FlyPotion({ color = "#a855f7" }: { color?: string }) {
+// Same sprite/liquid-shape/blend/filter treatment as PotionPileArt's Bottle,
+// so the bottle flying from the cauldron to the pile is visibly the same
+// potion that lands there — not a generic flat-colour Tonic placeholder.
+function FlyPotion({ potion }: { potion: PotionBrewVisuals }) {
+  const liq = TIER_LIQUID_STYLE[Math.min(potion.prefixTier, TIER_LIQUID_STYLE.length - 1)];
+  const filter = liq.saturate !== 1 || liq.brightness !== 1
+    ? `saturate(${liq.saturate}) brightness(${liq.brightness})`
+    : undefined;
   return (
     <svg width="16" height="16" viewBox="-8 -16 16 16" fill="none">
-      <polygon points="2.0,-1.0 -2.0,-1.0 -5.0,-3.0 -7.0,-6.5 -5.0,-9.0 5.0,-9.0 7.0,-6.5 5.0,-3.0" fill={color} opacity="0.6" />
-      <image href="/sprites/potion-bottle.png" x="-8" y="-16" width="16" height="16" />
+      {/* Prismatic hue-cycle (Transcendent tier) on its own outer group — a
+          CSS animation of `filter` replaces the whole property each frame,
+          so it can't share an element with the static saturate/brightness
+          filter below (same split used by PotionPileArt's Bottle). */}
+      <g style={liq.prismatic ? { animation: "potion-prismatic 4s linear infinite" } : undefined}>
+        <g style={filter ? { filter } : undefined}>
+          <PotionLiquidFill liquidColor={potion.liquidColor} liquidPoints={potion.liquidPoints} blendColors={potion.blendColors} />
+          <image href={potion.sprite} x="-8" y="-16" width="16" height="16" />
+        </g>
+      </g>
     </svg>
   );
 }
@@ -1839,7 +1905,7 @@ function FlyingParticleEl({ p }: { p: FlyingParticle }) {
     >
       {p.type === "ingredient"
         ? <IngredientSvg category={p.category!} size={20} />
-        : <FlyPotion color={p.color!} />}
+        : <FlyPotion potion={p.potion!} />}
     </div>
   );
 }

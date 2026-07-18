@@ -231,6 +231,9 @@ export interface PotionMasteryEntry {
 export interface DiscoveryBounty {
   targetName: string;
   reward: number;
+  /** The rolled recipe (ingredient ids) that yields this name. Optional so
+   *  older saves without it still load; the notice board falls back gracefully. */
+  recipeIds?: string[];
   readyToClaim: boolean;
   /** Null while bounty is active; timestamp when countdown started after claiming. */
   cooldownUntil: number | null;

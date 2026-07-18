@@ -11,9 +11,10 @@ import WindowWalkerPreview from "./dev/WindowWalkerPreview";
 import SurplusTab from "./dev/SurplusEditor";
 import TroughTab from "./dev/TroughEditor";
 import PotionPileTab from "./dev/PotionPileEditor";
+import NoticeBoardEditor from "./dev/NoticeBoardEditor";
 import type { Ingredient, Location, Rarity, IngredientCategory, DropEntry } from "../types";
 
-type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus" | "trough" | "potions";
+type Tab = "cheats" | "formulas" | "attributes" | "ingredients" | "locations" | "walkers" | "beams" | "surplus" | "trough" | "potions" | "board";
 
 const RARITIES: Rarity[] = ["common", "uncommon", "scarce", "rare", "exotic", "epic", "fabled", "legendary"];
 const CATEGORIES: IngredientCategory[] = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -94,7 +95,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
 
       {/* Tab bar */}
       <div className="flex shrink-0 border-b border-gray-200 bg-gray-50">
-        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus","trough","potions"] as Tab[]).map((t) => (
+        {(["cheats","formulas","attributes","ingredients","locations","walkers","beams","surplus","trough","potions","board"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => { setTab(t); setSearch(""); }}
@@ -119,6 +120,7 @@ export default function DevDashboard({ onClose }: { onClose: () => void }) {
         {tab === "surplus"     && <SurplusTab onClose={onClose} />}
         {tab === "trough"      && <TroughTab />}
         {tab === "potions"     && <PotionPileTab />}
+        {tab === "board"       && <NoticeBoardEditor />}
       </div>
     </div>
   );
