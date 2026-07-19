@@ -1149,7 +1149,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, [machines.length]);
 
   // Pointer drag-to-scroll
-  const drag = useRef({ active: false, startX: 0, startLeft: 0 });
+  const drag = useRef({ active: false, startX: 0, startLeft: 0, pointerId: 0, captured: false });
   const [dragging, setDragging] = useState(false);
   // Set once the player actually pans, so the auto-centring on load/resize
   // stops fighting them (see the layout effect above). Only a genuine drag
@@ -1161,9 +1161,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
     const el = scrollRef.current;
     if (!el) return;
-    drag.current = { active: true, startX: e.clientX, startLeft: el.scrollLeft };
-    el.setPointerCapture(e.pointerId);
-    setDragging(true);
+    // Track the press but don't capture the pointer or flip to "dragging"
+    // yet — capturing immediately (even though click delivery is nominally
+    // capture-independent) was interfering with plain clicks landing on
+    // brewers under mouse input. Capture is deferred to onPointerMove, once
+    // real drag distance is confirmed, so a stationary click passes through
+    // untouched.
+    drag.current = { active: true, startX: e.clientX, startLeft: el.scrollLeft, pointerId: e.pointerId, captured: false };
   };
   // Recompute the legal scroll window fresh from the DOM every time, rather
   // than trusting scrollRange.current — that ref is only updated by the
@@ -1188,14 +1192,34 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     const r = liveScrollRange();
     return Math.min(r.max, Math.max(r.min, v));
   };
+  // Mouse pointers report jitter even while the user is trying to hold still
+  // for a click, whereas touch taps don't — without a threshold, that jitter
+  // shifts scrollLeft mid-click and the brewer slides out from under the
+  // cursor before pointerup, so the click misses (desktop-only symptom).
+  const DRAG_THRESHOLD = 5;
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drag.current.active) return;
     const el = scrollRef.current;
     if (!el) return;
-    if (e.clientX !== drag.current.startX) userScrolled.current = true; // genuine pan → stop auto-centring
-    el.scrollLeft = clampScroll(drag.current.startLeft - (e.clientX - drag.current.startX));
+    const delta = e.clientX - drag.current.startX;
+    if (!drag.current.captured && Math.abs(delta) < DRAG_THRESHOLD) return;
+    if (!drag.current.captured) {
+      drag.current.captured = true;
+      el.setPointerCapture(drag.current.pointerId);
+      setDragging(true);
+    }
+    userScrolled.current = true; // genuine pan → stop auto-centring
+    el.scrollLeft = clampScroll(drag.current.startLeft - delta);
   };
-  const onPointerEnd = () => { drag.current.active = false; setDragging(false); };
+  const onPointerEnd = () => {
+    const el = scrollRef.current;
+    if (el && drag.current.captured) {
+      try { el.releasePointerCapture(drag.current.pointerId); } catch { /* already released */ }
+    }
+    drag.current.active = false;
+    drag.current.captured = false;
+    setDragging(false);
+  };
   // Keep any native (wheel / momentum) scroll within the allowed window too.
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
