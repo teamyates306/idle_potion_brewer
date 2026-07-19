@@ -445,15 +445,17 @@ export default function App() {
   );
 }
 
-function DockButton({ label, icon, title, onClick, badge }: {
+function DockButton({ label, icon, title, onClick, badge, dataTut }: {
   label: string;
   icon: React.ReactNode;
   title: string;
   onClick: () => void;
   badge?: number;
+  dataTut?: string;
 }) {
   return (
     <button
+      {...(dataTut ? { "data-tut": dataTut } : {})}
       onClick={onClick}
       title={title}
       className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95"
