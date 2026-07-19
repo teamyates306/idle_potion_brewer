@@ -49,11 +49,11 @@ const CORE_SPRITES = [
   "/sprites/worker.png", "/sprites/worker-manic.png",
   "/sprites/worker-explorer.png", "/sprites/worker-caravan.png", "/sprites/worker-pounder.png",
   // Every potion-type bottle sprite (POTION_TYPE_DATA in potionVisuals.ts) —
-  // only "Tonic" (potion-bottle.png) was preloaded before the potion pile
+  // only "Tonic" (potion-bottle.svg) was preloaded before the potion pile
   // could show several piles' worth of mixed types at once; the other 9
   // types were left to lazy-fetch the first time that type appeared,
   // showing a broken-image flash under any dev-server hiccup.
-  "/sprites/potion-bottle.png", "/sprites/potion-elixir.svg", "/sprites/potion-brew.svg",
+  "/sprites/potion-bottle.svg", "/sprites/potion-elixir.svg", "/sprites/potion-brew.svg",
   "/sprites/potion-philter.svg", "/sprites/potion-draught.svg", "/sprites/potion-decoction.svg",
   "/sprites/potion-concoction.svg", "/sprites/potion-extract.svg", "/sprites/potion-tincture.svg",
   "/sprites/potion-infusion.svg",

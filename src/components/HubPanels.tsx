@@ -15,13 +15,22 @@ function TabBar<T extends string>({ tabs, active, onSelect }: {
   active: T;
   onSelect: (id: T) => void;
 }) {
+  // 3-tab bars (Guild Hall) are noticeably tighter than 2-tab ones at phone
+  // widths — text-sm plus icon+label overflowed a 393px viewport and clipped
+  // "Rankings". Match TrophyCaseModal's established pattern for 3-tab bars:
+  // drop to text-xs and tighten the icon/label gap. Also give the buttons a
+  // gap between each other (there was none) and small horizontal padding
+  // (there was none) — without both, labels touched their neighbours.
+  const compact = tabs.length >= 3;
   return (
-    <div className="flex rounded-lg bg-slate-800 p-1">
+    <div className="flex gap-1 rounded-lg bg-slate-800 p-1">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onSelect(t.id)}
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition ${
+          className={`flex flex-1 items-center justify-center rounded-md px-1 py-1.5 font-medium leading-tight transition ${
+            compact ? "gap-1 text-xs" : "gap-1.5 text-sm"
+          } ${
             active === t.id
               ? "bg-amber-700 text-white"
               : t.dimmed
