@@ -420,6 +420,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             Each additional worker gathers ingredients independently.
           </p>
           <button
+            data-tut="hire-worker"
             onClick={hireWorker}
             disabled={!canAffordHire}
             className={`flex w-full items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition ${

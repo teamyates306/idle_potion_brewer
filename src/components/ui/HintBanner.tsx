@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { subscribeHint, type HintData } from "../../util/hintBus";
 import { ICONS } from "./icons";
 
-export default function HintBanner() {
+export default function HintBanner({ onGoto }: { onGoto?: (goto: NonNullable<HintData["goto"]>) => void }) {
   const [queue, setQueue] = useState<HintData[]>([]);
   const current = queue[0] ?? null;
 
@@ -42,6 +42,17 @@ export default function HintBanner() {
             <X size={15} />
           </button>
         </div>
+        {current.goto && (
+          <button
+            onClick={() => {
+              onGoto?.(current.goto!);
+              dismiss();
+            }}
+            className="mt-2 w-full rounded-lg bg-amber-700/80 py-1.5 text-xs font-semibold text-amber-50 transition hover:bg-amber-600"
+          >
+            Show me
+          </button>
+        )}
         {queue.length > 1 && (
           <p className="mt-2 text-right text-[10px] text-slate-600">
             +{queue.length - 1} more tip{queue.length > 2 ? "s" : ""}

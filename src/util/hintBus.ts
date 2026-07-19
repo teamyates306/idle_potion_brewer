@@ -6,6 +6,7 @@ export interface HintData {
   icon: string;
   title: string;
   body: string;
+  goto?: { panel: string; spotlight?: string };
 }
 
 type Listener = (h: HintData) => void;

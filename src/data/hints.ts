@@ -23,6 +23,7 @@ export const HINTS = {
     icon: "group",
     title: "Hire Another Worker?",
     body: "You have enough coins to expand your crew. More workers mean more ingredients gathering at once. Open the Workers panel to hire.",
+    goto: { panel: "worker", spotlight: '[data-tut="hire-worker"]' },
   },
   can_afford_machine: {
     icon: "factory",

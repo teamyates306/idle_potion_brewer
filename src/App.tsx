@@ -27,6 +27,8 @@ import { IconCoin, IconChartUp } from "./components/ui/icons";
 import IngredientInventoryView from "./components/IngredientInventoryView";
 import DevDashboard from "./components/DevDashboard";
 import HintBanner from "./components/ui/HintBanner";
+import SpotlightHighlight from "./components/ui/SpotlightHighlight";
+import { spotlight } from "./util/spotlight";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
 import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
@@ -273,7 +275,13 @@ export default function App() {
       {/* Onboarding + achievement surfacing */}
       <TutorialOverlay />
       <AchievementToasts />
-      <HintBanner />
+      <SpotlightHighlight />
+      <HintBanner
+        onGoto={(goto) => {
+          setPanel(goto.panel as Panel);
+          if (goto.spotlight) window.setTimeout(() => spotlight(goto.spotlight!), 200);
+        }}
+      />
 
       {settingsOpen && (
         <SettingsModal
