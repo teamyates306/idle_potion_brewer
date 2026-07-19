@@ -50,8 +50,20 @@ export const HINTS = {
   first_mastery_token: {
     icon: "sparkle",
     title: "Mastery Token Earned!",
-    body: "You've fully mastered your first potion! A Mastery button has appeared on the left. Spend tokens there on permanent bonuses in the skill trees.",
+    body: "You've fully mastered your first potion! A Progress button has appeared in the dock below. Spend tokens there on permanent bonuses in the skill trees.",
     goto: { panel: "progress" },
+  },
+  region_unlockable: {
+    icon: "map",
+    title: "A New Region Awaits",
+    body: "You've met the requirements to unlock a new region — you just need the coins to fund the expedition. Check the Map for details.",
+    goto: { panel: "map", spotlight: '[data-tut="region-unlockable"]' },
+  },
+  can_afford_gax: {
+    icon: "factory",
+    title: "The Grand Exchange Awaits",
+    body: "You have enough coins to charter the Grand Alchemical Exchange in the Whispering Woods. It lets potion prices swing with supply and demand — a bigger risk, but a bigger reward.",
+    goto: { panel: "map", spotlight: '[data-tut="gax-node"]' },
   },
 } as const;
 

@@ -223,6 +223,22 @@ export default function MapView({
   const pushHint = useGameStore((s) => s.pushHint);
   const explored = useGameStore((s) => s.exploredLocations);
   const workers = useGameStore((s) => s.workers);
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
+  const potionMastery = useGameStore((s) => s.potionMastery);
+  const coins = useGameStore((s) => s.coins);
+
+  // Regions whose discovery/mastery/location gate is met but haven't been
+  // paid for yet — the "region_unlockable" hint spotlights the first node
+  // inside one of these so the player knows where to look.
+  const unlockableRegionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const region of REGIONS) {
+      if (unlockedRegions.includes(region.id)) continue;
+      const status = regionRequirementsStatus(region.id, { coins, discoveredPotions, potionMastery, unlockedLocations: unlocked });
+      if (status.potions && status.mastered && status.locations) ids.add(region.id);
+    }
+    return ids;
+  }, [unlockedRegions, coins, discoveredPotions, potionMastery, unlocked]);
   const cfg = useConfigStore();
   const [selected, setSelected] = useState<Location | null>(null);
   const [selectedSettlement, setSelectedSettlement] = useState<Settlement | null>(null);
@@ -356,10 +372,15 @@ export default function MapView({
           >
             <RegionIslands unlockedRegions={unlockedRegions} />
             <WorkshopNode />
-            {nodes.map((n) => {
+            {(() => {
+              const spotlightedRegions = new Set<string>();
+              return nodes.map((n) => {
               const regionLocked = !unlockedRegions.includes(n.region.id);
+              const isRegionSpotlight =
+                regionLocked && unlockableRegionIds.has(n.region.id) && !spotlightedRegions.has(n.region.id);
+              if (isRegionSpotlight) spotlightedRegions.add(n.region.id);
               if (n.entry.kind === "gax") {
-                return <GaxNode key="gax" node={n} regionLocked={regionLocked} onClick={() => handleNodeTap(n)} />;
+                return <GaxNode key="gax" node={n} regionLocked={regionLocked} dataTut={isRegionSpotlight ? "region-unlockable" : undefined} onClick={() => handleNodeTap(n)} />;
               }
               if (n.entry.kind === "settlement") {
                 const st = n.entry.settlement;
@@ -370,6 +391,7 @@ export default function MapView({
                     settlement={st}
                     regionLocked={regionLocked}
                     workerIds={workers.filter((w) => w.assigned_settlement === st.id).map((w) => w.id)}
+                    dataTut={isRegionSpotlight ? "region-unlockable" : undefined}
                     onClick={() => handleNodeTap(n)}
                   />
                 );
@@ -384,11 +406,18 @@ export default function MapView({
                   isUnlocked={unlocked.includes(loc.id)}
                   isExplored={explored.includes(loc.id)}
                   workerIds={workers.filter((w) => w.assigned_location === loc.id).map((w) => w.id)}
-                  dataTut={firstUnlockedId?.entry.kind === "location" && firstUnlockedId.entry.loc.id === loc.id ? "map-location" : undefined}
+                  dataTut={
+                    isRegionSpotlight
+                      ? "region-unlockable"
+                      : firstUnlockedId?.entry.kind === "location" && firstUnlockedId.entry.loc.id === loc.id
+                      ? "map-location"
+                      : undefined
+                  }
                   onClick={() => handleNodeTap(n)}
                 />
               );
-            })}
+              });
+            })()}
           </div>
           )}
         </div>
@@ -421,12 +450,14 @@ export default function MapView({
 // ── The Grand Alchemical Exchange node ───────────────────────────────────────
 // A special institution inside the Whispering Woods, not a resource node —
 // workers can't be sent here. Tap to charter it (or open the dashboard).
-function GaxNode({ node, regionLocked, onClick }: { node: PlacedNode; regionLocked: boolean; onClick: () => void }) {
+function GaxNode({ node, regionLocked, dataTut, onClick }: { node: PlacedNode; regionLocked: boolean; dataTut?: string; onClick: () => void }) {
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
   const dim = regionLocked || !gaxUnlocked;
+  const tut = dataTut ?? (!regionLocked && !gaxUnlocked ? "gax-node" : undefined);
   return (
     <div className="absolute" style={{ left: node.x, top: node.y, transform: "translate(-50%, -50%)" }}>
       <button
+        {...(tut ? { "data-tut": tut } : {})}
         onClick={onClick}
         className="relative flex items-center justify-center rounded-xl border-2 transition active:scale-95"
         style={{
@@ -581,12 +612,13 @@ function RegionUnlockModal({ region, onClose }: { region: RegionDef; onClose: ()
 
 // ── Settlement node (trade hub) ───────────────────────────────────────────────
 function SettlementNode({
-  node, settlement, regionLocked, workerIds, onClick,
+  node, settlement, regionLocked, workerIds, dataTut, onClick,
 }: {
   node: PlacedNode;
   settlement: Settlement;
   regionLocked: boolean;
   workerIds: number[];
+  dataTut?: string;
   onClick: () => void;
 }) {
   return (
@@ -601,6 +633,7 @@ function SettlementNode({
         </div>
       )}
       <button
+        {...(dataTut ? { "data-tut": dataTut } : {})}
         onClick={onClick}
         className="relative flex items-center justify-center border-2 transition active:scale-95"
         style={{

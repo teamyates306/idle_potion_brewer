@@ -12,7 +12,7 @@ import type {
   Worker,
   WorkerSpecialization,
 } from "../types";
-import { REGIONS_BY_ID, regionOfDistance } from "../data/regions";
+import { REGIONS, REGIONS_BY_ID, regionOfDistance } from "../data/regions";
 import {
   assignSettlementRoles,
   bulkShipmentSize,
@@ -653,6 +653,10 @@ interface GameState {
   // one-time contextual hints
   seenHints: string[];
   pushHint: (id: HintId) => void;
+  /** Fires `region_unlockable` the first time any locked region's discovery/
+   *  mastery/location gate is met (coin cost aside). Cheap to call liberally —
+   *  it's a no-op once the hint has fired once. */
+  checkRegionUnlockableHint: () => void;
   unlockMasteryNode: (nodeId: string) => void;
 }
 
@@ -1591,7 +1595,10 @@ export const useGameStore = create<GameState>()(
         g.checkAchievements("single_potion_value", potion.value);
         const volatileCount = ingredients.filter((ing) => (ing.attributes.volatility ?? 0) >= 10).length;
         if (volatileCount > 0) g.checkAchievements("volatile_recipe", volatileCount);
-        if (!prevDiscovered.includes(potion.hash)) g.checkAchievements("potions_discovered", discoveredPotions.length);
+        if (!prevDiscovered.includes(potion.hash)) {
+          g.checkAchievements("potions_discovered", discoveredPotions.length);
+          g.checkRegionUnlockableHint();
+        }
         if (autoSell) g.checkAchievements("coins", get().coins);
       },
 
@@ -1684,6 +1691,7 @@ export const useGameStore = create<GameState>()(
         if (newCoins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
         const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
         if (nextMachineCost !== null && newCoins >= nextMachineCost) get().pushHint("can_afford_machine");
+        if (s.unlockedRegions.includes("region_whispering_woods") && newCoins >= GAX_UNLOCK_COST) get().pushHint("can_afford_gax");
       },
 
       sellAll: () => {
@@ -1717,6 +1725,7 @@ export const useGameStore = create<GameState>()(
           if (coins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
           const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
           if (nextMachineCost !== null && coins >= nextMachineCost) get().pushHint("can_afford_machine");
+          if (s.unlockedRegions.includes("region_whispering_woods") && coins >= GAX_UNLOCK_COST) get().pushHint("can_afford_gax");
         }
       },
 
@@ -2039,6 +2048,7 @@ export const useGameStore = create<GameState>()(
           };
         });
         get().checkAchievements("locations_unlocked", get().unlockedLocations.length);
+        get().checkRegionUnlockableHint();
       },
 
       // ---- Offline simulation -----------------------------------------------
@@ -2490,6 +2500,8 @@ export const useGameStore = create<GameState>()(
         if (g.coins >= HIRE_COST_BASE * Math.pow(g.workers.length, 2)) g.pushHint("can_afford_worker");
         const nextMachineCost = g.machines.length < 5 ? MACHINE_COSTS[g.machines.length] : null;
         if (nextMachineCost !== null && g.coins >= nextMachineCost) g.pushHint("can_afford_machine");
+        if (g.unlockedRegions.includes("region_whispering_woods") && g.coins >= GAX_UNLOCK_COST) g.pushHint("can_afford_gax");
+        g.checkRegionUnlockableHint();
 
         // Batch achievement checks for milestones crossed offline
         g.checkAchievements("potions_brewed", g.total_brews);
@@ -2537,6 +2549,7 @@ export const useGameStore = create<GameState>()(
         } else if (newLevel > prevLevel && newLevel > 0) {
           pushToast(`${potionName} — mastery level ${newLevel}`, "purple");
         }
+        if (newLevel > prevLevel) get().checkRegionUnlockableHint();
       },
 
       unlockMasteryNode: (nodeId) => {
@@ -2561,6 +2574,19 @@ export const useGameStore = create<GameState>()(
         if (s.seenHints.includes(id)) return;
         set({ seenHints: [...s.seenHints, id] });
         emitHint(id);
+      },
+
+      checkRegionUnlockableHint: () => {
+        const s = get();
+        if (s.seenHints.includes("region_unlockable")) return;
+        for (const region of REGIONS) {
+          if (s.unlockedRegions.includes(region.id)) continue;
+          const status = regionRequirementsStatus(region.id, s);
+          if (status.potions && status.mastered && status.locations) {
+            get().pushHint("region_unlockable");
+            return;
+          }
+        }
       },
 
       hardReset: () =>
