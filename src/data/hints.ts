@@ -8,6 +8,7 @@ export const HINTS = {
     icon: "medal",
     title: "Worker Levelled Up!",
     body: "Your worker earned an upgrade token. Open the Workers panel and tap the worker to spend it on Speed, Retrieval Size, or Click Power.",
+    goto: { panel: "worker", spotlight: '[data-tut="worker-token-ready"]' },
   },
   machine_first_token: {
     icon: "flask",

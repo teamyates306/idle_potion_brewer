@@ -314,7 +314,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
         tripColor={tripColor}
         onSelect={toggleSel}
         onDetail={setDetailIdx}
-        dataTut={isTutTarget ? "worker-idle" : undefined}
+        dataTut={isTutTarget ? "worker-idle" : (worker.upgrade_tokens ?? 0) > 0 ? "worker-token-ready" : undefined}
       />
     );
   };
