@@ -4,7 +4,7 @@ import { onlineAvailable } from "../../online/supabaseClient";
 import { useOnlineStore } from "../../online/onlineStore";
 import { computeStats } from "../../online/stats";
 import { fmt } from "../../util/format";
-import { IconCoin, IconFlask, IconSparkle, IconWorker, IconTrophy, IconWizardHat, type IconProps } from "../ui/icons";
+import { IconCoin, IconFlask, IconSparkle, IconWorker, IconTrophy, IconAccount, type IconComponent } from "../ui/icons";
 
 /** Sign-in / nickname / privacy controls — shared by the in-game modal and
  *  the standalone /leaderboard page. */
@@ -134,7 +134,7 @@ export default function AccountPanel() {
 
   // ---- Fully set up ------------------------------------------------------
   const stats = computeStats();
-  const snapshot: Array<[(p: IconProps) => JSX.Element, string, string]> = [
+  const snapshot: Array<[IconComponent, string, string]> = [
     [IconCoin, "Coins", fmt(stats.coins)],
     [IconCoin, "Earned all-time", fmt(stats.lifetime_coins)],
     [IconFlask, "Potions brewed", fmt(stats.total_brews)],
@@ -149,7 +149,7 @@ export default function AccountPanel() {
       <div className="rounded-xl border border-amber-800/30 bg-slate-800/40 px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="flex items-center gap-1.5 truncate text-lg font-bold text-amber-900"><IconWizardHat /> {nickname}</p>
+            <p className="flex items-center gap-1.5 truncate text-lg font-bold text-amber-900"><IconAccount width={18} height={18} /> {nickname}</p>
             <p className="truncate text-xs text-slate-500">{session.user.email}</p>
           </div>
           <a
@@ -207,7 +207,7 @@ export default function AccountPanel() {
           <div className="space-y-1">
             {(rivals ?? []).map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-2.5 py-1.5 text-xs">
-                <span className="flex items-center gap-1 truncate text-slate-200"><IconWizardHat /> {r.nickname}</span>
+                <span className="flex items-center gap-1 truncate text-slate-200"><IconAccount width={14} height={14} /> {r.nickname}</span>
                 <button
                   onClick={() => void removeRival(r.id)}
                   className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-slate-800 hover:text-rose-700"

@@ -4,7 +4,7 @@ import LeaderboardBoard from "./leaderboard/LeaderboardBoard";
 import AccountPanel from "./leaderboard/AccountPanel";
 import PlayerProfile from "./leaderboard/PlayerProfile";
 import { useOnlineStore } from "../online/onlineStore";
-import { IconTrophy, IconWizardHat, IconSparkle } from "./ui/icons";
+import { IconTrophy, IconAccount, IconSparkle } from "./ui/icons";
 
 interface Props {
   onClose: () => void;
@@ -38,7 +38,7 @@ export default function LeaderboardModal({ onClose, initialTab, embedded = false
           tab === "account" ? "bg-amber-700 text-white" : "text-slate-400 hover:text-slate-200"
         }`}
       >
-        {session && nickname ? <><IconWizardHat /> Account</> : <><IconSparkle /> Join</>}
+        {session && nickname ? <><IconAccount width={16} height={16} /> Account</> : <><IconSparkle /> Join</>}
       </button>
     </div>
   );

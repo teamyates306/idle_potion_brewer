@@ -124,7 +124,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                 tab === "supply" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              🧮 Supply
+              <IconAbacus className="mr-1 inline" /> Supply
             </button>
           )}
         </div>
@@ -164,9 +164,9 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                           <div className={`truncate font-medium ${auto ? "text-amber-800" : "text-purple-800"}`}>{d.name}</div>
                           <div
                             className="text-xs text-slate-400"
-                            title={deltaPct !== 0 ? `Base 🪙 ${fmt(d.value)} · market ×${mult.toFixed(2)} — tap for the breakdown` : undefined}
+                            title={deltaPct !== 0 ? `Base ${fmt(d.value)} coins · market ×${mult.toFixed(2)} — tap for the breakdown` : undefined}
                           >
-                            ×{count} · 🪙 {fmt(liveValue)} each
+                            ×{count} · <IconCoin className="inline" /> {fmt(liveValue)} each
                             {deltaPct !== 0 && (
                               <span className={`ml-1 font-semibold ${deltaPct > 0 ? "text-emerald-700" : "text-rose-600"}`}>
                                 {deltaPct > 0 ? "▲" : "▼"}{Math.abs(deltaPct)}%
@@ -239,7 +239,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                 onClick={sellAll}
                 className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-purple-600 py-2.5 font-semibold text-white hover:bg-purple-500"
               >
-                <Coins size={18} /> Sell Everything · 🪙 {fmt(totalValue)}
+                <Coins size={18} /> Sell Everything · {fmt(totalValue)}
               </button>
             </>
           )
@@ -308,13 +308,13 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                                 ? "bg-amber-500 text-amber-950"
                                 : "bg-slate-700 text-amber-300"
                             }`}>
-                              {mLevel >= 10 ? "✨ MASTERED" : `Lv ${mLevel}`}
+                              {mLevel >= 10 ? <><IconSparkle className="inline" /> MASTERED</> : `Lv ${mLevel}`}
                             </span>
                           )}
                         </div>
                         <span className="text-xs font-semibold leading-tight text-purple-800">{g.name}</span>
                         <span className="mt-1 text-[10px] text-slate-500">
-                          🪙 {fmt(g.maxValue)} · {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""}
+                          <IconCoin className="inline" /> {fmt(g.maxValue)} · {g.hashes.length} recipe{g.hashes.length > 1 ? "s" : ""}
                         </span>
                         <span className="text-[10px] text-slate-500">{inStock > 0 ? `×${inStock} in stock` : "sold out"}</span>
                         {mProgress && mLevel < 10 && (
@@ -478,7 +478,7 @@ export function SupplyChainDashboard() {
             </div>
             {isDeficit && timeUntilEmptyHrs !== null && (
               <p className="mt-1 text-[10px] text-red-400">
-                ⚠ Runs out in {timeUntilEmptyHrs < 1 ? `${Math.round(timeUntilEmptyHrs * 60)}m` : `${timeUntilEmptyHrs.toFixed(1)}h`}
+                <IconWarning className="inline" /> Runs out in {timeUntilEmptyHrs < 1 ? `${Math.round(timeUntilEmptyHrs * 60)}m` : `${timeUntilEmptyHrs.toFixed(1)}h`}
               </p>
             )}
           </div>

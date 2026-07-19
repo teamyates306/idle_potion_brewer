@@ -4,7 +4,7 @@ import { useOnlineStore } from "../../online/onlineStore";
 import { fetchPlayerProfile, fetchRanksFor, type PlayerProfileData } from "../../online/api";
 import { METRICS, METRICS_BY_KEY } from "../../online/stats";
 import { fmt } from "../../util/format";
-import { ICONS, IconWizardHat, IconSun } from "../ui/icons";
+import { ICONS, IconAccount, IconSun } from "../ui/icons";
 
 const HEADLINE_RANK_KEYS = ["lifetime_coins", "total_brews", "potions_discovered"];
 
@@ -74,7 +74,7 @@ export default function PlayerProfile({ nickname, onBack, fullPage }: Props) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 truncate text-lg font-bold text-amber-900">
-              <IconWizardHat /> {profile.nickname}
+              <IconAccount width={18} height={18} /> {profile.nickname}
               {isMe && <span className="ml-2 align-middle text-[10px] uppercase tracking-wider text-amber-700">you</span>}
             </p>
             <p className="flex items-center gap-1 text-xs text-slate-500">

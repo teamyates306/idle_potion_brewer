@@ -15,6 +15,7 @@ import { buildExportFiles, dropTable, numberedIngredients, statusOf } from "./co
 import { makeZip, downloadBlob } from "./zip";
 import AnimatedSprite from "./AnimatedSprite";
 import type { Placement, RagStatus } from "./types";
+import { ICONS, ICON_OVERRIDE_DIR, type IconComponent } from "../components/ui/icons";
 
 const FALLBACK_CANVAS = 1664; // recommended authoring size (2× current map area)
 
@@ -135,7 +136,7 @@ function PlacedSprite({
 
 // ── Main view ────────────────────────────────────────────────────────────────
 
-type Tab = "map" | "regions" | "locations" | "settlements" | "ingredients" | "sync";
+type Tab = "map" | "regions" | "locations" | "settlements" | "ingredients" | "icons" | "sync";
 
 export default function MapEditorView() {
   const [tab, setTab] = useState<Tab>("map");
@@ -162,6 +163,7 @@ export default function MapEditorView() {
     ["locations", "📍 Locations"],
     ["settlements", "🏘 Settlements"],
     ["ingredients", "🌿 Ingredients"],
+    ["icons", "Icons"],
     ["sync", "☁ Sync & Export"],
   ];
 
@@ -187,6 +189,7 @@ export default function MapEditorView() {
         {tab === "locations" && <LocationsTab />}
         {tab === "settlements" && <SettlementsTab />}
         {tab === "ingredients" && <IngredientsTab />}
+        {tab === "icons" && <IconsTab />}
         {tab === "sync" && <SyncTab />}
       </div>
     </div>
@@ -515,6 +518,87 @@ function IngredientsTab() {
             </p>
             <TextEditor textKey={`ingredient:${ing.id}`} originalName={ing.name} originalFlavor={ing.description} />
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Tab: Icons (custom-art override manager) ────────────────────────────────
+
+/** Every icon in the game is a small built-in line-art fallback (or, for coin
+ *  and account, a reused lucide icon) that lives in src/components/ui/icons.tsx.
+ *  Each one already checks — at runtime, via a plain <img> + onError, since
+ *  this is a static client-only app with no backend to ask — whether a
+ *  same-named .svg exists at ICON_OVERRIDE_DIR. Drop one in and it takes over
+ *  immediately, no rebuild required. This tab is just a directory: what every
+ *  icon is currently called, where to put custom art for it, and whether an
+ *  override is already present. */
+function useIconHasOverride(name: string): boolean | null {
+  const [status, setStatus] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setStatus(true); };
+    img.onerror = () => { if (!cancelled) setStatus(false); };
+    img.src = `${ICON_OVERRIDE_DIR}${name}.svg`;
+    return () => { cancelled = true; };
+  }, [name]);
+  return status;
+}
+
+function IconRow({ name, Fallback }: { name: string; Fallback: IconComponent }) {
+  const hasOverride = useIconHasOverride(name);
+  const filename = `${name}.svg`;
+  const path = `public/sprites/icons/${filename}`;
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-700/30 bg-white/50 p-2" style={{ color: "#2c2618" }}>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-black/5">
+        <Fallback width={20} height={20} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold">{name}</p>
+        <p className="break-all text-[10px] opacity-70"><code>{path}</code></p>
+        <p className="text-[10px] opacity-70">suggest 24×24 SVG artboard (renders inline at ~14–20px)</p>
+      </div>
+      <span
+        className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+          hasOverride ? "bg-emerald-800 text-emerald-100" : "bg-black/10 text-black/50"
+        }`}
+      >
+        {hasOverride === null ? "checking…" : hasOverride ? "custom art active" : "built-in fallback"}
+      </span>
+    </div>
+  );
+}
+
+function IconsTab() {
+  const [search, setSearch] = useState("");
+  const entries = Object.entries(ICONS)
+    .filter(([name]) => !search || name.toLowerCase().includes(search.toLowerCase()))
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <div style={{ color: "#2c2618" }}>
+      <div className="mb-3 rounded-xl border border-slate-700/40 bg-white/50 p-3 text-xs leading-relaxed">
+        <p className="mb-1 text-sm font-bold">Custom icon overrides</p>
+        <p>
+          Every icon below is currently a small line-art SVG (or a reused coin/account icon) baked
+          into the game's code. To replace one with hand-drawn art, save an SVG using the exact
+          filename shown, drop it at that path in the repo, and it takes over automatically —
+          no code change needed. Keep the source artboard square (24×24 is what the built-ins use)
+          since these render inline anywhere from ~12px to ~24px depending on context.
+        </p>
+      </div>
+      <input
+        placeholder="Search icons…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-2 w-full max-w-xs rounded border border-black/20 bg-white/70 px-2 py-1 text-xs"
+      />
+      <div className="grid gap-1.5 lg:grid-cols-2">
+        {entries.map(([name, Icon]) => (
+          <IconRow key={name} name={name} Fallback={Icon} />
         ))}
       </div>
     </div>

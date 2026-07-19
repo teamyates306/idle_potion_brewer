@@ -5,7 +5,7 @@ import { useOnlineStore } from "../../online/onlineStore";
 import { METRICS, METRICS_BY_KEY } from "../../online/stats";
 import { fetchBoardWindow, searchPlayers, type BoardResult, type BoardView, type PlayerSummary } from "../../online/api";
 import { fmt } from "../../util/format";
-import { IconWizardHat, IconGlobe, IconMedal } from "../ui/icons";
+import { IconAccount, IconGlobe, IconMedal } from "../ui/icons";
 
 type Scope = "public" | "rivals";
 
@@ -116,7 +116,7 @@ export default function LeaderboardBoard({ onSelectPlayer }: Props) {
                 onClick={() => { setQuery(""); onSelectPlayer?.(r.nickname); }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-800"
               >
-                <IconWizardHat /> {r.nickname}
+                <IconAccount width={14} height={14} /> {r.nickname}
                 {r.nickname === nickname && <span className="text-[10px] uppercase tracking-wider text-amber-700">you</span>}
               </button>
             ))}
