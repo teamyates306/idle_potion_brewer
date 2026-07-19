@@ -12,6 +12,7 @@ import AchievementToasts from "./components/ui/AchievementToasts";
 import BalanceReportView from "./BalanceReportView";
 import ContentPlanView from "./ContentPlanView";
 import MapEditorView from "./mapEditor/MapEditorView";
+import PerformanceTestsView, { recoverFromInterruptedPerfTest } from "./PerformanceTestsView";
 import LeaderboardPage from "./LeaderboardPage";
 import UserProfilePage from "./UserProfilePage";
 import LeaderboardModal from "./components/LeaderboardModal";
@@ -76,11 +77,21 @@ function preloadImage(src: string): Promise<void> {
 }
 
 export default function App() {
+  // Self-healing safety net: if a /performance-tests load test got interrupted
+  // before it could restore the player's real save (tab closed/crashed
+  // mid-run), fix that up before anything else renders — see
+  // PerformanceTestsView.tsx for how the backup is made.
+  if (typeof window !== "undefined") recoverFromInterruptedPerfTest();
+
   // Standalone analytics route: the economy A/B balance report. Checked before
   // any hooks so it renders as a self-contained page (pathname is constant for
   // the lifetime of the load, so the early return is hook-order safe).
   if (typeof window !== "undefined" && window.location.pathname === "/balance-report") {
     return <BalanceReportView />;
+  }
+  // Load/perf test lab: stress-tests worker/machine counts and samples FPS.
+  if (typeof window !== "undefined" && window.location.pathname === "/performance-tests") {
+    return <PerformanceTestsView />;
   }
   // Standalone content & art planning surface (placeholder text/graphics tracker).
   if (typeof window !== "undefined" && window.location.pathname === "/content-plan") {

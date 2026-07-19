@@ -331,7 +331,7 @@ const WORKER_COLORS = [
 ];
 const WORKER_NAMES = ["Wort", "Midge", "Crumble", "Tuck", "Pell", "Sable", "Fenwick", "Glum"];
 
-function newWorker(index = 0): Worker {
+export function newWorker(index = 0): Worker {
   return {
     id: index + 1,
     name: WORKER_NAMES[index] ?? `Worker ${index + 1}`,
@@ -439,7 +439,7 @@ function specMult(spec: WorkerSpecialization, upgradeType: "speed" | "size" | "c
   return 1.0;
 }
 
-function newMachine(index = 0): BrewingMachine {
+export function newMachine(index = 0): BrewingMachine {
   return {
     id: index + 1,
     name: MACHINE_NAMES[index] ?? `Brewer ${index + 1}`,

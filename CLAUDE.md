@@ -15,6 +15,7 @@ npx vitest run src/components/ui/RailBadge.test.tsx   # single test file
 Standalone analytical/authoring pages are gated on `window.location.pathname` in `App.tsx` (not React Router) — visit them directly:
 - `/balance-report` → `BalanceReportView.tsx`, reads `src/data/{before_run,after_run,changelog}.json`
 - `/content-plan` → `ContentPlanView.tsx`, a copy/art authoring tool (see Content-plan pipeline below)
+- `/performance-tests` → `PerformanceTestsView.tsx`, a live rendering-FPS load test (see Performance load test below)
 
 Balance/content scripts (run with `npx tsx scripts/<name>.ts`), all import the game's real `src/engine/*` + config so results reflect production math:
 ```bash
@@ -68,3 +69,6 @@ Aseprite's SVG export writes one `<rect>` per pixel — fine for small sprites, 
 
 ### Content-plan pipeline
 `/content-plan` is a mobile-first authoring surface that reflects over live game data to find placeholder names/flavour/graphics, auto-saves locally, and exports JSON for pasting back into a conversation to apply to source (each export key maps to a specific file — see `src/ContentPlanView.tsx`). The ~58 procedurally generated ingredients (from `makeGeneratedIngredients` in worldgen.ts) have no per-id source line, so bespoke names for them need an overrides map, not a direct field edit.
+
+### Performance load test
+`/performance-tests` (`src/PerformanceTestsView.tsx`) scales the live gameStore up through stress tiers (`src/data/performanceTestScenarios.ts`: Early/Mid/Late/Extreme — more workers, more brewing machines, higher speed-upgrade counts, GAX active) and renders the real `Workshop` component for each tier, sampling actual rAF-driven FPS. Results are compared against the committed history in `src/data/performance_history.json`; use the page's "Copy run as JSON" button and paste the result into a conversation to have it appended (same pattern as the content-plan export). It mutates the real gameStore/localStorage save while running and restores it in a `finally` block afterward — if you touch this file, preserve the `hasCheckedRecovery` one-shot guard in `recoverFromInterruptedPerfTest()`; without it, `App.tsx` calling that function unconditionally from the component body (needed so a crashed/closed-mid-run save gets healed before first paint) fires again on any later re-render of `App` — including React.StrictMode's dev-mode double-invocation — and prematurely "recovers" (and deletes) the backup of a *still-running* test, leaving the last stress tier's fake data as the persisted save.
