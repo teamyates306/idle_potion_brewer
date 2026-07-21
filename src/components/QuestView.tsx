@@ -9,7 +9,7 @@ import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from ".
 import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
 import { fmt } from "../util/format";
 import { IconCoin } from "./ui/icons";
-import { pushToast } from "../util/toast";
+import { spawnFAT } from "../util/fat";
 
 // Snarky one-liners for the NPC-shopkeeper bit — the player is the potion
 // merchant, these adventurers are the actual protagonists off saving the
@@ -276,15 +276,24 @@ function QuestCard({
     onCelebrate(r.left + r.width / 2, r.top + r.height / 2, style.spark);
     if (adventurer) {
       const line = QUEST_COMPLETE_LINES[Math.floor(Math.random() * QUEST_COMPLETE_LINES.length)];
-      pushToast(line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]), "purple");
+      spawnFAT({
+        x: r.left + r.width / 2, y: r.top - 8,
+        text: line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]),
+        color: "#c084fc", size: "sm", duration: 2400,
+      });
     }
     completeQuest(quest.id);
   };
 
-  const handleReroll = () => {
+  const handleReroll = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (adventurer) {
+      const r = e.currentTarget.getBoundingClientRect();
       const line = QUEST_REROLL_LINES[Math.floor(Math.random() * QUEST_REROLL_LINES.length)];
-      pushToast(line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]), "amber");
+      spawnFAT({
+        x: r.left + r.width / 2, y: r.top - 8,
+        text: line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]),
+        color: "#f59e0b", size: "sm", duration: 2400,
+      });
     }
     rerollQuest(quest.id);
   };

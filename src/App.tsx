@@ -41,7 +41,7 @@ import { useSettingsStore } from "./store/settingsStore";
 import { useTantrumStore } from "./store/tantrumStore";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
-import { pushToast } from "./util/toast";
+import { spawnFAT } from "./util/fat";
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "guild" | "progress" | "dev" | "help" | "gax" | "leaderboard" | null;
 
@@ -218,7 +218,17 @@ export default function App() {
   // a moment later, exactly as it would fire naturally on a real login.
   const handleForceTantrum = () => {
     if (!useGameStore.getState().forceQuestTantrumSoon()) {
-      pushToast("No active quest to expire — accept one first.", "amber");
+      // Note: pushToast()/ToastContainer was deprecated in favour of the FAT
+      // (floating text) system — spawnFAT is the live feedback path now.
+      spawnFAT({
+        x: window.innerWidth / 2,
+        y: window.innerHeight * 0.4,
+        text: "No active quest to expire — accept one first.",
+        color: "#fde68a",
+        arcX: 0,
+        size: "md",
+        duration: 2200,
+      });
       return;
     }
     window.setTimeout(runTantrumCheck, 1100);
