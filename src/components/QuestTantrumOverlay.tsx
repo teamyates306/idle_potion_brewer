@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Star } from "lucide-react";
 import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
 import AdventurerSprite from "./art/AdventurerSprite";
 import WorkerArt from "./art/WorkerArt";
@@ -15,7 +16,7 @@ export interface TantrumTrigger {
 // playthrough so they don't change mid-animation.
 const LINES = {
   approach: ["WHERE. ARE. MY POTIONS.", "TWENTY-FOUR HOURS. I COUNTED.", "I HAD A RAID TO CATCH!"],
-  throw: ["THIS IS UNACCEPTABLE!", "I WAITED FOR **NOTHING**?!", "REFUND. NOW."],
+  throw: ["THIS IS UNACCEPTABLE!", "I WAITED FOR NOTHING?!", "REFUND. NOW."],
   drag: ["UNHAND ME!", "I'LL BE BACK!", "THIS ISN'T OVER, MERCHANT!"],
 };
 function pick(arr: string[]): string {
@@ -24,8 +25,9 @@ function pick(arr: string[]): string {
 
 // Six beats: approach, throw, knockout hold, guards drag in, exit, gone.
 // Cumulative — each entry is how long that beat's UI state holds before
-// advancing to the next.
-const STEP_DURATIONS = [1400, 650, 1300, 1200, 1200, 500];
+// advancing to the next. (Slowed down from the first pass — the whole
+// sequence now runs a good deal longer so it reads instead of blinking by.)
+const STEP_DURATIONS = [2000, 900, 1900, 1700, 1700, 700];
 
 export default function QuestTantrumOverlay({
   trigger, onDone,
@@ -49,7 +51,7 @@ export default function QuestTantrumOverlay({
       acc += STEP_DURATIONS[i - 1];
       timers.push(window.setTimeout(() => setStep(i), acc));
     }
-    timers.push(window.setTimeout(onDone, acc + 100));
+    timers.push(window.setTimeout(onDone, acc + 150));
     return () => timers.forEach((t) => clearTimeout(t));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -57,77 +59,81 @@ export default function QuestTantrumOverlay({
   const adventurer = adventurerRef.current;
   if (!adventurer) return null;
 
-  // Horizontal positions (px within a 360px-wide stage). Step thresholds:
-  // 0 approach, 1 throw, 2 knockout hold, 3 drag-in, 4 exit, 5 gone.
-  const adventurerX = step === 0 ? -70 : step >= 4 ? 430 : 140;
-  const guard1X = step < 3 ? -70 : step >= 4 ? 430 : 95;
-  const guard2X = step < 3 ? 430 : step >= 4 ? 430 : 185;
+  // Everyone enters/exits vertically, "through the door" above the stage,
+  // same spot workers emerge from in the main workshop scene — rather than
+  // sliding in from off-screen left/right. 0 = on the floor, negative = up
+  // near the door (hidden/arriving/leaving). Step thresholds: 0 approach,
+  // 1 throw, 2 knockout hold, 3 drag-in, 4 exit, 5 gone.
+  const adventurerY = step === 0 ? -140 : step >= 4 ? -140 : 0;
+  const guardY = step < 3 ? -140 : step >= 4 ? -140 : 0;
+  const guardOpacity = step >= 3 && step < 5 ? 1 : 0;
   const victimX = 250;
-  const showBottle = step === 1;
-  const bottleX = step === 1 ? victimX - 20 : adventurerX + 30;
+  // Mounted from the start (invisible) so the left-position transition has
+  // something to animate FROM when step 1 hits, rather than popping in
+  // already at its destination.
+  const bottleOpacity = step === 1 ? 1 : 0;
+  const bottleLeft = step >= 1 ? victimX - 20 : 140;
   const showStars = step >= 2 && step <= 3;
-  const showGuards = step >= 3 && step < 5;
   const showBubble = step === 0 || step === 1 || step === 3;
   const bubbleText = step === 0 ? linesRef.current.approach : step === 1 ? linesRef.current.throw : linesRef.current.drag;
   const overlayOpacity = step >= 5 ? 0 : 1;
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center"
-      style={{ transition: "opacity 400ms ease", opacity: overlayOpacity }}
+      className="pointer-events-none fixed inset-0 z-[80]"
+      style={{ transition: "opacity 500ms ease", opacity: overlayOpacity }}
     >
-      <div className="absolute inset-0 bg-black/25" />
-      <div className="relative h-[160px] w-[360px] overflow-hidden">
-        {/* Guard 1 — enters from the left */}
-        {showGuards && (
-          <div
-            className="absolute bottom-2"
-            style={{ left: guard1X, transition: "left 900ms ease" }}
-          >
-            <WorkerArt size={52} active hueShift={guard1HueRef.current} />
-          </div>
-        )}
-        {/* Guard 2 — enters from the right */}
-        {showGuards && (
-          <div
-            className="absolute bottom-2"
-            style={{ left: guard2X, transition: "left 900ms ease" }}
-          >
-            <WorkerArt size={52} active hueShift={guard2HueRef.current} />
-          </div>
-        )}
+      <div className="absolute inset-0 bg-black/20" />
+      <div className="absolute inset-x-0 top-[14%] flex justify-center">
+      <div className="relative h-[190px] w-[360px] overflow-visible">
+        {/* Guard 1 — drops down from the door on the left */}
+        <div
+          className="absolute bottom-2 left-[95px]"
+          style={{ transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
+        >
+          <WorkerArt size={52} active hueShift={guard1HueRef.current} />
+        </div>
+        {/* Guard 2 — drops down from the door on the right */}
+        <div
+          className="absolute bottom-2 left-[185px]"
+          style={{ transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
+        >
+          <WorkerArt size={52} active hueShift={guard2HueRef.current} />
+        </div>
 
-        {/* Victim worker — stays put, reacts when hit */}
+        {/* Victim worker — already on the shop floor, reacts when hit */}
         <div className="absolute bottom-2" style={{ left: victimX }}>
-          <div style={{ animation: step === 2 || step === 3 ? "worker-bump 0.5s ease-in-out infinite" : undefined }}>
+          <div style={{ animation: step === 2 || step === 3 ? "worker-bump 0.7s ease-in-out infinite" : undefined }}>
             <WorkerArt size={56} active={false} hueShift={victimHueRef.current} />
           </div>
           {showStars && (
-            <div className="pointer-events-none absolute -top-4 left-1/2 flex -translate-x-1/2 gap-1 text-lg">
-              <span style={{ animation: "tantrum-star-bounce 0.7s ease-in-out infinite", animationDelay: "0s" }}>✨</span>
-              <span style={{ animation: "tantrum-star-bounce 0.7s ease-in-out infinite", animationDelay: "0.15s" }}>⭐</span>
-              <span style={{ animation: "tantrum-star-bounce 0.7s ease-in-out infinite", animationDelay: "0.3s" }}>💫</span>
+            <div className="pointer-events-none absolute -top-5 left-1/2 flex -translate-x-1/2 gap-1 text-amber-400">
+              <Star size={14} fill="currentColor" style={{ animation: "tantrum-star-bounce 0.9s ease-in-out infinite", animationDelay: "0s" }} />
+              <Star size={16} fill="currentColor" style={{ animation: "tantrum-star-bounce 0.9s ease-in-out infinite", animationDelay: "0.2s" }} />
+              <Star size={14} fill="currentColor" style={{ animation: "tantrum-star-bounce 0.9s ease-in-out infinite", animationDelay: "0.4s" }} />
             </div>
           )}
         </div>
 
-        {/* Thrown bottle */}
-        {showBottle && (
-          <div
-            className="absolute bottom-8 text-xl"
-            style={{ left: bottleX, transition: "left 550ms ease-out, bottom 550ms ease-out" }}
-          >
-            🍾
-          </div>
-        )}
-
-        {/* Adventurer */}
-        <div
-          className="absolute bottom-2"
+        {/* Thrown (empty) bottle */}
+        <img
+          src="/sprites/potion-bottle.svg"
+          alt=""
+          className="absolute bottom-10 h-6 w-6"
           style={{
-            left: adventurerX,
-            transition: "left 900ms ease",
-            animation: step === 0 || step === 1 ? "tantrum-shake 0.3s ease-in-out infinite" : undefined,
+            left: bottleLeft,
+            opacity: bottleOpacity,
+            transition: "left 750ms ease-out, opacity 200ms ease-out",
+          }}
+        />
+
+        {/* Adventurer — drops down from the door, hauled back up through it */}
+        <div
+          className="absolute bottom-2 left-[140px]"
+          style={{
+            transform: `translateY(${adventurerY}px)`,
+            transition: "transform 1100ms ease",
+            animation: step === 0 || step === 1 ? "tantrum-shake 0.4s ease-in-out infinite" : undefined,
           }}
         >
           {showBubble && (
@@ -138,6 +144,7 @@ export default function QuestTantrumOverlay({
           )}
           <AdventurerSprite adventurer={adventurer} size={56} />
         </div>
+      </div>
       </div>
     </div>
   );

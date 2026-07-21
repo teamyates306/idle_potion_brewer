@@ -45,8 +45,13 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const settleGax = useGameStore((s) => s.settleGax);
   useEffect(() => { if (gaxUnlocked && tab === "sell") settleGax(); }, [gaxUnlocked, tab, settleGax]);
   const marketDay = gaxDayIndex(Date.now());
+  // Quest-giver tantrum penalty applies to every sale regardless of GAX
+  // unlock state (see gaxPriceAndRecord, the actual sale hook) — mirror that
+  // here so the displayed sell price always matches what selling pays out.
+  const salesPenalty = useGameStore((s) => s.salesPenalty);
+  const penaltyMult = salesPenalty && Date.now() < salesPenalty.expiresAt ? salesPenalty.multiplier : 1;
   const liveMult = (stats: Attributes): number =>
-    gaxUnlocked ? potionPriceMultiplier(gaxMarket, marketDay, stats) : 1;
+    (gaxUnlocked ? potionPriceMultiplier(gaxMarket, marketDay, stats) : 1) * penaltyMult;
 
   // Discovered controls
   const [query, setQuery] = useState("");

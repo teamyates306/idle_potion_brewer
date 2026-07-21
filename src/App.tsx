@@ -309,11 +309,12 @@ export default function App() {
 
       {/* Trigger Tantrum — testing hook for the quest-giver tantrum sequence.
           Backdates the first active quest to ~1s from expiring, then lets
-          the normal check fire it exactly as it would on a real login. */}
+          the normal check fire it exactly as it would on a real login.
+          z-[45] (above Modal's z-40) so it still works with a panel open. */}
       {!cleanView && (
         <button
           onClick={handleForceTantrum}
-          className={`absolute left-11 z-[4] flex items-center gap-1 rounded-full border border-rose-800/40 bg-rose-950/30 px-2 py-1 text-[10px] font-semibold text-rose-400 opacity-60 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
+          className={`pointer-events-auto absolute left-11 z-[45] flex items-center gap-1 rounded-full border border-rose-800/40 bg-rose-950/30 px-2 py-1 text-[10px] font-semibold text-rose-400 opacity-60 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
           title="Force a quest to expire and play the tantrum sequence"
         >
           <Angry size={13} /> Trigger Tantrum
