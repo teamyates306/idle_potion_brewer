@@ -127,22 +127,26 @@ export default function QuestTantrumOverlay({
         {/* Adventurer — drops down from the door, hauled back up through it.
             Rendered before the guards so they visually sit in front while
             hauling them off. */}
+        {/* Outer wrapper owns the door drop/haul (transform: translateY,
+            transitioned); inner wrapper owns the angry shake (transform:
+            translateX+rotate, keyframe animation). Splitting them across two
+            elements is required — a running CSS animation on `transform`
+            fully overrides any inline `transform` transition on the SAME
+            element, so combining both on one div made the drop-in jump/
+            snap instead of easing smoothly. */}
         <div
           className="absolute bottom-2"
-          style={{
-            left: adventurerX,
-            transform: `translateY(${adventurerY}px)`,
-            transition: "transform 1100ms ease",
-            animation: step === 0 || step === 1 ? "tantrum-shake 0.4s ease-in-out infinite" : undefined,
-          }}
+          style={{ left: adventurerX, transform: `translateY(${adventurerY}px)`, transition: "transform 1100ms ease" }}
         >
-          {showBubble && (
-            <div className="absolute -top-11 left-1/2 w-max max-w-[180px] -translate-x-1/2 rounded-lg border border-amber-800/50 bg-[#f4e9d0] px-2 py-1 text-center text-[9px] font-bold uppercase leading-tight text-amber-900 shadow-lg">
-              {bubbleText}
-              <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-[#f4e9d0]" />
-            </div>
-          )}
-          <AdventurerSprite adventurer={adventurer} size={56} />
+          <div style={{ animation: step === 0 || step === 1 ? "tantrum-shake 0.4s ease-in-out infinite" : undefined }}>
+            {showBubble && (
+              <div className="absolute -top-11 left-1/2 w-max max-w-[180px] -translate-x-1/2 rounded-lg border border-amber-800/50 bg-[#f4e9d0] px-2 py-1 text-center text-[9px] font-bold uppercase leading-tight text-amber-900 shadow-lg">
+                {bubbleText}
+                <div className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-x-4 border-t-4 border-x-transparent border-t-[#f4e9d0]" />
+              </div>
+            )}
+            <AdventurerSprite adventurer={adventurer} size={56} />
+          </div>
         </div>
 
         {/* Guards — drop down from the door, flanking close enough to

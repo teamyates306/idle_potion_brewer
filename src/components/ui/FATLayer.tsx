@@ -67,16 +67,20 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
 export default function FATLayer() {
   const [items, setItems] = useState<FATItem[]>([]);
   const toastsEnabled = useSettingsStore((s) => s.toastsEnabled);
+  // Fully suppressed during the tantrum animation — the ingredient/potion/
+  // coin floating text was cluttering the little scene and competing for
+  // frame budget with its own animations, not just visually crowding it.
+  const tantrumActive = useTantrumStore((s) => s.active);
 
   useEffect(() => {
     return subscribeFAT((item) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
+      if (useTantrumStore.getState().active) return;
       // Hard cap on concurrent floating texts, scaled by graphics quality —
       // when a lot is happening late game, unbounded DOM nodes (each with its
       // own animation + text shadow) are the main source of jitter. Oldest
       // entries are dropped first.
-      const qualityCap = FAT_CAP_BY_QUALITY[useGameStore.getState().graphics.quality];
-      const cap = useTantrumStore.getState().active ? Math.min(6, qualityCap) : qualityCap;
+      const cap = FAT_CAP_BY_QUALITY[useGameStore.getState().graphics.quality];
       setItems((prev) => (prev.length >= cap ? [...prev.slice(prev.length - (cap - 1)), item] : [...prev, item]));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,7 +89,7 @@ export default function FATLayer() {
   const remove = useCallback((id: number) =>
     setItems((prev) => prev.filter((i) => i.id !== id)), []);
 
-  if (!toastsEnabled) return null;
+  if (!toastsEnabled || tantrumActive) return null;
 
   return (
     <>

@@ -3,7 +3,7 @@ import { ScrollText, Check, Hourglass, FlaskConical, RotateCcw } from "lucide-re
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import AdventurerSprite from "./art/AdventurerSprite";
-import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
+import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS, QUEST_TANTRUM_WINDOW_MS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
 import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
@@ -270,6 +270,11 @@ function QuestCard({
   // itself does (a fresh quest.id).
   const adventurer = useMemo(() => generateAdventurer(quest.id), [quest.id]);
   const adventurerLevel = generateAdventurerLevel(quest.id, quest.difficulty);
+  // How long left before this quest-giver loses patience — see
+  // checkQuestTantrum in gameStore. Parent QuestView re-renders every 1s so
+  // this stays live without its own timer.
+  const tantrumMsLeft = quest.issuedAt + QUEST_TANTRUM_WINDOW_MS - Date.now();
+  const tantrumUrgent = tantrumMsLeft < 2 * 60 * 60 * 1000; // under 2h left
 
   const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -303,12 +308,18 @@ function QuestCard({
       {adventurer && (
         <div className="mb-2 flex items-center gap-3 border-b border-black/10 pb-2">
           <AdventurerSprite adventurer={adventurer} size={64} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-bold leading-tight text-slate-100">{adventurer.name}</div>
             <div className="text-[10px] capitalize text-slate-400">
               Level {adventurerLevel} {adventurer.race} {CLASS_LABELS[adventurer.className]}
             </div>
           </div>
+          <span
+            className={`flex shrink-0 items-center gap-1 text-[10px] font-semibold ${tantrumUrgent ? "text-rose-500" : "text-slate-500"}`}
+            title="This adventurer loses patience if the quest isn't fulfilled in time"
+          >
+            <Hourglass size={11} /> {fmtCountdown(tantrumMsLeft)}
+          </span>
         </div>
       )}
       <div className="mb-2 flex items-center justify-between">
