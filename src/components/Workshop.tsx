@@ -1404,6 +1404,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, []);
 
   const graphics        = useGameStore((s) => s.graphics);
+  const cleanView       = useSettingsStore((s) => s.cleanViewEnabled);
   const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
   const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
@@ -1457,8 +1458,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           — z-20 here only ranked them within that context, so Atmosphere's
           vignette/day-night tint layers (z-[3], siblings of `main` in the
           OUTER stacking context) painted over them regardless. Matches how
-          the HUD and bottom dock already sit above Atmosphere. */}
-      {createPortal(
+          the HUD and bottom dock already sit above Atmosphere. Suppressed
+          entirely in Clean View. */}
+      {!cleanView && createPortal(
       <div className="pointer-events-none fixed inset-0 z-[5]">
         <RailBadge
           icon={<User size={18} className={anyTokens ? "text-amber-600" : "text-amber-700"} />}

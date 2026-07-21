@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Settings2, ScrollText, Trophy, Sparkles, HelpCircle, Landmark } from "lucide-react";
+import { Settings, Settings2, ScrollText, Trophy, Sparkles, HelpCircle, Landmark, Eye, EyeOff } from "lucide-react";
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
@@ -36,6 +36,7 @@ import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
 import LoadingScreen from "./components/LoadingScreen";
 import SettingsModal from "./components/SettingsModal";
 import { useGameStore } from "./store/gameStore";
+import { useSettingsStore } from "./store/settingsStore";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
 
@@ -137,6 +138,8 @@ export default function App() {
   const [mapLockedWorker, setMapLockedWorker] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const throttleAnims = useGameStore((s) => s.graphics.throttle_animations);
+  const cleanView = useSettingsStore((s) => s.cleanViewEnabled);
+  const toggleCleanView = useSettingsStore((s) => s.toggleCleanView);
   usePerformanceMonitor();
   useOnlineSync();
 
@@ -194,26 +197,28 @@ export default function App() {
       <Atmosphere />
 
       {/* HUD — floats above the scene so Workshop atmosphere covers the full viewport */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex items-center justify-between px-3 py-2">
-        <GameClock />
-        <div className="pointer-events-auto flex items-center gap-2">
-          <CoinCounter />
-          <button
-            onClick={() => setPanel("help")}
-            className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
-            title="How to Play"
-          >
-            <HelpCircle size={16} />
-          </button>
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
-            title="Settings"
-          >
-            <Settings size={16} />
-          </button>
+      {!cleanView && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex items-center justify-between px-3 py-2">
+          <GameClock />
+          <div className="pointer-events-auto flex items-center gap-2">
+            <CoinCounter />
+            <button
+              onClick={() => setPanel("help")}
+              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
+              title="How to Play"
+            >
+              <HelpCircle size={16} />
+            </button>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Workshop scene — fills full height so wall + atmosphere reach the top edge */}
       <main className="relative z-[2] h-full overflow-hidden">
@@ -222,50 +227,65 @@ export default function App() {
 
       {/* Bottom dock — Guild + Progress hold the centre; Quests and the GAX
           flank them as they unlock. Sits above the ticker tape. */}
-      <div className={`absolute inset-x-0 z-[4] flex justify-center gap-2 ${gaxUnlocked ? "bottom-9" : "bottom-3"}`}>
-        {questsUnlocked && (
+      {!cleanView && (
+        <div className={`absolute inset-x-0 z-[4] flex justify-center gap-2 ${gaxUnlocked ? "bottom-9" : "bottom-3"}`}>
+          {questsUnlocked && (
+            <DockButton
+              label="Quests"
+              icon={<ScrollText size={18} className="text-amber-700" />}
+              title="Quest Board"
+              onClick={() => setPanel("quests")}
+            />
+          )}
           <DockButton
-            label="Quests"
-            icon={<ScrollText size={18} className="text-amber-700" />}
-            title="Quest Board"
-            onClick={() => setPanel("quests")}
+            label="Guild"
+            icon={<Trophy size={18} className="text-amber-700" />}
+            title="Guild Hall — Achievements, Trophies & Rankings"
+            onClick={() => setPanel("guild")}
+            badge={claimableAchievements > 0 ? claimableAchievements : undefined}
           />
-        )}
-        <DockButton
-          label="Guild"
-          icon={<Trophy size={18} className="text-amber-700" />}
-          title="Guild Hall — Achievements, Trophies & Rankings"
-          onClick={() => setPanel("guild")}
-          badge={claimableAchievements > 0 ? claimableAchievements : undefined}
-        />
-        <DockButton
-          label="Progress"
-          icon={<Sparkles size={18} className="text-amber-700" />}
-          title="Progress — Upgrades & Mastery"
-          onClick={() => setPanel("progress")}
-          badge={masteryTokens > 0 ? masteryTokens : undefined}
-        />
-        {gaxUnlocked && (
           <DockButton
-            label="GAX"
-            icon={<Landmark size={18} className="text-amber-700" />}
-            title="Grand Alchemical Exchange"
-            onClick={() => setPanel("gax")}
+            label="Progress"
+            icon={<Sparkles size={18} className="text-amber-700" />}
+            title="Progress — Upgrades & Mastery"
+            onClick={() => setPanel("progress")}
+            badge={masteryTokens > 0 ? masteryTokens : undefined}
           />
-        )}
-      </div>
+          {gaxUnlocked && (
+            <DockButton
+              label="GAX"
+              icon={<Landmark size={18} className="text-amber-700" />}
+              title="Grand Alchemical Exchange"
+              onClick={() => setPanel("gax")}
+            />
+          )}
+        </div>
+      )}
 
       {/* Hidden dev toggle — lifted above the ticker tape when the GAX is open */}
+      {!cleanView && (
+        <button
+          onClick={() => setPanel("dev")}
+          className={`absolute left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
+          title="Dev Dashboard"
+        >
+          <Settings2 size={16} />
+        </button>
+      )}
+
+      {/* Clean View toggle — always visible, even with everything else
+          hidden, so the player can always get the chrome back. Mirrors the
+          dev toggle's placement/style on the opposite corner. */}
       <button
-        onClick={() => setPanel("dev")}
-        className={`absolute left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
-        title="Dev Dashboard"
+        onClick={toggleCleanView}
+        className={`pointer-events-auto absolute right-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100 ${gaxUnlocked && !cleanView ? "bottom-8" : "bottom-2"}`}
+        title={cleanView ? "Show UI" : "Clean View — hide UI"}
       >
-        <Settings2 size={16} />
+        {cleanView ? <Eye size={16} /> : <EyeOff size={16} />}
       </button>
 
       {/* GAX ticker tape — global marquee, only once the Exchange is unlocked */}
-      <TickerTape onOpen={() => setPanel("gax")} />
+      {!cleanView && <TickerTape onOpen={() => setPanel("gax")} />}
 
       {/* Panels */}
       {panel === "inventory" && <IngredientInventoryView onClose={() => setPanel(null)} />}
@@ -283,16 +303,20 @@ export default function App() {
       )}
       {panel === "dev"    && <DevDashboard onClose={() => setPanel(null)} />}
 
-      {/* Onboarding + achievement surfacing */}
-      <TutorialOverlay />
+      {/* Onboarding + achievement surfacing — spotlight/hints point at HUD
+          and rail-badge elements that clean view hides, so suppress them
+          too rather than pointing at nothing. */}
+      {!cleanView && <TutorialOverlay />}
       <AchievementToasts />
-      <SpotlightHighlight />
-      <HintBanner
-        onGoto={(goto) => {
-          setPanel(goto.panel as Panel);
-          if (goto.spotlight) window.setTimeout(() => spotlight(goto.spotlight!), 200);
-        }}
-      />
+      {!cleanView && <SpotlightHighlight />}
+      {!cleanView && (
+        <HintBanner
+          onGoto={(goto) => {
+            setPanel(goto.panel as Panel);
+            if (goto.spotlight) window.setTimeout(() => spotlight(goto.spotlight!), 200);
+          }}
+        />
+      )}
 
       {settingsOpen && (
         <SettingsModal
