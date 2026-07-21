@@ -80,6 +80,10 @@ export default function Atmosphere() {
   const motes    = useGameStore((s) => s.graphics.motes);
   const vignette = useGameStore((s) => s.graphics.vignette);
   const dayNight = useGameStore((s) => s.graphics.dayNight);
+  const quality  = useGameStore((s) => s.graphics.quality);
+  // Fewer simultaneous composited layers at quality 2 ("High") than 3 ("Very
+  // High") — motes is already off entirely below quality 2.
+  const activeMotes = quality >= 3 ? MOTES : MOTES.slice(0, Math.ceil(MOTE_COUNT / 2));
 
   useEffect(() => {
     applyDayNightVars();
@@ -131,7 +135,7 @@ export default function Atmosphere() {
           className="pointer-events-none fixed inset-0 z-[3] overflow-hidden"
           style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 3.5s ease-in-out" }}
         >
-          {MOTES.map((m, i) => (
+          {activeMotes.map((m, i) => (
             <div
               key={i}
               className="absolute rounded-full"

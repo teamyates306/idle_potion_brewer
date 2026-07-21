@@ -185,6 +185,7 @@ body {
 /* Battery-saver mode: suppress decorative fly-in animations */
 .anim-throttle [style*="fly-ingredient"],
 .anim-throttle [style*="fly-potion"] { display: none; }
+.anim-throttle .animate-bubble { animation: none; opacity: 0.5; }
 
 /* Ingredient sprite rarity flair. Glow is applied inline (scales with size);
    particles + the legendary shimmer animate here. Sparkles twinkle in place. */

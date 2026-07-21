@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { subscribeFAT, type FATItem } from "../../util/fat";
 import { useSettingsStore } from "../../store/settingsStore";
+import { useGameStore } from "../../store/gameStore";
+
+// Concurrent floating-text cap per graphics quality tier (0 Basic … 3 Very
+// High) — mirrors WORKER_CAP_BY_QUALITY in Workshop.tsx. Late-game, a lot of
+// workers depositing ingredients at once can spawn many of these together;
+// each is its own animated DOM node with a text-shadow glow.
+const FAT_CAP_BY_QUALITY = [12, 24, 36, 48] as const;
 
 const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATItem; onDone: () => void }) {
   const totalDuration = item.duration ?? 1500;
@@ -63,11 +70,14 @@ export default function FATLayer() {
   useEffect(() => {
     return subscribeFAT((item) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
-      // Hard cap on concurrent floating texts — when a lot is happening late
-      // game, unbounded DOM nodes (each with its own animation + text shadow)
-      // are the main source of jitter. Oldest entries are dropped first.
-      setItems((prev) => (prev.length >= 48 ? [...prev.slice(prev.length - 47), item] : [...prev, item]));
+      // Hard cap on concurrent floating texts, scaled by graphics quality —
+      // when a lot is happening late game, unbounded DOM nodes (each with its
+      // own animation + text shadow) are the main source of jitter. Oldest
+      // entries are dropped first.
+      const cap = FAT_CAP_BY_QUALITY[useGameStore.getState().graphics.quality];
+      setItems((prev) => (prev.length >= cap ? [...prev.slice(prev.length - (cap - 1)), item] : [...prev, item]));
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const remove = useCallback((id: number) =>

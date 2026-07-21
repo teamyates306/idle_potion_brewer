@@ -2,10 +2,10 @@ import { useMemo, useState } from "react";
 import { Search, X, Trash2, Lock } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { describePotion } from "../engine/potions";
 import IngredientSvg from "./art/IngredientSvg";
 import { RARITY_COLOR, fmt } from "../util/format";
 import { IconCoin } from "./ui/icons";
+import { usePotionPreview } from "../hooks/usePotionPreview";
 
 const RARITY_ORDER: Record<string, number> = { common: 0, uncommon: 1, scarce: 2, rare: 3, exotic: 4, epic: 5, fabled: 6, legendary: 7 };
 const CATEGORY_ORDER = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"];
@@ -48,13 +48,15 @@ export default function IngredientSelectionModal({
       .filter((g) => g.items.length > 0);
   }, [discovered, cfg.ingredients, inv, q]);
 
+  // resulting potion preview from current slots — hook must run unconditionally
+  // before the early return below.
+  const filledIds = machine ? machine.recipe_slots.slice(0, machine.unlocked_slots).filter((x): x is string => !!x) : [];
+  const previewIngredients = filledIds.map((id) => cfg.ingredients[id]).filter(Boolean);
+  const preview = usePotionPreview(previewIngredients, cfg.formulas);
+
   if (!machine) return null;
   const unlocked = machine.unlocked_slots;
   const slots = machine.recipe_slots;
-
-  // resulting potion preview from current slots
-  const filledIds = slots.slice(0, unlocked).filter((x): x is string => !!x);
-  const preview = filledIds.length ? describePotion(filledIds.map((id) => cfg.ingredients[id]).filter(Boolean), cfg.formulas) : null;
 
   const assign = (id: string) => {
     programSlot(machineId, activeSlot, id);

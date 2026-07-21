@@ -6,7 +6,7 @@ import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, xpRequired, SLOT_UNLOCK_COSTS, RARITY_WEIGHT } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
-import { describePotion, describeFromHash } from "../engine/potions";
+import { describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
 import {
   combinedMasteryReduction,
@@ -15,6 +15,7 @@ import {
   potionMasteryReductionPct,
 } from "../data/masteryTrees";
 import { machineBrewSecondsFor } from "../hooks/useGameLoop";
+import { usePotionPreview } from "../hooks/usePotionPreview";
 import { fmt } from "../util/format";
 import { dominantAttrSentence } from "../util/potionVisuals";
 import IngredientSvg from "./art/IngredientSvg";
@@ -134,7 +135,7 @@ function MachinePanelBody({
     .slice(0, machine.unlocked_slots)
     .filter((x): x is string => !!x);
   const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
-  const preview = ingredients.length ? describePotion(ingredients, cfg.formulas) : null;
+  const preview = usePotionPreview(ingredients, cfg.formulas);
   // Only reveal the potion identity after it has been brewed at least once.
   const isKnownPotion = preview ? discoveredPotions.includes(preview.hash) : false;
   // FINAL brew time (after all mastery reductions) — must match both the actual
@@ -542,7 +543,7 @@ function BrewAnalytics({
   // single flat reduction off the pre-mastery time, hard-capped at 80%.
   const masteryFx = computeMasteryEffects(masteryUnlocks);
   const treePct = masteryFx.brew_speed_pct;
-  const potionName = ingredients.length > 0 ? describePotion(ingredients, cfg.formulas).name : null;
+  const potionName = usePotionPreview(ingredients, cfg.formulas)?.name ?? null;
   const potionEntry = potionName ? potionMastery[potionName] : undefined;
   const potionMasteryLvl = potionEntry ? masteryLevel(potionEntry.xp) : 0;
   const potionPct = potionMasteryReductionPct(potionMasteryLvl);

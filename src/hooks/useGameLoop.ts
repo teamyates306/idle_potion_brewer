@@ -2,9 +2,23 @@ import { useEffect, useRef, useState } from "react";
 import { useGameStore, locationTripSecs } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { brewTime, gatherRoundTrip } from "../engine/formulas";
-import { applyMasteryToBrewTime, computeMasteryEffects, masteryLevel } from "../data/masteryTrees";
+import { applyMasteryToBrewTime, computeMasteryEffects, masteryLevel, type MasteryEffects } from "../data/masteryTrees";
 import { describePotion } from "../engine/potions";
 import type { BrewingMachine, Worker } from "../types";
+
+// describePotion() re-derives a deterministic name/hash from ingredients — pure
+// but non-trivial. A machine's recipe only changes when its slots change, so
+// cache the derived potion name per machine id, keyed on the ingredient list.
+const potionNameCache = new Map<number, { key: string; name: string }>();
+function cachedPotionName(machine: BrewingMachine, ids: string[], ingredients: Parameters<typeof describePotion>[0]): string | null {
+  if (ingredients.length === 0) return null;
+  const key = ids.join(",");
+  const cached = potionNameCache.get(machine.id);
+  if (cached && cached.key === key) return cached.name;
+  const name = describePotion(ingredients, useConfigStore.getState().formulas).name;
+  potionNameCache.set(machine.id, { key, name });
+  return name;
+}
 
 export interface WorkerLoopState {
   workerProgress: number;
@@ -23,7 +37,7 @@ export interface LoopProgress {
 
 const WALK_SECS = 3;
 
-function workerTripSecondsFor(w: Worker): number {
+function workerTripSecondsFor(w: Worker, fx?: MasteryEffects): number {
   const cfg = useConfigStore.getState();
   // Settlement trade runs use the same distance/speed math as gather trips.
   const distance = w.assigned_settlement
@@ -33,7 +47,7 @@ function workerTripSecondsFor(w: Worker): number {
     : 0;
   if (!distance) return 0;
   const game = useGameStore.getState();
-  const fx = computeMasteryEffects(game.masteryUnlocks);
+  fx ??= computeMasteryEffects(game.masteryUnlocks);
   const isGatherer = w.specialization === "explorer" || w.specialization === "caravan" || w.specialization === "none";
   const speedMult = (1 + fx.worker_speed_pct / 100) * (isGatherer ? 1 + fx.gatherer_speed_pct / 100 : 1);
   // Waypoint Town passive: prosperity trims travel to RESOURCE NODES in the
@@ -49,7 +63,7 @@ function workerTripSecondsFor(w: Worker): number {
  * (speed × complexity × toxicity) with the combined additive mastery reduction
  * (tree % + potion %, hard-capped) applied. All UI must display this value.
  */
-export function machineBrewSecondsFor(machine: BrewingMachine): number {
+export function machineBrewSecondsFor(machine: BrewingMachine, fx?: MasteryEffects): number {
   const cfg = useConfigStore.getState();
   const ids = machine.recipe_slots
     .slice(0, machine.unlocked_slots)
@@ -57,11 +71,11 @@ export function machineBrewSecondsFor(machine: BrewingMachine): number {
   const ingredients = ids.map((id) => cfg.ingredients[id]).filter(Boolean);
   const base = brewTime(machine, cfg.formulas, ingredients);
   const state = useGameStore.getState();
-  const fx = computeMasteryEffects(state.masteryUnlocks);
+  fx ??= computeMasteryEffects(state.masteryUnlocks);
   let potionMasteryLvl = 0;
-  if (ingredients.length > 0) {
-    const potion = describePotion(ingredients, cfg.formulas);
-    const entry = state.potionMastery[potion.name];
+  const potionName = cachedPotionName(machine, ids, ingredients);
+  if (potionName) {
+    const entry = state.potionMastery[potionName];
     if (entry) potionMasteryLvl = masteryLevel(entry.xp);
   }
   return applyMasteryToBrewTime(base, fx.brew_speed_pct, potionMasteryLvl);
@@ -157,12 +171,17 @@ export function useGameLoop(): LoopProgress {
 
       if (dt > 0) g.autoClickTick(dt);
 
+      // Mastery effects only change when masteryUnlocks changes (rare) — compute
+      // once per tick and reuse across every worker/machine instead of each
+      // recomputing it independently.
+      const fx = computeMasteryEffects(g.masteryUnlocks);
+
       // ---- workers ----
       const workerStates: WorkerLoopState[] = g.workers.map((w, idx) => {
         if ((!w.assigned_location && !w.assigned_settlement) || !w.trip_started_at) {
           return { workerProgress: 0, workerPhase: "idle" as const };
         }
-        const total = workerTripSecondsFor(w);
+        const total = workerTripSecondsFor(w, fx);
         const elapsed = (now - w.trip_started_at) / 1000;
         const isTrade = !!w.assigned_settlement;
 
@@ -205,7 +224,7 @@ export function useGameLoop(): LoopProgress {
         const brewActive = machine.running && !brewStalled;
         let brewProgress = 0;
         if (brewActive && machine.brew_started_at) {
-          const total = machineBrewSecondsFor(machine);
+          const total = machineBrewSecondsFor(machine, fx);
           const elapsed = (now - machine.brew_started_at) / 1000;
           if (total > 0 && elapsed >= total) {
             g.completeBrew(machine.id);
