@@ -20,6 +20,12 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
   const gaxMarket = useGameStore((s) => s.gaxMarket);
   const settleGax = useGameStore((s) => s.settleGax);
+  // Quest-giver tantrum penalty — applies regardless of GAX unlock state (see
+  // gaxPriceAndRecord, the actual sale hook), so this breakdown must fold it
+  // in too, not just the GAX rows below.
+  const salesPenalty = useGameStore((s) => s.salesPenalty);
+  const penaltyActive = !!salesPenalty && Date.now() < salesPenalty.expiresAt;
+  const penaltyMult = penaltyActive ? salesPenalty!.multiplier : 1;
 
   // Opening a detail view is a lazy settle trigger.
   useEffect(() => { if (gaxUnlocked) settleGax(); }, [gaxUnlocked, settleGax]);
@@ -28,12 +34,15 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
     () => (gaxUnlocked ? gaxPotionQuote(gaxMarket, gaxDayIndex(Date.now()), stats) : null),
     [gaxUnlocked, gaxMarket, stats]
   );
-  if (!quote) return null;
+  // Nothing to show unless the GAX is moving the price OR the tantrum penalty is active.
+  if (!quote && !penaltyActive) return null;
 
-  const sellNow = Math.round(baseValue * quote.mult);
-  const pct = Math.round(quote.mult * 100);
+  const gaxMult = quote?.mult ?? 1;
+  const finalMult = gaxMult * penaltyMult;
+  const sellNow = Math.round(baseValue * finalMult);
+  const pct = Math.round(finalMult * 100);
   // Only surface attributes actually moving the price; the rest trade at par.
-  const movers = quote.rows.filter((r) => Math.abs(r.rate - 1) >= 0.01).slice(0, 6);
+  const movers = quote ? quote.rows.filter((r) => Math.abs(r.rate - 1) >= 0.01).slice(0, 6) : [];
   const REASON_LABEL: Record<string, string> = {
     event: "Market event",
     flooded: "Saturated",
@@ -56,7 +65,7 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
           <span>Base value</span>
           <span className="flex items-center gap-1 font-semibold text-slate-300"><IconCoin /> {fmt(baseValue)}</span>
         </div>
-        {(() => {
+        {quote && (() => {
           // Each attribute contributes weight/totalWeight of the blended rate,
           // so its coin impact on THIS potion is base × share × (rate − 1).
           // Deltas are rounded cumulatively (not independently) so the displayed
@@ -90,11 +99,25 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
             );
           });
         })()}
-        {movers.length === 0 && (
+        {quote && movers.length === 0 && (
           <div className="text-slate-500">All of this potion's markets are trading at par.</div>
         )}
+        {penaltyActive && salesPenalty && (
+          <div className="flex justify-between">
+            <span className="flex items-center gap-1 text-slate-400">
+              Bad reputation
+              <span className="ml-1 text-[10px] text-slate-500">(quest-giver tantrum)</span>
+            </span>
+            <span className="font-semibold text-rose-600">
+              -{salesPenalty.discountPct.toFixed(1)}%
+              <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] opacity-80">
+                ({fmt(Math.round(baseValue * gaxMult * penaltyMult) - Math.round(baseValue * gaxMult))}<IconCoin />)
+              </span>
+            </span>
+          </div>
+        )}
         <div className="mt-1.5 flex justify-between border-t border-amber-800/30 pt-1.5 font-semibold text-amber-800">
-          <span>×{quote.mult.toFixed(2)} — selling for</span>
+          <span>×{finalMult.toFixed(2)} — selling for</span>
           <span className="flex items-center gap-1"><IconCoin /> {fmt(sellNow)} each</span>
         </div>
       </div>
