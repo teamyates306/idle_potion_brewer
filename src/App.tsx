@@ -339,7 +339,8 @@ export default function App() {
           <p className="mb-3 text-sm italic text-slate-400">
             You were away for{" "}
             <span className="font-semibold text-cyan-800 not-italic">{fmtDuration(welcomeBack.seconds)}</span>.
-            The guild kept busy.
+            A parade of adventurers passed through, helped themselves to whatever
+            your shelves had ready, and left before you could even ask their guild name.
           </p>
 
           {/* Tabs — the Market Events audit only exists once the GAX is open */}

@@ -9,6 +9,27 @@ import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from ".
 import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
 import { fmt } from "../util/format";
 import { IconCoin } from "./ui/icons";
+import { pushToast } from "../util/toast";
+
+// Snarky one-liners for the NPC-shopkeeper bit — the player is the potion
+// merchant, these adventurers are the actual protagonists off saving the
+// world somewhere out of frame. Picked at random per event, not seeded —
+// unlike the level/sprite these are one-shot toasts, not persisted display state.
+const QUEST_COMPLETE_LINES = [
+  (name: string, level: number, race: string, cls: string) =>
+    `${name} grabbed the goods and sprinted off to save the world. Again.`,
+  (name: string, level: number, race: string, cls: string) =>
+    `Level ${level} ${race} ${cls} paid in full and didn't even haggle. Miracles happen.`,
+  (name: string, level: number, race: string, cls: string) =>
+    `${name} muttered something about a dragon and left without saying thanks.`,
+  (name: string, level: number, race: string, cls: string) =>
+    `Another Level ${level} party saved by your shelf stock. You got the coins; they get the glory.`,
+];
+const QUEST_REROLL_LINES = [
+  (name: string, level: number, race: string, cls: string) =>
+    `Level ${level} ${race} ${cls} got impatient and stormed off to find another shop.`,
+  (name: string) => `${name} left in a huff. Someone else's problem now.`,
+];
 
 // Dark ink shades — the light -300 pastels were near-invisible on parchment cards.
 const DIFF_STYLE: Record<QuestDifficulty, { text: string; bg: string; bar: string; spark: string }> = {
@@ -248,11 +269,24 @@ function QuestCard({
   // persisted state needed, and re-rolls into a new one only when the quest
   // itself does (a fresh quest.id).
   const adventurer = useMemo(() => generateAdventurer(quest.id), [quest.id]);
+  const adventurerLevel = generateAdventurerLevel(quest.id, quest.difficulty);
 
   const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     onCelebrate(r.left + r.width / 2, r.top + r.height / 2, style.spark);
+    if (adventurer) {
+      const line = QUEST_COMPLETE_LINES[Math.floor(Math.random() * QUEST_COMPLETE_LINES.length)];
+      pushToast(line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]), "purple");
+    }
     completeQuest(quest.id);
+  };
+
+  const handleReroll = () => {
+    if (adventurer) {
+      const line = QUEST_REROLL_LINES[Math.floor(Math.random() * QUEST_REROLL_LINES.length)];
+      pushToast(line(adventurer.name, adventurerLevel, adventurer.race, CLASS_LABELS[adventurer.className]), "amber");
+    }
+    rerollQuest(quest.id);
   };
 
   return (
@@ -263,7 +297,7 @@ function QuestCard({
           <div className="min-w-0">
             <div className="text-xs font-bold leading-tight text-slate-100">{adventurer.name}</div>
             <div className="text-[10px] capitalize text-slate-400">
-              Level {generateAdventurerLevel(quest.id, quest.difficulty)} {adventurer.race} {CLASS_LABELS[adventurer.className]}
+              Level {adventurerLevel} {adventurer.race} {CLASS_LABELS[adventurer.className]}
             </div>
           </div>
         </div>
@@ -272,7 +306,7 @@ function QuestCard({
         <span className={`text-xs font-bold uppercase tracking-wider ${style.text}`}>{quest.difficulty}</span>
         <span className="flex items-center gap-2">
           <button
-            onClick={() => rerollQuest(quest.id)}
+            onClick={handleReroll}
             disabled={!canReroll}
             className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition active:scale-95 ${
               canReroll

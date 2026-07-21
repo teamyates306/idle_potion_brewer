@@ -161,6 +161,14 @@ export const GAX_EVENTS: GaxEventDef[] = [
     effects: { mutation: -0.65 } },
   { id: "iron_shortage", headline: "The dwarven smelters of Emberhold strike for shorter tunnels — density and iron draughts surge!",
     effects: { density: 0.60, terra: 0.25 } },
+  // Adventurer-party events — a nod to the shop's real customers: you're the
+  // NPC merchant, they're out there levelling up somewhere off-screen.
+  { id: "raid_party_gearing", headline: "A Level 40 party is gearing up for the Sunken Spire raid — volatile brews flying off the shelf!",
+    effects: { volatility: 0.55, strength: 0.25 } },
+  { id: "bounty_board_flood", headline: "The Guild bounty board is buried under high-level contracts — hide-melting brews in furious demand.",
+    effects: { acidity: 0.50, toxicity: 0.20 } },
+  { id: "party_returns_broke", headline: "A party staggers back from the depths, broke and selling off half their kit — solvent brews glut the market.",
+    effects: { solvency: -0.50 } },
 ];
 
 export const GAX_EVENTS_BY_ID: Record<string, GaxEventDef> = Object.fromEntries(
