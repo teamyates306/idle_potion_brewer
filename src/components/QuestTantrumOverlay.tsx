@@ -16,7 +16,7 @@ export interface TantrumTrigger {
 // playthrough so they don't change mid-animation.
 const LINES = {
   approach: ["WHERE. ARE. MY POTIONS.", "TWENTY-FOUR HOURS. I COUNTED.", "I HAD A RAID TO CATCH!"],
-  throw: ["THIS IS UNACCEPTABLE!", "I WAITED FOR NOTHING?!", "REFUND. NOW."],
+  throw: ["THIS IS UNACCEPTABLE!", "I WAITED FOR NOTHING?!", "I DEMAND A REFUND!"],
   drag: ["UNHAND ME!", "I'LL BE BACK!", "THIS ISN'T OVER, MERCHANT!"],
 };
 function pick(arr: string[]): string {
@@ -27,7 +27,10 @@ function pick(arr: string[]): string {
 // Cumulative — each entry is how long that beat's UI state holds before
 // advancing to the next. (Slowed down from the first pass — the whole
 // sequence now runs a good deal longer so it reads instead of blinking by.)
-const STEP_DURATIONS = [2000, 900, 1900, 1700, 1700, 700];
+// The throw beat (index 1) is extra long so the bottle's arc has room to
+// play out smoothly instead of snapping across.
+const STEP_DURATIONS = [2000, 1600, 1900, 1700, 1700, 700];
+const THROW_ARC_MS = 1450;
 
 export default function QuestTantrumOverlay({
   trigger, onDone,
@@ -67,12 +70,12 @@ export default function QuestTantrumOverlay({
   const adventurerY = step === 0 ? -140 : step >= 4 ? -140 : 0;
   const guardY = step < 3 ? -140 : step >= 4 ? -140 : 0;
   const guardOpacity = step >= 3 && step < 5 ? 1 : 0;
+  const adventurerX = 140;
   const victimX = 250;
-  // Mounted from the start (invisible) so the left-position transition has
-  // something to animate FROM when step 1 hits, rather than popping in
-  // already at its destination.
-  const bottleOpacity = step === 1 ? 1 : 0;
-  const bottleLeft = step >= 1 ? victimX - 20 : 140;
+  // Guards flank tight enough to overlap the adventurer's sprite on each
+  // side — reads as gripping/hauling them rather than just standing nearby.
+  const guard1X = 108;
+  const guard2X = 172;
   const showStars = step >= 2 && step <= 3;
   const showBubble = step === 0 || step === 1 || step === 3;
   const bubbleText = step === 0 ? linesRef.current.approach : step === 1 ? linesRef.current.throw : linesRef.current.drag;
@@ -91,21 +94,6 @@ export default function QuestTantrumOverlay({
       />
       <div className="absolute inset-x-0 top-[14%] flex justify-center">
       <div className="relative h-[190px] w-[360px] overflow-visible">
-        {/* Guard 1 — drops down from the door on the left */}
-        <div
-          className="absolute bottom-2 left-[95px]"
-          style={{ transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
-        >
-          <WorkerArt size={52} active hueShift={guard1HueRef.current} />
-        </div>
-        {/* Guard 2 — drops down from the door on the right */}
-        <div
-          className="absolute bottom-2 left-[185px]"
-          style={{ transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
-        >
-          <WorkerArt size={52} active hueShift={guard2HueRef.current} />
-        </div>
-
         {/* Victim worker — already on the shop floor, reacts when hit */}
         <div className="absolute bottom-2" style={{ left: victimX }}>
           <div style={{ animation: step === 2 || step === 3 ? "worker-bump 0.7s ease-in-out infinite" : undefined }}>
@@ -120,22 +108,29 @@ export default function QuestTantrumOverlay({
           )}
         </div>
 
-        {/* Thrown (empty) bottle */}
-        <img
-          src="/sprites/potion-bottle.svg"
-          alt=""
-          className="absolute bottom-10 h-6 w-6"
-          style={{
-            left: bottleLeft,
-            opacity: bottleOpacity,
-            transition: "left 750ms ease-out, opacity 200ms ease-out",
-          }}
-        />
+        {/* Thrown (empty) bottle — a smooth arcing lob rather than a straight
+            slide, mounted only for the throw beat so its keyframe animation
+            always plays from the start. */}
+        {step === 1 && (
+          <img
+            src="/sprites/potion-bottle.svg"
+            alt=""
+            className="absolute bottom-4"
+            style={{
+              left: adventurerX + 22, width: 22, height: 22,
+              ["--tbx" as string]: "94px",
+              animation: `tantrum-bottle-throw ${THROW_ARC_MS}ms cubic-bezier(0.33,0,0.2,1) 1 forwards`,
+            }}
+          />
+        )}
 
-        {/* Adventurer — drops down from the door, hauled back up through it */}
+        {/* Adventurer — drops down from the door, hauled back up through it.
+            Rendered before the guards so they visually sit in front while
+            hauling them off. */}
         <div
-          className="absolute bottom-2 left-[140px]"
+          className="absolute bottom-2"
           style={{
+            left: adventurerX,
             transform: `translateY(${adventurerY}px)`,
             transition: "transform 1100ms ease",
             animation: step === 0 || step === 1 ? "tantrum-shake 0.4s ease-in-out infinite" : undefined,
@@ -148,6 +143,22 @@ export default function QuestTantrumOverlay({
             </div>
           )}
           <AdventurerSprite adventurer={adventurer} size={56} />
+        </div>
+
+        {/* Guards — drop down from the door, flanking close enough to
+            overlap the adventurer so it reads as hauling them off rather
+            than just standing nearby. */}
+        <div
+          className="absolute bottom-2"
+          style={{ left: guard1X, transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
+        >
+          <WorkerArt size={52} active hueShift={guard1HueRef.current} />
+        </div>
+        <div
+          className="absolute bottom-2"
+          style={{ left: guard2X, transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
+        >
+          <WorkerArt size={52} active hueShift={guard2HueRef.current} />
         </div>
       </div>
       </div>

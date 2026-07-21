@@ -313,6 +313,15 @@ body {
   0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.9; }
   50%       { transform: translateY(-5px) rotate(15deg); opacity: 1; }
 }
+/* Thrown-bottle lob — a proper rising-then-falling arc with a tumble,
+   rather than a straight slide, from the adventurer's hand to its target. */
+@keyframes tantrum-bottle-throw {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(calc(var(--tbx) * 0.15), -18px) rotate(60deg); }
+  50%  { transform: translate(calc(var(--tbx) * 0.5), -48px) rotate(220deg); }
+  85%  { transform: translate(calc(var(--tbx) * 0.9), -10px) rotate(420deg); }
+  100% { transform: translate(var(--tbx), 0) rotate(520deg); }
+}
 
 /* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
 @keyframes lamp-flicker {
