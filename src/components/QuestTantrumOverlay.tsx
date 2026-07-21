@@ -83,7 +83,12 @@ export default function QuestTantrumOverlay({
       className="pointer-events-none fixed inset-0 z-[80]"
       style={{ transition: "opacity 500ms ease", opacity: overlayOpacity }}
     >
-      <div className="absolute inset-0 bg-black/20" />
+      {/* Dramatically dims the whole screen — not just a light scrim — so the
+          little scene reads as a genuine interruption, not a background toy. */}
+      <div
+        className="absolute inset-0 bg-black/75"
+        style={{ background: "radial-gradient(ellipse at 50% 35%, rgba(40,10,10,0.55) 0%, rgba(0,0,0,0.82) 75%)" }}
+      />
       <div className="absolute inset-x-0 top-[14%] flex justify-center">
       <div className="relative h-[190px] w-[360px] overflow-visible">
         {/* Guard 1 — drops down from the door on the left */}

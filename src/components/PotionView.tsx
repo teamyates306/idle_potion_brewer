@@ -15,6 +15,7 @@ import { fmt } from "../util/format";
 import { gatherRoundTrip, brewTime, effectiveMultiBrew } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
 import { gaxDayIndex, potionPriceMultiplier } from "../engine/gax";
+import { DAY_DURATION_MS } from "../engine/clock";
 import type { Attributes } from "../types";
 import { IconCoin, IconSparkle, IconWarning, IconChartUp, IconAbacus } from "./ui/icons";
 
@@ -133,6 +134,17 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
             </button>
           )}
         </div>
+
+        {/* Reputation-hit banner — impossible to miss, unlike the small
+            per-card ▼% badges, while a tantrum penalty is active. */}
+        {penaltyMult < 1 && salesPenalty && (
+          <div className="mb-3 rounded-lg border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+            <span className="font-bold">Bad reputation:</span> potion prices are down{" "}
+            <span className="font-bold">{salesPenalty.discountPct.toFixed(1)}%</span> for{" "}
+            {Math.max(1, Math.ceil((salesPenalty.expiresAt - Date.now()) / DAY_DURATION_MS))} more day
+            {Math.max(1, Math.ceil((salesPenalty.expiresAt - Date.now()) / DAY_DURATION_MS)) === 1 ? "" : "s"}.
+          </div>
+        )}
 
         {tab === "sell" ? (
           entries.length === 0 && autoSellHashes.length === 0 ? (
