@@ -125,6 +125,22 @@ function pick<T>(rng: () => number, arr: T[]): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 
+// Quest-giver "character level" — a joke nod to the framing that the player
+// is the potion-shop NPC and these adventurers are the actual player
+// characters of some MMO passing through. Deterministic per quest.id (same
+// quest reopened always shows the same level) and scales roughly with quest
+// difficulty, same as any MMO quest board would.
+const LEVEL_RANGE_BY_DIFFICULTY: Record<string, [number, number]> = {
+  Easy: [1, 15],
+  Medium: [10, 30],
+  Challenging: [25, 50],
+};
+export function generateAdventurerLevel(seed: string, difficulty: string): number {
+  const [min, max] = LEVEL_RANGE_BY_DIFFICULTY[difficulty] ?? [1, 50];
+  const rng = seededRng(`${seed}:level`);
+  return min + Math.floor(rng() * (max - min + 1));
+}
+
 /** Deterministically build an adventurer for a given seed (use quest.id). */
 export function generateAdventurer(seed: string): Adventurer | null {
   if (AVAILABLE_RACES.length === 0) return null;

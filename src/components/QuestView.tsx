@@ -6,7 +6,7 @@ import AdventurerSprite from "./art/AdventurerSprite";
 import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
-import { generateAdventurer, CLASS_LABELS } from "../data/questSprites";
+import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
 import { fmt } from "../util/format";
 import { IconCoin } from "./ui/icons";
 
@@ -263,7 +263,7 @@ function QuestCard({
           <div className="min-w-0">
             <div className="text-xs font-bold leading-tight text-slate-100">{adventurer.name}</div>
             <div className="text-[10px] capitalize text-slate-400">
-              {adventurer.race} {CLASS_LABELS[adventurer.className]}
+              Level {generateAdventurerLevel(quest.id, quest.difficulty)} {adventurer.race} {CLASS_LABELS[adventurer.className]}
             </div>
           </div>
         </div>
