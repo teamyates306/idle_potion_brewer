@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
@@ -30,6 +31,25 @@ import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
 import type { MachineLoopState } from "../hooks/useGameLoop";
 
 // ── Constants ────────────────────────────────────────────────────────────────
+// On-screen worker sprite cap per graphics quality tier (0 Basic … 3 Very
+// High) — each is an independently-animated DOM node, so late-game rosters
+// of dozens of workers are a real jank source at low tiers. Very High stays
+// uncapped (Number.POSITIVE_INFINITY — never persisted, computed at render).
+const WORKER_CAP_BY_QUALITY = [10, 20, 35, Number.POSITIVE_INFINITY] as const;
+
+// Per-machine spark-particle buffer cap per quality tier — same idea as
+// WORKER_CAP_BY_QUALITY. Sparks are tracked PER MachineColumn instance, so
+// with up to 5 machines all clicking/brewing at once the *global* on-screen
+// total is up to 5x this value; scaling it down at low tiers matters more
+// than the single-machine number suggests.
+const SPARK_CAP_BY_QUALITY = [6, 12, 16, 20] as const;
+
+// Window-walker concurrency ceiling per quality tier — walkers are already
+// off entirely below quality 2 (see graphics.windowWalkers preset), this
+// just keeps "High" lighter than "Very High" rather than sharing one fixed
+// hard cap regardless of tier.
+const WALKER_CAP_BY_QUALITY = [0, 0, 8, 20] as const;
+
 const COL_W = 180; // px per machine column
 const MAX_MACHINES = 5;
 // The wall + floor are a FIXED background sized for the max (5) machines plus a
@@ -43,7 +63,6 @@ const SCROLL_EXTRA = 140; // a little extra pan past the brewers, once scrolling
 const FLOOR_BG = "#8a857c url('/sprites/floor-tile.png')";
 const HEAT_PER_CLICK = 0.12;
 const HEAT_DECAY     = 0.22;
-const MAX_SPARKS     = 20;
 const POTION_FLY_MS  = 2000; // must match fly-potion animation duration
 const POTION_LAND_MS = Math.round(POTION_FLY_MS * 0.82); // ~82% = when bottle arrives at pile
 
@@ -657,6 +676,8 @@ const MachineColumn = React.memo(function MachineColumn({
   const onManage = useCallback(() => onOpen("machine", machine.id), [onOpen, machine.id]);
   const clickBrew = useGameStore((s) => s.clickBrew);
   const player_click_power_level = useGameStore((s) => s.player_click_power_level);
+  const quality = useGameStore((s) => s.graphics.quality);
+  const maxSparks = SPARK_CAP_BY_QUALITY[quality];
   const cfg = useConfigStore();
 
   const heatRef    = useRef(0);
@@ -798,8 +819,8 @@ const MachineColumn = React.memo(function MachineColumn({
     const sparkCount = Math.floor(2 + newHeat * 6);
     const nowMs = Date.now();
     setSparks((prev) => {
-      const trimmed = prev.length + sparkCount > MAX_SPARKS
-        ? prev.slice(prev.length + sparkCount - MAX_SPARKS)
+      const trimmed = prev.length + sparkCount > maxSparks
+        ? prev.slice(Math.max(0, prev.length + sparkCount - maxSparks))
         : prev;
       return [
         ...trimmed,
@@ -1043,18 +1064,25 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         content.style.transformOrigin = 'top center';
       }
 
-      // Measure badge Y positions in visual (post-zoom) space
-      const outerTop = outer.getBoundingClientRect().top;
+      // Measure badge Y positions in visual (post-zoom) space. The badge rail
+      // is portalled to <body> and positioned `fixed`, so these are viewport-
+      // relative coordinates, not relative to `outer`.
       const center = (el: HTMLElement | null) => {
         if (!el) return 0;
         const r = el.getBoundingClientRect();
-        return r.top - outerTop + r.height / 2;
+        return r.top + r.height / 2;
       };
+      // Market anchors to the TOP of the pile section rather than its centre:
+      // the pile art grows taller as unsold potions pile up, and centring on
+      // that growing box would keep dragging the badge further down the page
+      // the more potions accumulate. Anchoring to the (stable) top keeps it
+      // pinned just below the brewers regardless of pile size.
+      const top = (el: HTMLElement | null) => (el ? el.getBoundingClientRect().top : 0);
       setBadgeY({
         workers: center(workerSectionRef.current),
         stash:   center(troughRef.current),
         brewing: center(machineSectionRef.current),
-        market:  center(pileSectionRef.current),
+        market:  top(pileSectionRef.current) + 24,
       });
 
       // Horizontal scroll window: centre on the brewers; only open it up once the
@@ -1400,6 +1428,21 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
   });
 
+  // Cap on-screen worker sprites at lower graphics tiers — each is its own
+  // animated DOM node, and late-game rosters can run into the dozens.
+  // Idle workers are prioritised (they're exactly the ones implying the
+  // player needs to take action) over ones mid-trip, which are hidden first.
+  const visibleWorkerIdx = (() => {
+    const cap = WORKER_CAP_BY_QUALITY[graphics.quality];
+    const pool = workers
+      .map((w, idx) => idx)
+      .filter((idx) => workers[idx]?.assigned_machine_id == null);
+    if (pool.length <= cap) return new Set(pool);
+    const idle = pool.filter((idx) => loopProgress.workers[idx]?.workerPhase === "idle");
+    const active = pool.filter((idx) => loopProgress.workers[idx]?.workerPhase !== "idle");
+    return new Set([...idle, ...active].slice(0, cap));
+  })();
+
   // The scene/wall/floor are always the fixed 5-machine world; the brewers sit
   // centred in it and the scroll range (computed above) limits how far you can pan.
   const contentWidth = WORLD_W;
@@ -1408,8 +1451,15 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   return (
     <div ref={outerRef} className="relative h-full overflow-hidden">
 
-      {/* ── Right-rail badges — outside scroll, always fixed to the right ── */}
-      <div className="pointer-events-none absolute inset-0 z-20">
+      {/* ── Right-rail badges — outside scroll, always fixed to the right ──
+          Portalled to <body> (fixed, not absolute) so they escape `main`'s
+          local stacking context (App.tsx: `<main className="relative z-[2]">`)
+          — z-20 here only ranked them within that context, so Atmosphere's
+          vignette/day-night tint layers (z-[3], siblings of `main` in the
+          OUTER stacking context) painted over them regardless. Matches how
+          the HUD and bottom dock already sit above Atmosphere. */}
+      {createPortal(
+      <div className="pointer-events-none fixed inset-0 z-[5]">
         <RailBadge
           icon={<User size={18} className={anyTokens ? "text-amber-600" : "text-amber-700"} />}
           label="Workers"
@@ -1447,7 +1497,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           top={badgeY.market}
           dataTut="market"
         />
-      </div>
+      </div>,
+      document.body
+      )}
 
       {/* ── Horizontally draggable scroll area ── */}
       <div
@@ -1558,6 +1610,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           <div ref={workerSectionRef} className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
             {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
               if (workers[idx]?.assigned_machine_id != null) return null;
+              if (!visibleWorkerIdx.has(idx)) return null;
               const phase = loopProgress.workers[idx]?.workerPhase;
               const active = phase === "outbound" || phase === "inbound";
               return (
@@ -1684,13 +1737,16 @@ interface WallWalkerCfg {
   y: number; // feet baseline, in wall-SVG user units
   bobDuration: number; // seconds per up/down wiggle step — independent of crossing duration
   bobDelay: number;    // negative animation-delay so concurrent walkers don't bob in lockstep
+  elapsed: number;     // seconds already "walked" when spawned — 0 for normal mid-session
+                        // spawns (start at the edge), >0 only for the initial on-mount seed
+                        // so a reload doesn't empty the wall and slowly repopulate over ~2min.
 }
 
 function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
+function makeWalker(width: number, t: WalkerTuning, elapsed = 0): WallWalkerCfg | null {
   const id = `walker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const adventurer = generateAdventurer(id);
   if (!adventurer) return null;
@@ -1708,7 +1764,7 @@ function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
   // to actually animate).
   const bobDuration = rand(0.32, 0.42);
   const bobDelay = -rand(0, bobDuration); // random phase so walkers don't bounce in sync
-  return { id, adventurer, direction, duration, size, fromX, toX, y, bobDuration, bobDelay };
+  return { id, adventurer, direction, duration, size, fromX, toX, y, bobDuration, bobDelay, elapsed: Math.min(elapsed, duration) };
 }
 
 // Multiple adventurers can be crossing at once now (capped by
@@ -1730,7 +1786,7 @@ function makeWalker(width: number, t: WalkerTuning): WallWalkerCfg | null {
 const HARD_CAP = 20;
 const SPAWN_TICK_MS = 1400;
 
-function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning, forceSpawnToken: number): WallWalkerCfg[] {
+function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning, forceSpawnToken: number, qualityCap: number = HARD_CAP): WallWalkerCfg[] {
   const [walkers, setWalkers] = useState<WallWalkerCfg[]>([]);
   // Tuning changes shouldn't restart the whole spawn cycle (that would cancel
   // every in-flight walker) — read the latest values via a ref inside the timer.
@@ -1738,33 +1794,59 @@ function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning,
   tuningRef.current = tuning;
   const walkersRef = useRef(walkers);
   walkersRef.current = walkers;
+  const qualityCapRef = useRef(qualityCap);
+  qualityCapRef.current = qualityCap;
 
   useEffect(() => {
     if (!enabled) { setWalkers([]); return; }
     let cancelled = false;
 
+    const scheduleRemoval = (cfg: WallWalkerCfg) => {
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setWalkers((w) => w.filter((x) => x.id !== cfg.id));
+      }, Math.max(0, cfg.duration - cfg.elapsed) * 1000);
+    };
+
     const trySpawn = () => {
       if (cancelled) return;
       const t = tuningRef.current;
-      const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+      const cap = Math.min(qualityCapRef.current, Math.max(0, t.maxConcurrent));
       if (walkersRef.current.length >= cap) return;
       const cfg = makeWalker(width, t);
       if (!cfg) return;
       setWalkers((w) => [...w, cfg]);
-      window.setTimeout(() => {
-        if (cancelled) return;
-        setWalkers((w) => w.filter((x) => x.id !== cfg.id));
-      }, cfg.duration * 1000);
+      scheduleRemoval(cfg);
     };
 
-    // Seed just one walker fairly soon so the wall doesn't start dead empty;
-    // everything after that follows the same calibrated random process below
-    // rather than a synchronized initial burst.
+    // Seed the wall already mid-populated on mount — every walker used to
+    // start at the screen edge with a full ~2min crossing ahead, so a reload
+    // emptied the wall and it only slowly repopulated. Instead, place several
+    // walkers at random progress along their own route immediately (negative
+    // animation-delay below), so a reload looks continuous rather than
+    // resetting the population. Nothing is persisted — this is a one-shot
+    // "looks like it was already running" seed, not real walker tracking.
+    const t0 = tuningRef.current;
+    const cap0 = Math.min(qualityCapRef.current, Math.max(0, t0.maxConcurrent));
+    const seedCount = Math.round(cap0 / 2);
+    const seeded: WallWalkerCfg[] = [];
+    for (let i = 0; i < seedCount; i++) {
+      const cfg = makeWalker(width, t0);
+      if (!cfg) continue;
+      cfg.elapsed = Math.random() * cfg.duration;
+      seeded.push(cfg);
+    }
+    if (seeded.length > 0) {
+      setWalkers((w) => [...w, ...seeded]);
+      seeded.forEach(scheduleRemoval);
+    }
+    // Also keep the normal single delayed spawn so the calibrated tick-timer
+    // process below has one already in flight before its first roll.
     window.setTimeout(trySpawn, 1500 + Math.random() * 4000);
 
     const tickTimer = window.setInterval(() => {
       const t = tuningRef.current;
-      const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+      const cap = Math.min(qualityCapRef.current, Math.max(0, t.maxConcurrent));
       if (cap <= 0) return;
       const avgSpeed = (t.speedMin + t.speedMax) / 2;
       const avgDuration = width / Math.max(1, avgSpeed);
@@ -1783,7 +1865,7 @@ function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning,
     if (skipFirst.current) { skipFirst.current = false; return; }
     if (!enabled) return;
     const t = tuningRef.current;
-    const cap = Math.min(HARD_CAP, Math.max(0, t.maxConcurrent));
+    const cap = Math.min(qualityCapRef.current, Math.max(0, t.maxConcurrent));
     if (walkersRef.current.length >= cap) return;
     const cfg = makeWalker(width, t);
     if (!cfg) return;
@@ -1867,7 +1949,10 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
             style={{
               ["--walk-from" as string]: `${wk.fromX}px`,
               ["--walk-to" as string]: `${wk.toX}px`,
-              animation: `wall-walk ${wk.duration}s linear 1 forwards`,
+              // Negative delay starts the crossing already partway through —
+              // used for the initial on-mount seed so walkers appear mid-route
+              // immediately instead of all starting from the screen edge.
+              animation: `wall-walk ${wk.duration}s linear ${wk.elapsed > 0 ? `-${wk.elapsed}s` : "0s"} 1 forwards`,
             }}
           >
             {/* Wiggle wrapper — separate <g> from the crossing translateX above
@@ -1944,6 +2029,7 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
   const windows = computeWindowPositions(width);
   const lamps = computeLampPositions(width);
   const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
+  const walkerQualityCap = useGameStore((s) => WALKER_CAP_BY_QUALITY[s.graphics.quality]);
   const walkerTuning = useWalkerTuningStore((s) => ({
     sizeMin: s.sizeMin, sizeMax: s.sizeMax,
     speedMin: s.speedMin, speedMax: s.speedMax,
@@ -1951,7 +2037,7 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
     maxConcurrent: s.maxConcurrent,
   }));
   const forceSpawnToken = useWalkerTuningStore((s) => s.forceSpawnToken);
-  const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken);
+  const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken, walkerQualityCap);
 
   return (
     <button

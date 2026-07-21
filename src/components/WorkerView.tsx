@@ -18,6 +18,7 @@ import {
   autoClickReductionPerSec,
 } from "../engine/autoclick";
 import { fmt, fmtDuration } from "../util/format";
+import { useRenderTick } from "../hooks/useRenderTick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
 import { IconCoin, IconStarToken, IconClose, IconHammer, IconSparkle, ICONS } from "./ui/icons";
@@ -44,7 +45,7 @@ function LogisticsBreakdown({ worker, distance }: { worker: Worker; distance: nu
   const finalSecs = afterSpeed * Math.max(0.05, 1 - bonuses.speedPct / 100);
 
   const baseCarry = worker.retrieval_size * (1 + fx.caravan_size_pct / 100);
-  const finalCarry = bonuses.cargoPct > 0 ? Math.ceil(baseCarry * (1 + bonuses.cargoPct / 100)) : baseCarry;
+  const finalCarry = bonuses.cargoPct > 0 ? baseCarry * (1 + bonuses.cargoPct / 100) : baseCarry;
 
   return (
     <div className="col-span-2 rounded-lg bg-slate-800/60 p-2.5">
@@ -76,10 +77,10 @@ function LogisticsBreakdown({ worker, distance }: { worker: Worker; distance: nu
               Base {baseCarry.toFixed(1)}
               <span className="text-slate-500"> ──▶ </span>
               <span className={bonuses.cargoPct > 0 ? "text-emerald-500" : "text-slate-500"}>
-                Regional Settlement Advantage (+{bonuses.cargoPct.toFixed(1)}%{bonuses.cargoPct > 0 ? ", rounded up" : ""})
+                Regional Settlement Advantage (+{bonuses.cargoPct.toFixed(1)}%)
               </span>
               <span className="text-slate-500"> ──▶ </span>
-              <span className="font-bold text-cyan-500">{typeof finalCarry === "number" && bonuses.cargoPct > 0 ? finalCarry : baseCarry.toFixed(1)}</span>
+              <span className="font-bold text-cyan-500">{finalCarry.toFixed(1)}</span>
             </div>
           </div>
           <p className="text-[9px] normal-nums text-slate-500">
@@ -178,12 +179,9 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
   const unlockedLocations = useGameStore((s) => s.unlockedLocations);
   const bulkAssign = useGameStore((s) => s.bulkAssign);
   const cfg = useConfigStore();
-  // Re-render at ~8fps so trip progress bars animate — no second game loop needed
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((n) => (n + 1) % 1000000), 125);
-    return () => clearInterval(id);
-  }, []);
+  // Re-render at ~8fps so trip progress bars animate — shared ticker, no
+  // second independent timer alongside useGameLoop's own render cadence.
+  useRenderTick();
   const [detailIdx, setDetailIdx] = useState<number | null>(null);
 
   // Roster controls

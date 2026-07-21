@@ -304,15 +304,19 @@ export function locationTripSecs(
   return gatherRoundTrip(distance, gatherSpeed) * Math.max(0.05, 1 - speedPct / 100);
 }
 
-/** A worker's effective carry for gathering in a region (Cargo Supply passive,
- *  rounded up per spec) — applied on top of caravan mastery. */
+/** A worker's effective carry for gathering in a region (Cargo Supply passive)
+ *  — applied on top of caravan mastery. Stays fractional; callers already
+ *  handle fractional carry via the same floor + probabilistic-remainder
+ *  pattern as base retrieval_size (see the "Guarantees N, X% chance for N+1"
+ *  yield), so rounding up here would silently double a small bonus (e.g. a
+ *  1.1 carry becoming a guaranteed 2). */
 export function regionalCarry(
   prosperity: Record<string, SettlementProsperityEntry>,
   distance: number,
   baseSize: number
 ): number {
   const { cargoPct } = regionalBonusesAt(prosperity, distance);
-  return cargoPct > 0 ? Math.ceil(baseSize * (1 + cargoPct / 100)) : baseSize;
+  return cargoPct > 0 ? baseSize * (1 + cargoPct / 100) : baseSize;
 }
 
 function pickDrop(drops: { ingredientId: string; weight: number }[]): string {
@@ -1050,7 +1054,7 @@ export const useGameStore = create<GameState>()(
         if (!loc) return;
 
         const fx = computeMasteryEffects(s.masteryUnlocks);
-        // Cargo Supply Town passive: regional prosperity boosts carry (ceil).
+        // Cargo Supply Town passive: regional prosperity boosts carry.
         const size = regionalCarry(
           s.settlementProsperity, loc.distance,
           w.retrieval_size * (1 + fx.caravan_size_pct / 100)
