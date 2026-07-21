@@ -15,6 +15,9 @@ export interface Quest {
   difficulty: QuestDifficulty;
   requirements: QuestRequirement[];
   reward: number;
+  /** Real wall-clock ms timestamp the quest was issued — drives the 24h
+   *  "quest-giver tantrum" expiry check (see checkQuestTantrum in gameStore). */
+  issuedAt: number;
 }
 
 export const DIFFICULTIES: QuestDifficulty[] = ["Easy", "Medium", "Challenging"];
@@ -163,7 +166,7 @@ export function generateQuest(
   const base = chosen.reduce((a, g, i) => a + g.maxValue * quantities[i], 0);
   const reward = Math.max(100, Math.round((base * DIFFICULTY_BONUS[difficulty]) / 100) * 100);
 
-  return { id: questId(), difficulty, requirements, reward };
+  return { id: questId(), difficulty, requirements, reward, issuedAt: Date.now() };
 }
 
 /** Always return exactly one quest per difficulty tier. */

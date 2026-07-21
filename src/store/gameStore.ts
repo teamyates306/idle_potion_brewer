@@ -22,7 +22,7 @@ import {
   regionalBonuses,
   type RegionalBonuses,
 } from "../engine/prosperity";
-import { gameDay } from "../engine/clock";
+import { gameDay, DAY_DURATION_MS } from "../engine/clock";
 import {
   GAX_EVENTS_BY_ID,
   type GaxEventState,
@@ -124,6 +124,19 @@ export const QUEST_COOLDOWNS_MS: Record<QuestDifficulty, number> = {
   Medium: 45 * 60 * 1000,
   Challenging: 60 * 60 * 1000,
 };
+
+// A quest left un-actioned this long (real wall-clock time — matches how the
+// player actually experiences "24 hours", not compressed game-days) triggers
+// the quest-giver tantrum: the adventurer storms off, and potion prices take
+// a temporary hit while word of the bad service gets around.
+export const QUEST_TANTRUM_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export interface SalesPenalty {
+  multiplier: number;  // e.g. 0.92 for an 8% sell-price hit
+  discountPct: number; // display-only, e.g. 8
+  days: number;         // display-only, how many in-game days it was rolled for
+  expiresAt: number;    // real ms timestamp
+}
 
 // ---- Machine configuration ------------------------------------------------
 const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
@@ -538,6 +551,8 @@ interface GameState {
   questsUnlocked: boolean;
   activeQuests: Quest[];
   questCooldowns: Partial<Record<QuestDifficulty, number>>;
+  /** Active "quest-giver tantrum" sell-price debuff, or null. See checkQuestTantrum. */
+  salesPenalty: SalesPenalty | null;
 
   // discovery bounty
   discoveryBounty: DiscoveryBounty | null;
@@ -611,6 +626,14 @@ interface GameState {
   completeQuest: (questId: string) => void;
   /** Pay half the quest's reward to swap it for a fresh one of the same difficulty. */
   rerollQuest: (questId: string) => void;
+  /** Called once per login (after any welcome-back/restore UI is clear). If a
+   *  quest sat un-actioned past QUEST_TANTRUM_WINDOW_MS, removes it, starts a
+   *  temporary sell-price penalty, and returns the details for the UI to play
+   *  the tantrum animation + explainer modal. Returns null if nothing missed. */
+  checkQuestTantrum: () => { questId: string; difficulty: QuestDifficulty; discountPct: number; days: number } | null;
+  /** Dev/testing hook: backdates the first active quest to ~1s from tripping
+   *  the tantrum window. Returns false if there's no active quest to use. */
+  forceQuestTantrumSoon: () => boolean;
   refreshDiscoveryBounty: () => void;
   claimDiscoveryBounty: () => void;
   /** Pay half the bounty's reward to roll a new discovery target immediately. */
@@ -742,6 +765,7 @@ export const useGameStore = create<GameState>()(
       questsUnlocked: false,
       activeQuests: [],
       questCooldowns: {},
+      salesPenalty: null,
       discoveryBounty: null,
       settlementProsperity: {},
       gameStartDay: gameDay(now()),
@@ -1862,8 +1886,16 @@ export const useGameStore = create<GameState>()(
         // it's accurate the moment the player unlocks it).
         const mult = s.gaxUnlocked ? potionPriceMultiplier(m, day, stats) : 1;
         recordSale(m, stats, count);
-        set({ gaxMarket: m });
-        return mult;
+
+        // Quest-giver tantrum penalty — lazily cleared once it expires, same
+        // pattern as the GAX market's own lazy day-settle above.
+        let penalty = s.salesPenalty;
+        let patch: Partial<GameState> = { gaxMarket: m };
+        if (penalty) {
+          if (now() >= penalty.expiresAt) { penalty = null; patch = { ...patch, salesPenalty: null }; }
+        }
+        set(patch);
+        return mult * (penalty ? penalty.multiplier : 1);
       },
 
       rerollQuest: (questId) => {
@@ -1880,6 +1912,40 @@ export const useGameStore = create<GameState>()(
           coins: s.coins - cost,
           activeQuests: s.activeQuests.map((q) => (q.id === questId ? fresh : q)),
         });
+      },
+
+      checkQuestTantrum: () => {
+        const s = get();
+        const nowT = now();
+        const missed = s.activeQuests.find((q) => nowT - q.issuedAt > QUEST_TANTRUM_WINDOW_MS);
+        if (!missed) return null;
+
+        const discountPct = 5 + Math.random() * 5; // 5–10%
+        const days = 3 + Math.floor(Math.random() * 3); // 3, 4, or 5
+        const activeQuests = s.activeQuests.filter((q) => q.id !== missed.id);
+        const questCooldowns = { ...(s.questCooldowns ?? {}), [missed.difficulty]: nowT + QUEST_COOLDOWNS_MS[missed.difficulty] };
+        set({
+          activeQuests,
+          questCooldowns,
+          salesPenalty: {
+            multiplier: 1 - discountPct / 100,
+            discountPct,
+            days,
+            expiresAt: nowT + days * DAY_DURATION_MS,
+          },
+        });
+        return { questId: missed.id, difficulty: missed.difficulty, discountPct, days };
+      },
+
+      forceQuestTantrumSoon: () => {
+        const s = get();
+        if (s.activeQuests.length === 0) return false;
+        const target = s.activeQuests[0];
+        const backdatedIssuedAt = now() - QUEST_TANTRUM_WINDOW_MS + 1000; // ~1s from expiring
+        set({
+          activeQuests: s.activeQuests.map((q) => (q.id === target.id ? { ...q, issuedAt: backdatedIssuedAt } : q)),
+        });
+        return true;
       },
 
       rerollDiscoveryBounty: () => {
@@ -2626,6 +2692,7 @@ export const useGameStore = create<GameState>()(
           questsUnlocked: false,
           activeQuests: [],
           questCooldowns: {},
+          salesPenalty: null,
           discoveryBounty: null,
           settlementProsperity: {},
           gameStartDay: gameDay(now()),
@@ -2760,6 +2827,7 @@ export const useGameStore = create<GameState>()(
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
+        salesPenalty: s.salesPenalty,
         discoveryBounty: s.discoveryBounty,
         settlementProsperity: s.settlementProsperity,
         gameStartDay: s.gameStartDay,
@@ -2908,6 +2976,12 @@ export const useGameStore = create<GameState>()(
           // Cooldown state is not persisted across reloads — on return the player
           // always gets a fresh bounty rather than sitting in a countdown.
           discoveryBounty: p.discoveryBounty?.cooldownUntil != null ? null : (p.discoveryBounty ?? null),
+          // Pre-tantrum-feature saves carry quests with no issuedAt — grandfather
+          // them in as freshly issued rather than instantly "expired".
+          activeQuests: (p.activeQuests ?? current.activeQuests).map((q) =>
+            typeof q.issuedAt === "number" ? q : { ...q, issuedAt: now() }
+          ),
+          salesPenalty: p.salesPenalty ?? null,
         };
       },
     }

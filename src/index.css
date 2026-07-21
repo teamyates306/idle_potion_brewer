@@ -300,6 +300,20 @@ body {
   75%        { transform: translateY(-1.4px) rotate(6deg);  }
 }
 
+/* Quest-giver tantrum — angry shake on the adventurer, bounce on the
+   knocked-out worker's stars */
+@keyframes tantrum-shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20%       { transform: translateX(-3px) rotate(-2deg); }
+  40%       { transform: translateX(3px) rotate(2deg); }
+  60%       { transform: translateX(-2px) rotate(-1deg); }
+  80%       { transform: translateX(2px) rotate(1deg); }
+}
+@keyframes tantrum-star-bounce {
+  0%, 100% { transform: translateY(0) rotate(0deg); opacity: 0.9; }
+  50%       { transform: translateY(-5px) rotate(15deg); opacity: 1; }
+}
+
 /* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
 @keyframes lamp-flicker {
   0%,  100% { opacity: 1;    }

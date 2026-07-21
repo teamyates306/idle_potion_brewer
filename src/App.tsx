@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Settings, Settings2, ScrollText, Trophy, Sparkles, HelpCircle, Landmark, Eye, EyeOff } from "lucide-react";
+import { Settings, Settings2, ScrollText, Trophy, Sparkles, HelpCircle, Landmark, Eye, EyeOff, Angry } from "lucide-react";
 import HelpModal from "./components/HelpModal";
 import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
@@ -35,10 +35,13 @@ import FATLayer from "./components/ui/FATLayer";
 import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
 import LoadingScreen from "./components/LoadingScreen";
 import SettingsModal from "./components/SettingsModal";
+import QuestTantrumOverlay, { type TantrumTrigger } from "./components/QuestTantrumOverlay";
 import { useGameStore } from "./store/gameStore";
 import { useSettingsStore } from "./store/settingsStore";
+import { useTantrumStore } from "./store/tantrumStore";
 import { usePerformanceMonitor } from "./hooks/usePerformanceMonitor";
 import { fmt, fmtDuration } from "./util/format";
+import { pushToast } from "./util/toast";
 
 type Panel = "map" | "worker" | "machine" | "potion" | "inventory" | "quests" | "guild" | "progress" | "dev" | "help" | "gax" | "leaderboard" | null;
 
@@ -190,6 +193,37 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshQuests, settleGax]);
 
+  // Quest-giver tantrum: checked exactly once per login, once the screen is
+  // actually clear for the player to see (loading done, and no welcome-back
+  // catch-up modal still covering it) — not on a timer, so it can never fire
+  // mid-session while the player is looking at something else.
+  const [tantrumTrigger, setTantrumTrigger] = useState<TantrumTrigger | null>(null);
+  const [tantrumResult, setTantrumResult] = useState<TantrumTrigger | null>(null);
+  const [hasCheckedTantrum, setHasCheckedTantrum] = useState(false);
+  const setTantrumActive = useTantrumStore((s) => s.setActive);
+  const runTantrumCheck = () => {
+    const result = useGameStore.getState().checkQuestTantrum();
+    if (result) { setTantrumActive(true); setTantrumTrigger(result); }
+    return result;
+  };
+  useEffect(() => {
+    if (hasCheckedTantrum || !ready || welcomeBack) return;
+    setHasCheckedTantrum(true);
+    runTantrumCheck();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, welcomeBack, hasCheckedTantrum]);
+
+  // Dev/testing hook — "Trigger Tantrum" button backdates the first active
+  // quest to ~1s from tripping the 24h window, then re-runs the same check
+  // a moment later, exactly as it would fire naturally on a real login.
+  const handleForceTantrum = () => {
+    if (!useGameStore.getState().forceQuestTantrumSoon()) {
+      pushToast("No active quest to expire — accept one first.", "amber");
+      return;
+    }
+    window.setTimeout(runTantrumCheck, 1100);
+  };
+
   if (!ready) return <LoadingScreen />;
 
   return (
@@ -273,6 +307,19 @@ export default function App() {
         </button>
       )}
 
+      {/* Trigger Tantrum — testing hook for the quest-giver tantrum sequence.
+          Backdates the first active quest to ~1s from expiring, then lets
+          the normal check fire it exactly as it would on a real login. */}
+      {!cleanView && (
+        <button
+          onClick={handleForceTantrum}
+          className={`absolute left-11 z-[4] flex items-center gap-1 rounded-full border border-rose-800/40 bg-rose-950/30 px-2 py-1 text-[10px] font-semibold text-rose-400 opacity-60 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
+          title="Force a quest to expire and play the tantrum sequence"
+        >
+          <Angry size={13} /> Trigger Tantrum
+        </button>
+      )}
+
       {/* Clean View toggle — always visible, even with everything else
           hidden, so the player can always get the chrome back. Mirrors the
           dev toggle's placement/style on the opposite corner. */}
@@ -333,6 +380,33 @@ export default function App() {
       <CloudRestoreModal />
 
       <FATLayer />
+
+      {tantrumTrigger && (
+        <QuestTantrumOverlay
+          trigger={tantrumTrigger}
+          onDone={() => {
+            setTantrumActive(false);
+            setTantrumResult(tantrumTrigger);
+            setTantrumTrigger(null);
+          }}
+        />
+      )}
+
+      {tantrumResult && (
+        <Modal title="A Customer Complaint" onClose={() => setTantrumResult(null)} accent="#f43f5e">
+          <p className="mb-3 text-sm text-slate-300">
+            A quest-giver waited 24 hours for an order that never came, and finally
+            stormed out — throwing a bottle at one of your workers on the way.
+            Word travels fast in this town.
+          </p>
+          <p className="text-sm text-slate-300">
+            For the next{" "}
+            <span className="font-semibold text-rose-500">{tantrumResult.days} days</span>, potion sale
+            prices are down{" "}
+            <span className="font-semibold text-rose-500">{tantrumResult.discountPct.toFixed(1)}%</span>.
+          </p>
+        </Modal>
+      )}
 
       {welcomeBack && (
         <Modal title="Welcome Back, Brewmaster" onClose={dismissWelcome} accent="#22d3ee">

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { subscribeFAT, type FATItem } from "../../util/fat";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useGameStore } from "../../store/gameStore";
+import { useTantrumStore } from "../../store/tantrumStore";
 
 // Concurrent floating-text cap per graphics quality tier (0 Basic … 3 Very
 // High) — mirrors WORKER_CAP_BY_QUALITY in Workshop.tsx. Late-game, a lot of
@@ -74,7 +75,8 @@ export default function FATLayer() {
       // when a lot is happening late game, unbounded DOM nodes (each with its
       // own animation + text shadow) are the main source of jitter. Oldest
       // entries are dropped first.
-      const cap = FAT_CAP_BY_QUALITY[useGameStore.getState().graphics.quality];
+      const qualityCap = FAT_CAP_BY_QUALITY[useGameStore.getState().graphics.quality];
+      const cap = useTantrumStore.getState().active ? Math.min(6, qualityCap) : qualityCap;
       setItems((prev) => (prev.length >= cap ? [...prev.slice(prev.length - (cap - 1)), item] : [...prev, item]));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

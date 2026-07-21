@@ -8,6 +8,7 @@ import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
+import { useTantrumStore } from "../store/tantrumStore";
 import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
@@ -1405,6 +1406,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
   const graphics        = useGameStore((s) => s.graphics);
   const cleanView       = useSettingsStore((s) => s.cleanViewEnabled);
+  const tantrumActive   = useTantrumStore((s) => s.active);
   const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
   const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
@@ -1434,7 +1436,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   // Idle workers are prioritised (they're exactly the ones implying the
   // player needs to take action) over ones mid-trip, which are hidden first.
   const visibleWorkerIdx = (() => {
-    const cap = WORKER_CAP_BY_QUALITY[graphics.quality];
+    // Clamp further while the quest-giver tantrum animation plays — makes
+    // visual room for it, same idea as the quality-tier caps above.
+    const cap = tantrumActive ? Math.min(3, WORKER_CAP_BY_QUALITY[graphics.quality]) : WORKER_CAP_BY_QUALITY[graphics.quality];
     const pool = workers
       .map((w, idx) => idx)
       .filter((idx) => workers[idx]?.assigned_machine_id == null);
