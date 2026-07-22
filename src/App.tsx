@@ -406,13 +406,13 @@ export default function App() {
       {tantrumResult && (
         <Modal title="A Customer Complaint" onClose={() => setTantrumResult(null)} accent="#f43f5e">
           <p className="mb-3 text-sm text-slate-300">
-            A quest-giver waited 24 hours for an order that never came, and finally
-            stormed out — throwing a bottle at one of your workers on the way.
-            Word travels fast in this town.
+            A full day went by without a single quest fulfilled, and one quest-giver
+            finally lost their patience — storming out and throwing a bottle at one
+            of your workers on the way. Word travels fast in this town.
           </p>
           <p className="text-sm text-slate-300">
             For the next{" "}
-            <span className="font-semibold text-rose-500">{tantrumResult.days} days</span>, potion sale
+            <span className="font-semibold text-rose-500">{tantrumResult.days} in-game days</span>, potion sale
             prices are down{" "}
             <span className="font-semibold text-rose-500">{tantrumResult.discountPct.toFixed(1)}%</span>.
           </p>

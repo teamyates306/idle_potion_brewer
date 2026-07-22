@@ -92,9 +92,35 @@ function fmtCountdown(ms: number): string {
   return `${sec}s`;
 }
 
+// Broad "complete at least one quest" clock — applies once to the whole
+// board, not per-card. Ticks live off the parent's 1s interval.
+function QuestPatienceBar({ lastQuestCompletionAt }: { lastQuestCompletionAt: number }) {
+  const elapsed = Date.now() - lastQuestCompletionAt;
+  const pct = Math.min(100, (elapsed / QUEST_TANTRUM_WINDOW_MS) * 100);
+  const msLeft = QUEST_TANTRUM_WINDOW_MS - elapsed;
+  const urgent = msLeft < 2 * 60 * 60 * 1000; // under 2h left
+  const barColor = pct >= 90 ? "bg-rose-500" : pct >= 65 ? "bg-amber-500" : "bg-emerald-500";
+
+  return (
+    <div className="mb-3 rounded-lg border border-slate-700 bg-slate-800/50 p-2.5">
+      <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider">
+        <span className="flex items-center gap-1 text-slate-400">
+          <Hourglass size={11} /> Complete a quest before patience runs out
+        </span>
+        <span className={urgent ? "text-rose-500" : "text-slate-400"}>{fmtCountdown(msLeft)} left</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-900">
+        <div className={`h-full transition-[width] ${barColor}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export default function QuestView({ onClose }: { onClose: () => void }) {
   const activeQuests = useGameStore((s) => s.activeQuests);
   const questCooldowns = useGameStore((s) => s.questCooldowns);
+  const questsUnlocked = useGameStore((s) => s.questsUnlocked);
+  const lastQuestCompletionAt = useGameStore((s) => s.lastQuestCompletionAt);
   const refreshQuests = useGameStore((s) => s.refreshQuests);
   const discovered = useGameStore((s) => s.discovered);
   const discoveryBounty = useGameStore((s) => s.discoveryBounty);
@@ -153,8 +179,14 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
           <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
             Quests are fulfilled from your potion inventory — the potions must actually be sitting in
             your stash, so don't auto-sell a recipe you're saving for a quest. Matching any recipe with
-            the requested name counts, regardless of which exact ingredients brewed it.
+            the requested name counts, regardless of which exact ingredients brewed it. Complete at
+            least one of your three active quests every 24 hours, or word gets around and potion
+            prices take a temporary hit.
           </p>
+        )}
+
+        {questsUnlocked && lastQuestCompletionAt != null && (
+          <QuestPatienceBar lastQuestCompletionAt={lastQuestCompletionAt} />
         )}
 
         <div className="space-y-3">
@@ -270,11 +302,6 @@ function QuestCard({
   // itself does (a fresh quest.id).
   const adventurer = useMemo(() => generateAdventurer(quest.id), [quest.id]);
   const adventurerLevel = generateAdventurerLevel(quest.id, quest.difficulty);
-  // How long left before this quest-giver loses patience — see
-  // checkQuestTantrum in gameStore. Parent QuestView re-renders every 1s so
-  // this stays live without its own timer.
-  const tantrumMsLeft = quest.issuedAt + QUEST_TANTRUM_WINDOW_MS - Date.now();
-  const tantrumUrgent = tantrumMsLeft < 2 * 60 * 60 * 1000; // under 2h left
 
   const handleComplete = (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -314,12 +341,6 @@ function QuestCard({
               Level {adventurerLevel} {adventurer.race} {CLASS_LABELS[adventurer.className]}
             </div>
           </div>
-          <span
-            className={`flex shrink-0 items-center gap-1 text-[10px] font-semibold ${tantrumUrgent ? "text-rose-500" : "text-slate-500"}`}
-            title="This adventurer loses patience if the quest isn't fulfilled in time"
-          >
-            <Hourglass size={11} /> {fmtCountdown(tantrumMsLeft)}
-          </span>
         </div>
       )}
       <div className="mb-2 flex items-center justify-between">

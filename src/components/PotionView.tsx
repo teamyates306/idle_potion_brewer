@@ -141,7 +141,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
           <div className="mb-3 rounded-lg border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
             <span className="font-bold">Bad reputation:</span> potion prices are down{" "}
             <span className="font-bold">{salesPenalty.discountPct.toFixed(1)}%</span> for{" "}
-            {Math.max(1, Math.ceil((salesPenalty.expiresAt - Date.now()) / DAY_DURATION_MS))} more day
+            {Math.max(1, Math.ceil((salesPenalty.expiresAt - Date.now()) / DAY_DURATION_MS))} more in-game day
             {Math.max(1, Math.ceil((salesPenalty.expiresAt - Date.now()) / DAY_DURATION_MS)) === 1 ? "" : "s"}.
           </div>
         )}

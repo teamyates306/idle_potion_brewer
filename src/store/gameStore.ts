@@ -125,10 +125,12 @@ export const QUEST_COOLDOWNS_MS: Record<QuestDifficulty, number> = {
   Challenging: 60 * 60 * 1000,
 };
 
-// A quest left un-actioned this long (real wall-clock time — matches how the
-// player actually experiences "24 hours", not compressed game-days) triggers
-// the quest-giver tantrum: the adventurer storms off, and potion prices take
-// a temporary hit while word of the bad service gets around.
+// If the player goes this long (real wall-clock time — matches how "24
+// hours" is actually experienced, not compressed game-days) without
+// completing AT LEAST ONE of the three active quests, the quest-giver
+// tantrum triggers: an adventurer storms off, and potion prices take a
+// temporary hit (in IN-GAME days — see SalesPenalty.days) while word of the
+// bad service gets around. See lastQuestCompletionAt / checkQuestTantrum.
 export const QUEST_TANTRUM_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export interface SalesPenalty {
@@ -553,6 +555,11 @@ interface GameState {
   questCooldowns: Partial<Record<QuestDifficulty, number>>;
   /** Active "quest-giver tantrum" sell-price debuff, or null. See checkQuestTantrum. */
   salesPenalty: SalesPenalty | null;
+  /** Real ms timestamp of the last completed quest (or when quests first
+   *  unlocked, if none completed yet). The player needs to complete AT
+   *  LEAST ONE quest — any of the three — within QUEST_TANTRUM_WINDOW_MS of
+   *  this, or the tantrum triggers. Null until quests unlock. */
+  lastQuestCompletionAt: number | null;
 
   // discovery bounty
   discoveryBounty: DiscoveryBounty | null;
@@ -626,13 +633,15 @@ interface GameState {
   completeQuest: (questId: string) => void;
   /** Pay half the quest's reward to swap it for a fresh one of the same difficulty. */
   rerollQuest: (questId: string) => void;
-  /** Called once per login (after any welcome-back/restore UI is clear). If a
-   *  quest sat un-actioned past QUEST_TANTRUM_WINDOW_MS, removes it, starts a
-   *  temporary sell-price penalty, and returns the details for the UI to play
-   *  the tantrum animation + explainer modal. Returns null if nothing missed. */
+  /** Called once per login (after any welcome-back/restore UI is clear). If
+   *  the player went past QUEST_TANTRUM_WINDOW_MS without completing AT
+   *  LEAST ONE active quest, removes one active quest (to represent in the
+   *  animation), starts a temporary sell-price penalty (in in-game days),
+   *  and returns the details for the UI to play the tantrum animation +
+   *  explainer modal. Returns null if nothing was missed. */
   checkQuestTantrum: () => { questId: string; difficulty: QuestDifficulty; discountPct: number; days: number } | null;
-  /** Dev/testing hook: backdates the first active quest to ~1s from tripping
-   *  the tantrum window. Returns false if there's no active quest to use. */
+  /** Dev/testing hook: backdates lastQuestCompletionAt to ~1s from tripping
+   *  the tantrum window. Always succeeds — synthesizes a quest if none exist. */
   forceQuestTantrumSoon: () => boolean;
   refreshDiscoveryBounty: () => void;
   claimDiscoveryBounty: () => void;
@@ -766,6 +775,7 @@ export const useGameStore = create<GameState>()(
       activeQuests: [],
       questCooldowns: {},
       salesPenalty: null,
+      lastQuestCompletionAt: null,
       discoveryBounty: null,
       settlementProsperity: {},
       gameStartDay: gameDay(now()),
@@ -1809,7 +1819,12 @@ export const useGameStore = create<GameState>()(
 
         if (changed) {
           const firstUnlock = !s.questsUnlocked;
-          set({ questsUnlocked: true, activeQuests, questCooldowns: cooldowns });
+          set({
+            questsUnlocked: true, activeQuests, questCooldowns: cooldowns,
+            // Starts the "complete at least one quest" clock the moment
+            // quests first become available.
+            lastQuestCompletionAt: firstUnlock ? nowT : s.lastQuestCompletionAt,
+          });
           if (firstUnlock) get().pushHint("quests_unlocked");
         }
       },
@@ -1830,6 +1845,8 @@ export const useGameStore = create<GameState>()(
           coins: s.coins + quest.reward, potionInv, activeQuests, questCooldowns,
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + quest.reward,
           quests_completed_count: (s.quests_completed_count ?? 0) + 1,
+          // Completing ANY quest resets the broad "at least one in 24h" clock.
+          lastQuestCompletionAt: now(),
         });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()}`);
         get().checkAchievements("coins", s.coins + quest.reward);
@@ -1914,19 +1931,30 @@ export const useGameStore = create<GameState>()(
         });
       },
 
+      // Broad rule: the player needs to complete AT LEAST ONE of the three
+      // active quests — any of them — within QUEST_TANTRUM_WINDOW_MS of the
+      // last completion (or of quests first unlocking). It's no longer
+      // per-quest; a single global clock covers all three slots.
       checkQuestTantrum: () => {
         const s = get();
         const nowT = now();
-        const missed = s.activeQuests.find((q) => nowT - q.issuedAt > QUEST_TANTRUM_WINDOW_MS);
-        if (!missed) return null;
+        if (s.lastQuestCompletionAt == null) return null;
+        if (nowT - s.lastQuestCompletionAt <= QUEST_TANTRUM_WINDOW_MS) return null;
+        // Nothing to blame it on right now — the periodic refresh will
+        // repopulate a slot shortly and this gets rechecked then.
+        const target = s.activeQuests[0];
+        if (!target) return null;
 
         const discountPct = 5 + Math.random() * 5; // 5–10%
-        const days = 3 + Math.floor(Math.random() * 3); // 3, 4, or 5
-        const activeQuests = s.activeQuests.filter((q) => q.id !== missed.id);
-        const questCooldowns = { ...(s.questCooldowns ?? {}), [missed.difficulty]: nowT + QUEST_COOLDOWNS_MS[missed.difficulty] };
+        const days = 3 + Math.floor(Math.random() * 3); // 3, 4, or 5 IN-GAME days
+        const activeQuests = s.activeQuests.filter((q) => q.id !== target.id);
+        const questCooldowns = { ...(s.questCooldowns ?? {}), [target.difficulty]: nowT + QUEST_COOLDOWNS_MS[target.difficulty] };
         set({
           activeQuests,
           questCooldowns,
+          // Restart the clock — the player gets another full window rather
+          // than an immediate repeat tantrum on the very next check.
+          lastQuestCompletionAt: nowT,
           salesPenalty: {
             multiplier: 1 - discountPct / 100,
             discountPct,
@@ -1934,33 +1962,31 @@ export const useGameStore = create<GameState>()(
             expiresAt: nowT + days * DAY_DURATION_MS,
           },
         });
-        return { questId: missed.id, difficulty: missed.difficulty, discountPct, days };
+        return { questId: target.id, difficulty: target.difficulty, discountPct, days };
       },
 
       forceQuestTantrumSoon: () => {
         const s = get();
-        const backdatedIssuedAt = now() - QUEST_TANTRUM_WINDOW_MS + 1000; // ~1s from expiring
+        const nowT = now();
+        const backdated = nowT - QUEST_TANTRUM_WINDOW_MS + 1000; // ~1s from tripping
         if (s.activeQuests.length === 0) {
           // Real quests don't unlock until UNIQUE_NAMES_TO_UNLOCK_QUESTS
           // potions are discovered, so this button used to just fail with
           // "no active quest" on any early save. checkQuestTantrum only
-          // needs an id + difficulty (to derive the adventurer) and
-          // issuedAt — synthesize a throwaway quest so the sequence can
-          // always be demoed on demand, without requiring real progress.
+          // needs a quest's id + difficulty (to derive the adventurer) —
+          // synthesize a throwaway one so the sequence can always be demoed
+          // on demand, without requiring real progress.
           const synthetic: Quest = {
             id: `demo-${Date.now().toString(36)}`,
             difficulty: "Easy",
             requirements: [],
             reward: 0,
-            issuedAt: backdatedIssuedAt,
+            issuedAt: nowT,
           };
-          set({ activeQuests: [...s.activeQuests, synthetic] });
+          set({ activeQuests: [...s.activeQuests, synthetic], lastQuestCompletionAt: backdated });
           return true;
         }
-        const target = s.activeQuests[0];
-        set({
-          activeQuests: s.activeQuests.map((q) => (q.id === target.id ? { ...q, issuedAt: backdatedIssuedAt } : q)),
-        });
+        set({ lastQuestCompletionAt: backdated });
         return true;
       },
 
@@ -2709,6 +2735,7 @@ export const useGameStore = create<GameState>()(
           activeQuests: [],
           questCooldowns: {},
           salesPenalty: null,
+          lastQuestCompletionAt: null,
           discoveryBounty: null,
           settlementProsperity: {},
           gameStartDay: gameDay(now()),
@@ -2844,6 +2871,7 @@ export const useGameStore = create<GameState>()(
         activeQuests: s.activeQuests,
         questCooldowns: s.questCooldowns,
         salesPenalty: s.salesPenalty,
+        lastQuestCompletionAt: s.lastQuestCompletionAt,
         discoveryBounty: s.discoveryBounty,
         settlementProsperity: s.settlementProsperity,
         gameStartDay: s.gameStartDay,
@@ -2998,6 +3026,12 @@ export const useGameStore = create<GameState>()(
             typeof q.issuedAt === "number" ? q : { ...q, issuedAt: now() }
           ),
           salesPenalty: p.salesPenalty ?? null,
+          // Pre-this-feature saves with quests already unlocked start the
+          // clock fresh now, rather than null (which would just hide the
+          // broad timer bar) or defaulting to "now" minus nothing, which
+          // would be fine too — either way nobody should be grandfathered
+          // straight into an instant tantrum.
+          lastQuestCompletionAt: p.lastQuestCompletionAt ?? (p.questsUnlocked ? now() : null),
         };
       },
     }
