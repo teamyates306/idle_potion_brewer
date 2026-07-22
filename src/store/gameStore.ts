@@ -1939,9 +1939,25 @@ export const useGameStore = create<GameState>()(
 
       forceQuestTantrumSoon: () => {
         const s = get();
-        if (s.activeQuests.length === 0) return false;
-        const target = s.activeQuests[0];
         const backdatedIssuedAt = now() - QUEST_TANTRUM_WINDOW_MS + 1000; // ~1s from expiring
+        if (s.activeQuests.length === 0) {
+          // Real quests don't unlock until UNIQUE_NAMES_TO_UNLOCK_QUESTS
+          // potions are discovered, so this button used to just fail with
+          // "no active quest" on any early save. checkQuestTantrum only
+          // needs an id + difficulty (to derive the adventurer) and
+          // issuedAt — synthesize a throwaway quest so the sequence can
+          // always be demoed on demand, without requiring real progress.
+          const synthetic: Quest = {
+            id: `demo-${Date.now().toString(36)}`,
+            difficulty: "Easy",
+            requirements: [],
+            reward: 0,
+            issuedAt: backdatedIssuedAt,
+          };
+          set({ activeQuests: [...s.activeQuests, synthetic] });
+          return true;
+        }
+        const target = s.activeQuests[0];
         set({
           activeQuests: s.activeQuests.map((q) => (q.id === target.id ? { ...q, issuedAt: backdatedIssuedAt } : q)),
         });
