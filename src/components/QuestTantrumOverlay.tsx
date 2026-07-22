@@ -119,7 +119,14 @@ export default function QuestTantrumOverlay({
             style={{
               left: adventurerX + 22, width: 22, height: 22,
               ["--tbx" as string]: "94px",
-              animation: `tantrum-bottle-throw ${THROW_ARC_MS}ms cubic-bezier(0.33,0,0.2,1) 1 forwards`,
+              // linear, not eased: a non-linear timing function gets
+              // reapplied identically at EVERY keyframe stop below, so each
+              // segment decelerates/re-accelerates on its own — that's what
+              // read as "stop-start" rather than one continuous arc. The
+              // parabola shape already comes from the keyframe stops
+              // themselves, not from easing, so linear interpolation between
+              // them is what actually looks smooth.
+              animation: `tantrum-bottle-throw ${THROW_ARC_MS}ms linear 1 forwards`,
             }}
           />
         )}

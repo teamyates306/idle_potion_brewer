@@ -316,11 +316,21 @@ body {
 /* Thrown-bottle lob — a proper rising-then-falling arc with a tumble,
    rather than a straight slide, from the adventurer's hand to its target. */
 @keyframes tantrum-bottle-throw {
+  /* Runs with `animation-timing-function: linear` (see QuestTantrumOverlay) —
+     a non-linear easing here would get reapplied at every stop below,
+     causing the arc to decelerate/re-accelerate at each one instead of
+     reading as one continuous throw. The parabola comes from these stops'
+     spacing/values, not from easing, so more (finer) stops = a smoother arc
+     under linear interpolation. */
   0%   { transform: translate(0, 0) rotate(0deg); }
-  15%  { transform: translate(calc(var(--tbx) * 0.15), -18px) rotate(60deg); }
-  50%  { transform: translate(calc(var(--tbx) * 0.5), -48px) rotate(220deg); }
-  85%  { transform: translate(calc(var(--tbx) * 0.9), -10px) rotate(420deg); }
-  100% { transform: translate(var(--tbx), 0) rotate(520deg); }
+  10%  { transform: translate(calc(var(--tbx) * 0.10), -12px) rotate(40deg); }
+  25%  { transform: translate(calc(var(--tbx) * 0.27), -32px) rotate(105deg); }
+  40%  { transform: translate(calc(var(--tbx) * 0.42), -44px) rotate(170deg); }
+  50%  { transform: translate(calc(var(--tbx) * 0.50), -48px) rotate(220deg); }
+  60%  { transform: translate(calc(var(--tbx) * 0.58), -44px) rotate(270deg); }
+  75%  { transform: translate(calc(var(--tbx) * 0.73), -32px) rotate(345deg); }
+  90%  { transform: translate(calc(var(--tbx) * 0.90), -12px) rotate(430deg); }
+  100% { transform: translate(var(--tbx), 0) rotate(500deg); }
 }
 
 /* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
