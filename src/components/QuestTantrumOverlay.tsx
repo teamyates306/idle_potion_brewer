@@ -17,19 +17,17 @@ export interface TantrumTrigger {
 const LINES = {
   approach: ["WHERE. ARE. MY POTIONS.", "TWENTY-FOUR HOURS. I COUNTED.", "I HAD A RAID TO CATCH!"],
   throw: ["THIS IS UNACCEPTABLE!", "I WAITED FOR NOTHING?!", "I DEMAND A REFUND!"],
-  drag: ["UNHAND ME!", "I'LL BE BACK!", "THIS ISN'T OVER, MERCHANT!"],
+  exit: ["THIS ISN'T OVER, MERCHANT!", "I'LL BE BACK!", "UNBELIEVABLE SERVICE!"],
 };
 function pick(arr: string[]): string {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Six beats: approach, throw, knockout hold, guards drag in, exit, gone.
-// Cumulative — each entry is how long that beat's UI state holds before
-// advancing to the next. (Slowed down from the first pass — the whole
-// sequence now runs a good deal longer so it reads instead of blinking by.)
-// The throw beat (index 1) is extra long so the bottle's arc has room to
-// play out smoothly instead of snapping across.
-const STEP_DURATIONS = [2000, 1600, 1900, 1700, 1700, 700];
+// Five beats: approach, throw, knockout hold, storms out, gone. Cumulative —
+// each entry is how long that beat's UI state holds before advancing to the
+// next. The throw beat (index 1) is extra long so the bottle's arc has room
+// to play out smoothly instead of snapping across.
+const STEP_DURATIONS = [2000, 1600, 1900, 1400, 700];
 const THROW_ARC_MS = 1450;
 
 export default function QuestTantrumOverlay({
@@ -41,10 +39,8 @@ export default function QuestTantrumOverlay({
   const [step, setStep] = useState(0);
   const adventurerRef = useRef(generateAdventurer(trigger.questId));
   const levelRef = useRef(generateAdventurerLevel(trigger.questId, trigger.difficulty));
-  const linesRef = useRef({ approach: pick(LINES.approach), throw: pick(LINES.throw), drag: pick(LINES.drag) });
+  const linesRef = useRef({ approach: pick(LINES.approach), throw: pick(LINES.throw), exit: pick(LINES.exit) });
   const victimHueRef = useRef(Math.floor(Math.random() * 6) * 60);
-  const guard1HueRef = useRef(Math.floor(Math.random() * 6) * 60);
-  const guard2HueRef = useRef(Math.floor(Math.random() * 6) * 60);
 
   useEffect(() => {
     if (!adventurerRef.current) { onDone(); return; }
@@ -62,24 +58,18 @@ export default function QuestTantrumOverlay({
   const adventurer = adventurerRef.current;
   if (!adventurer) return null;
 
-  // Everyone enters/exits vertically, "through the door" above the stage,
-  // same spot workers emerge from in the main workshop scene — rather than
-  // sliding in from off-screen left/right. 0 = on the floor, negative = up
-  // near the door (hidden/arriving/leaving). Step thresholds: 0 approach,
-  // 1 throw, 2 knockout hold, 3 drag-in, 4 exit, 5 gone.
-  const adventurerY = step === 0 ? -140 : step >= 4 ? -140 : 0;
-  const guardY = step < 3 ? -140 : step >= 4 ? -140 : 0;
-  const guardOpacity = step >= 3 && step < 5 ? 1 : 0;
+  // Enters/exits vertically, "through the door" above the stage, same spot
+  // workers emerge from in the main workshop scene — rather than sliding in
+  // from off-screen left/right. 0 = on the floor, negative = up near the
+  // door (hidden/arriving/leaving). Step thresholds: 0 approach, 1 throw,
+  // 2 knockout hold, 3 storms out alone, 4 gone.
+  const adventurerY = step === 0 ? -140 : step >= 3 ? -140 : 0;
   const adventurerX = 140;
   const victimX = 250;
-  // Guards flank tight enough to overlap the adventurer's sprite on each
-  // side — reads as gripping/hauling them rather than just standing nearby.
-  const guard1X = 108;
-  const guard2X = 172;
   const showStars = step >= 2 && step <= 3;
   const showBubble = step === 0 || step === 1 || step === 3;
-  const bubbleText = step === 0 ? linesRef.current.approach : step === 1 ? linesRef.current.throw : linesRef.current.drag;
-  const overlayOpacity = step >= 5 ? 0 : 1;
+  const bubbleText = step === 0 ? linesRef.current.approach : step === 1 ? linesRef.current.throw : linesRef.current.exit;
+  const overlayOpacity = step >= 4 ? 0 : 1;
 
   return (
     <div
@@ -131,10 +121,9 @@ export default function QuestTantrumOverlay({
           />
         )}
 
-        {/* Adventurer — drops down from the door, hauled back up through it.
-            Rendered before the guards so they visually sit in front while
-            hauling them off. */}
-        {/* Outer wrapper owns the door drop/haul (transform: translateY,
+        {/* Adventurer — drops down from the door, storms back out through it
+            alone once the deed is done. */}
+        {/* Outer wrapper owns the door drop/exit (transform: translateY,
             transitioned); inner wrapper owns the angry shake (transform:
             translateX+rotate, keyframe animation). Splitting them across two
             elements is required — a running CSS animation on `transform`
@@ -154,22 +143,6 @@ export default function QuestTantrumOverlay({
             )}
             <AdventurerSprite adventurer={adventurer} size={56} />
           </div>
-        </div>
-
-        {/* Guards — drop down from the door, flanking close enough to
-            overlap the adventurer so it reads as hauling them off rather
-            than just standing nearby. */}
-        <div
-          className="absolute bottom-2"
-          style={{ left: guard1X, transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
-        >
-          <WorkerArt size={52} active hueShift={guard1HueRef.current} />
-        </div>
-        <div
-          className="absolute bottom-2"
-          style={{ left: guard2X, transform: `translateY(${guardY}px)`, opacity: guardOpacity, transition: "transform 1100ms ease, opacity 600ms ease" }}
-        >
-          <WorkerArt size={52} active hueShift={guard2HueRef.current} />
         </div>
       </div>
       </div>
