@@ -235,7 +235,7 @@ function MachinePanelBody({
               key={i}
               onClick={() => !locked && setSlotModal(i)}
               {...(isTutSlot ? { "data-tut": "ingredient-slot" } : {})}
-              className={`relative flex aspect-square flex-col items-center justify-center rounded-lg border text-xs transition active:scale-95 ${
+              className={`relative flex aspect-square flex-col items-center justify-center rounded-lg border text-xs transition active:scale-95 lg:[&>svg]:h-6 lg:[&>svg]:w-6 ${
                 locked
                   ? "border-slate-700 bg-slate-900 text-slate-600"
                   : "border-amber-500/40 bg-slate-800 hover:border-amber-400"
@@ -245,16 +245,17 @@ function MachinePanelBody({
                 <Lock size={16} />
               ) : ing ? (
                 <>
-                  <IngredientSvg category={ing.category} rarity={ing.rarity} size={24} />
+                  {/* Sprite size can't be styled responsively (SVG width/height
+                      props), so render a desktop-sized twin gated by lg: */}
+                  <span className="lg:hidden"><IngredientSvg category={ing.category} rarity={ing.rarity} size={24} /></span>
+                  <span className="hidden lg:inline"><IngredientSvg category={ing.category} rarity={ing.rarity} size={44} /></span>
                   <span
-                    className="mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300"
-                    style={{ fontSize: "7px" }}
+                    className={`mt-0.5 w-full truncate px-0.5 text-center leading-none text-slate-300 text-[7px] lg:text-[10px]`}
                   >
                     {ing.name}
                   </span>
                   <span
-                    className="absolute right-1 top-1 font-bold leading-none text-slate-300"
-                    style={{ fontSize: count > 99 ? "7px" : "9px" }}
+                    className={`absolute right-1 top-1 font-bold leading-none text-slate-300 ${count > 99 ? "text-[7px]" : "text-[9px]"} lg:text-[11px]`}
                   >
                     {count > 999 ? "999+" : count}
                   </span>

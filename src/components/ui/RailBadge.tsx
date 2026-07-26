@@ -19,7 +19,7 @@ export default function RailBadge({
     <button
       data-tut={dataTut}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 ${
+      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 lg:right-5 lg:w-24 lg:gap-1.5 lg:py-3.5 lg:text-[11px] lg:[&_svg]:h-6 lg:[&_svg]:w-6 ${
         glow
           ? "border-amber-500 bg-amber-100 text-amber-900 shadow-[0_0_10px_2px_rgba(202,138,4,0.30)] hover:bg-amber-200"
           : "border-amber-800/50 bg-[#f4e9d0] text-amber-900 shadow-lg hover:bg-[#efe1c2]"
@@ -29,7 +29,7 @@ export default function RailBadge({
       <div className="relative">
         {icon}
         {badge && (
-          <span className="absolute -top-1.5 -right-2 rounded-full bg-yellow-500 px-1 text-[7px] font-bold text-black leading-tight">
+          <span className="absolute -top-1.5 -right-2 rounded-full bg-yellow-500 px-1 text-[7px] font-bold text-black leading-tight lg:-right-3 lg:px-1.5 lg:text-[9px]">
             {badge}
           </span>
         )}

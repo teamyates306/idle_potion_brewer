@@ -248,14 +248,14 @@ export default function App() {
             <CoinCounter />
             <button
               onClick={() => setPanel("help")}
-              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
+              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition lg:p-2 lg:[&_svg]:h-5 lg:[&_svg]:w-5"
               title="How to Play"
             >
               <HelpCircle size={16} />
             </button>
             <button
               onClick={() => setSettingsOpen(true)}
-              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition"
+              className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition lg:p-2 lg:[&_svg]:h-5 lg:[&_svg]:w-5"
               title="Settings"
             >
               <Settings size={16} />
@@ -579,12 +579,12 @@ function DockButton({ label, icon, title, onClick, badge, dataTut }: {
       {...(dataTut ? { "data-tut": dataTut } : {})}
       onClick={onClick}
       title={title}
-      className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95"
+      className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95 lg:w-24 lg:gap-1.5 lg:py-3.5 lg:text-[11px] lg:[&_svg]:h-6 lg:[&_svg]:w-6"
     >
       {icon}
       <span>{label}</span>
       {badge !== undefined && (
-        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950">
+        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950 lg:h-5 lg:w-5 lg:text-[10px]">
           {badge}
         </span>
       )}
