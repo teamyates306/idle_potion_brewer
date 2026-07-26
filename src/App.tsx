@@ -80,6 +80,10 @@ function preloadImage(src: string): Promise<void> {
   });
 }
 
+// Dev-only chrome (Dev Dashboard toggle, Trigger Tantrum) renders only when
+// the app is served from localhost — never on the hosted live build.
+const IS_LOCALHOST = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
 export default function App() {
   // Self-healing safety net: if a /performance-tests load test got interrupted
   // before it could restore the player's real save (tab closed/crashed
@@ -307,7 +311,7 @@ export default function App() {
       )}
 
       {/* Hidden dev toggle — lifted above the ticker tape when the GAX is open */}
-      {!cleanView && (
+      {!cleanView && IS_LOCALHOST && (
         <button
           onClick={() => setPanel("dev")}
           className={`absolute left-2 z-[4] rounded-full p-2 text-stone-500 opacity-40 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
@@ -321,7 +325,7 @@ export default function App() {
           Backdates the first active quest to ~1s from expiring, then lets
           the normal check fire it exactly as it would on a real login.
           z-[45] (above Modal's z-40) so it still works with a panel open. */}
-      {!cleanView && (
+      {!cleanView && IS_LOCALHOST && (
         <button
           onClick={handleForceTantrum}
           className={`pointer-events-auto absolute left-11 z-[45] flex items-center gap-1 rounded-full border border-rose-800/40 bg-rose-950/30 px-2 py-1 text-[10px] font-semibold text-rose-400 opacity-60 hover:opacity-100 ${gaxUnlocked ? "bottom-8" : "bottom-2"}`}
