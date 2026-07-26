@@ -1465,11 +1465,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           the HUD and bottom dock already sit above Atmosphere. Suppressed
           entirely in Clean View. */}
       {!cleanView && createPortal(
-      // Mobile: full-viewport overlay, badges absolutely anchored to their
-      // section's measured Y. Desktop (lg:): a vertically-centred sidebar
-      // flex column pinned to the right edge — badgeY is ignored there
-      // (RailBadge goes lg:static), so the taller buttons can't collide.
-      <div className="pointer-events-none fixed inset-0 z-[5] lg:inset-auto lg:right-6 lg:top-1/2 lg:flex lg:-translate-y-1/2 lg:flex-col lg:gap-3">
+      <div className="pointer-events-none fixed inset-0 z-[5]">
         <RailBadge
           icon={<User size={18} className={anyTokens ? "text-amber-600" : "text-amber-700"} />}
           label="Workers"

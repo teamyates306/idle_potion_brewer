@@ -13,13 +13,12 @@ interface RailBadgeProps {
 // Unified right-rail badge — matches the left-side button stack in App.tsx:
 // icon size 18, py-2.5, gap-1, font-semibold, shadow-lg.
 //
-// Two layouts from one markup tree:
-//  - Mobile/tablet (<1024px): the original 72px vertical chip, absolutely
-//    positioned at `top` (each badge anchors beside its workshop section).
-//  - Desktop (lg:): a wide horizontal sidebar button — icon left, label,
-//    count pill on the right. The parent (Workshop.tsx) stacks these in a
-//    flex column, so `top` is ignored (`lg:static`) and badges can never
-//    overlap each other regardless of how the scene sections measure.
+// Two shapes from one markup tree, both anchored to `top` — the measured Y
+// centre of the badge's workshop section (workers strip, trough, brewers,
+// potion pile), so each button always sits beside the thing it opens:
+//  - Mobile/tablet (<1024px): the original 72px vertical chip.
+//  - Desktop (lg:): a wide horizontal card — icon left, label, count pill
+//    inline on the right (the corner star overlapped neighbours at this size).
 export default function RailBadge({
   icon, label, onClick, glow = false, badge, dataTut, top,
 }: RailBadgeProps) {
@@ -27,7 +26,7 @@ export default function RailBadge({
     <button
       data-tut={dataTut}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 lg:static lg:w-48 lg:translate-y-0 lg:flex-row lg:items-center lg:gap-3 lg:rounded-2xl lg:px-4 lg:py-3.5 lg:text-xs lg:[&_svg]:h-6 lg:[&_svg]:w-6 ${
+      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 lg:right-6 lg:w-48 lg:flex-row lg:items-center lg:gap-3 lg:rounded-2xl lg:px-4 lg:py-3 lg:text-xs lg:[&_svg]:h-6 lg:[&_svg]:w-6 ${
         glow
           ? "border-amber-500 bg-amber-100 text-amber-900 shadow-[0_0_10px_2px_rgba(202,138,4,0.30)] hover:bg-amber-200"
           : "border-amber-800/50 bg-[#f4e9d0] text-amber-900 shadow-lg hover:bg-[#efe1c2]"
