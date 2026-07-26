@@ -99,7 +99,9 @@ describe("RailBadge — token badge sub-label", () => {
         badge={<span data-testid="token-badge">3</span>}
       />
     );
-    expect(screen.getByTestId("token-badge")).toBeInTheDocument();
+    // Rendered twice from one markup tree: the mobile corner badge (lg:hidden)
+    // and the desktop inline pill (hidden below lg) — CSS shows exactly one.
+    expect(screen.getAllByTestId("token-badge")).toHaveLength(2);
   });
 
   it("does not render badge element when badge prop is absent", () => {

@@ -12,29 +12,43 @@ interface RailBadgeProps {
 
 // Unified right-rail badge — matches the left-side button stack in App.tsx:
 // icon size 18, py-2.5, gap-1, font-semibold, shadow-lg.
+//
+// Two layouts from one markup tree:
+//  - Mobile/tablet (<1024px): the original 72px vertical chip, absolutely
+//    positioned at `top` (each badge anchors beside its workshop section).
+//  - Desktop (lg:): a wide horizontal sidebar button — icon left, label,
+//    count pill on the right. The parent (Workshop.tsx) stacks these in a
+//    flex column, so `top` is ignored (`lg:static`) and badges can never
+//    overlap each other regardless of how the scene sections measure.
 export default function RailBadge({
-  icon, label, onClick, top, glow = false, badge, dataTut,
+  icon, label, onClick, glow = false, badge, dataTut, top,
 }: RailBadgeProps) {
   return (
     <button
       data-tut={dataTut}
       onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 lg:right-5 lg:w-24 lg:gap-1.5 lg:py-3.5 lg:text-[11px] lg:[&_svg]:h-6 lg:[&_svg]:w-6 ${
+      className={`pointer-events-auto absolute right-3 -translate-y-1/2 flex w-[72px] flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider backdrop-blur-sm transition active:scale-95 lg:static lg:w-48 lg:translate-y-0 lg:flex-row lg:items-center lg:gap-3 lg:rounded-2xl lg:px-4 lg:py-3.5 lg:text-xs lg:[&_svg]:h-6 lg:[&_svg]:w-6 ${
         glow
           ? "border-amber-500 bg-amber-100 text-amber-900 shadow-[0_0_10px_2px_rgba(202,138,4,0.30)] hover:bg-amber-200"
           : "border-amber-800/50 bg-[#f4e9d0] text-amber-900 shadow-lg hover:bg-[#efe1c2]"
       }`}
       style={{ top }}
     >
-      <div className="relative">
+      <div className="relative lg:flex lg:shrink-0 lg:items-center">
         {icon}
+        {/* Mobile-only corner badge — on desktop the count moves inline (below) */}
         {badge && (
-          <span className="absolute -top-1.5 -right-2 rounded-full bg-yellow-500 px-1 text-[7px] font-bold text-black leading-tight lg:-right-3 lg:px-1.5 lg:text-[9px]">
+          <span className="absolute -top-1.5 -right-2 rounded-full bg-yellow-500 px-1 text-[7px] font-bold text-black leading-tight lg:hidden">
             {badge}
           </span>
         )}
       </div>
-      <span>{label}</span>
+      <span className="lg:text-left">{label}</span>
+      {badge && (
+        <span className="hidden rounded-full bg-yellow-500 px-2 py-0.5 text-[10px] font-bold leading-tight text-black lg:ml-auto lg:flex lg:items-center">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

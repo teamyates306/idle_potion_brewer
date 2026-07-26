@@ -272,7 +272,7 @@ export default function App() {
       {/* Bottom dock — Guild + Progress hold the centre; Quests and the GAX
           flank them as they unlock. Sits above the ticker tape. */}
       {!cleanView && (
-        <div className={`absolute inset-x-0 z-[4] flex justify-center gap-2 ${gaxUnlocked ? "bottom-9" : "bottom-3"}`}>
+        <div className={`absolute inset-x-0 z-[4] flex justify-center gap-2 lg:gap-3 ${gaxUnlocked ? "bottom-9 lg:bottom-11" : "bottom-3 lg:bottom-6"}`}>
           {questsUnlocked && (
             <DockButton
               label="Quests"
@@ -579,12 +579,12 @@ function DockButton({ label, icon, title, onClick, badge, dataTut }: {
       {...(dataTut ? { "data-tut": dataTut } : {})}
       onClick={onClick}
       title={title}
-      className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95 lg:w-24 lg:gap-1.5 lg:py-3.5 lg:text-[11px] lg:[&_svg]:h-6 lg:[&_svg]:w-6"
+      className="relative flex w-[72px] flex-col items-center gap-1 rounded-xl border border-amber-800/50 bg-[#f4e9d0] px-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider text-amber-900 shadow-md backdrop-blur-sm transition hover:bg-[#efe1c2] active:scale-95 lg:w-auto lg:min-w-[9rem] lg:flex-row lg:justify-center lg:gap-2.5 lg:rounded-2xl lg:px-5 lg:py-3.5 lg:text-xs lg:[&_svg]:h-6 lg:[&_svg]:w-6"
     >
       {icon}
       <span>{label}</span>
       {badge !== undefined && (
-        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950 lg:h-5 lg:w-5 lg:text-[10px]">
+        <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-amber-950 lg:-right-1.5 lg:-top-1.5 lg:h-5 lg:w-5 lg:text-[10px]">
           {badge}
         </span>
       )}
