@@ -45,7 +45,7 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
     .sort((a, b) => Math.abs(b.mult - 1) - Math.abs(a.mult - 1));
 
   return (
-    <Modal title="Grand Alchemical Exchange" onClose={onClose} accent="#b08a33">
+    <Modal title="Grand Alchemical Exchange" onClose={onClose} accent="#b08a33" size="lg">
       {/* Help toggle */}
       <div className="mb-3 flex items-start justify-between gap-2">
         <p className="text-xs text-slate-400">Today's market rates by potion attribute.</p>
@@ -111,7 +111,7 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
           All markets trading calmly at ×1.00.
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-3">
           {rows.map(({ attr, mult, isEvent }) => {
             const pct = Math.round((mult - 1) * 100);
             const up = pct > 0;

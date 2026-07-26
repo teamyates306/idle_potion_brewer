@@ -100,7 +100,7 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
 
   return (
     <>
-      <Modal title="The Stash" onClose={onClose} accent="#f59e0b">
+      <Modal title="The Stash" onClose={onClose} accent="#f59e0b" size="xl">
         {discovered.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500">
             Nothing gathered yet. Send your worker out!
@@ -168,7 +168,7 @@ export default function IngredientInventoryView({ onClose }: { onClose: () => vo
                       <span className="text-[10px] text-slate-500">{items.length}</span>
                       <div className="ml-1 h-px flex-1 bg-slate-800" />
                     </div>
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-4 gap-2 lg:grid-cols-8">
                       {items.map(({ id, ing, count }) => (
                         <button
                           key={id}

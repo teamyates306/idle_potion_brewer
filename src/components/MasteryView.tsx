@@ -304,7 +304,7 @@ export default function MasteryView({ onClose, embedded = false }: { onClose: ()
   return (
     <>
       {embedded ? body : (
-        <Modal title="Mastery" onClose={onClose} accent="#f59e0b">
+        <Modal title="Mastery" onClose={onClose} accent="#f59e0b" size="lg">
           {body}
         </Modal>
       )}

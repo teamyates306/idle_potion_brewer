@@ -258,7 +258,7 @@ const CONTENT: Record<TabId, React.ReactNode> = {
 export default function HelpModal({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<TabId>("basics");
   return (
-    <Modal title="How to Play" onClose={onClose} accent="#3f7a78">
+    <Modal title="How to Play" onClose={onClose} accent="#3f7a78" size="lg">
       <div className="mb-3 flex gap-1 overflow-x-auto pb-1">
         {TABS.map((t) => (
           <button

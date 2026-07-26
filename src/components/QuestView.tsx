@@ -161,7 +161,7 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b">
+      <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b" size="xl">
         <div className="mb-3 flex items-start gap-1.5">
           <p className="flex-1 text-xs text-slate-400">
             Local adventurers passing through need potions for the road ahead. Fulfil their requests
@@ -189,7 +189,8 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
           <QuestPatienceBar lastQuestCompletionAt={lastQuestCompletionAt} />
         )}
 
-        <div className="space-y-3">
+        {/* Desktop shows the three difficulty tiers side by side */}
+        <div className="space-y-3 lg:grid lg:grid-cols-3 lg:items-start lg:gap-3 lg:space-y-0">
           {DIFFICULTIES.map((tier) => {
             const quest = questByTier.get(tier);
             if (quest) return <QuestCard key={tier} quest={quest} onPickName={setDetailName} onCelebrate={celebrate} />;

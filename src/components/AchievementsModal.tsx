@@ -133,7 +133,7 @@ export default function AchievementsModal({ onClose, embedded = false }: { onClo
   return (
     <>
       {embedded ? body : (
-        <Modal title="Achievements" onClose={onClose} accent="#fbbf24">
+        <Modal title="Achievements" onClose={onClose} accent="#fbbf24" size="lg">
           {body}
         </Modal>
       )}

@@ -54,6 +54,7 @@ export function GuildPanel({ onClose }: { onClose: () => void }) {
       title="Guild Hall"
       onClose={onClose}
       accent="#b45309"
+      size="lg"
       subHeader={
         <TabBar
           tabs={[
@@ -95,6 +96,7 @@ export function ProgressPanel({ onClose }: { onClose: () => void }) {
       title="Progress"
       onClose={onClose}
       accent="#7d6a9c"
+      size="lg"
       subHeader={
         <TabBar
           tabs={[

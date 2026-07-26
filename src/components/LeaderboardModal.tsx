@@ -61,7 +61,7 @@ export default function LeaderboardModal({ onClose, initialTab, embedded = false
   }
 
   return (
-    <Modal title="Guild Rankings" onClose={onClose} accent="#b45309" subHeader={tabBar}>
+    <Modal title="Guild Rankings" onClose={onClose} accent="#b45309" subHeader={tabBar} size="lg">
       {body}
     </Modal>
   );

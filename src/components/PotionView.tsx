@@ -104,7 +104,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
 
   return (
     <>
-      <Modal title="The Potion Pile" onClose={onClose} accent="#8a4f6b" closeTutAttr="close-market">
+      <Modal title="The Potion Pile" onClose={onClose} accent="#8a4f6b" closeTutAttr="close-market" size="xl">
         {/* Tabs */}
         <div className="mb-3 flex rounded-lg bg-slate-800 p-1">
           <button
@@ -220,13 +220,13 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                           </button>
                         </div>
                         {autoOpen && (
-                          <div className="space-y-2">
+                          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-2 lg:space-y-0">
                             {autoSellHashes.map((hash) => renderRow(hash, potionInv[hash] ?? 0, true))}
                             {selectMode && (
                               <button
                                 onClick={removeSelected}
                                 disabled={selected.size === 0}
-                                className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition ${
+                                className={`flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition lg:col-span-2 ${
                                   selected.size > 0 ? "bg-rose-600 text-white hover:bg-rose-500" : "cursor-not-allowed bg-slate-800 text-slate-500"
                                 }`}
                               >
@@ -246,7 +246,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                             <div className="h-px flex-1 bg-slate-800" />
                           </div>
                         )}
-                        <div className="space-y-2">{manualEntries.map(([hash, count]) => renderRow(hash, count, false))}</div>
+                        <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-2 lg:space-y-0">{manualEntries.map(([hash, count]) => renderRow(hash, count, false))}</div>
                       </div>
                     )}
                   </div>
@@ -305,7 +305,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
               {filteredGroups.length === 0 ? (
                 <p className="py-6 text-center text-sm text-slate-500">No potions match.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                   {filteredGroups.map((g) => {
                     const inStock = g.hashes.reduce((a, h) => a + (potionInv[h] ?? 0), 0);
                     const masteryEntry = potionMastery[g.name];

@@ -319,7 +319,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
 
   return (
     <>
-      <Modal title="Worker Management" onClose={onClose} accent="#3f7a78">
+      <Modal title="Worker Management" onClose={onClose} accent="#3f7a78" size="xl">
         {/* Controls */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
           {([["none", "Default"], ["level", "Level"], ["tokens", "Tokens"]] as ["none" | "level" | "tokens", string][]).map(([key, label]) => (
@@ -365,7 +365,12 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
                   <div className="h-px flex-1 bg-slate-800" />
                 </div>
               )}
-              {sec.items.map((item, itemIdx) => renderRow({ ...item, isTutTarget: sec.key === "idle" && itemIdx === 0 }))}
+              {/* Desktop (lg:) lays the section's cards out two-up; mobile keeps
+                  the identical stacked list (wrapper's space-y-2 matches the
+                  parent's, so spacing is unchanged). */}
+              <div className="space-y-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-2 lg:space-y-0">
+                {sec.items.map((item, itemIdx) => renderRow({ ...item, isTutTarget: sec.key === "idle" && itemIdx === 0 }))}
+              </div>
             </div>
           ))}
         </div>

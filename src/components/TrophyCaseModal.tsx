@@ -133,7 +133,7 @@ export default function TrophyCaseModal({ onClose, embedded = false }: { onClose
           {body}
         </>
       ) : (
-        <Modal title="Trophy Case" onClose={onClose} accent="#e0975c" subHeader={tabBar}>
+        <Modal title="Trophy Case" onClose={onClose} accent="#e0975c" subHeader={tabBar} size="lg">
           {body}
         </Modal>
       )}

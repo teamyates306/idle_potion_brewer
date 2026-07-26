@@ -46,7 +46,7 @@ export default function UpgradesView({ onClose, embedded = false }: { onClose: (
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
           Permanent Unlocks
         </h3>
-        <div className="space-y-3">
+        <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
           {GLOBAL_UNLOCKS.map((unlock) => {
             const owned = unlocked_globals.includes(unlock.id);
             const canAfford = coins >= unlock.cost;
@@ -90,7 +90,7 @@ export default function UpgradesView({ onClose, embedded = false }: { onClose: (
 
   if (embedded) return body;
   return (
-    <Modal title="Global Upgrades" onClose={onClose} accent="#7d6a9c">
+    <Modal title="Global Upgrades" onClose={onClose} accent="#7d6a9c" size="lg">
       {body}
     </Modal>
   );

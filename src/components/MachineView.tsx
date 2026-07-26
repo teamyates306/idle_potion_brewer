@@ -86,7 +86,7 @@ export default function MachineView({ onClose, initialMachineId = 1 }: { onClose
   );
 
   return (
-    <Modal title="Manage Brewers" onClose={onClose} accent={accent} subHeader={tabBar} closeTutAttr="close-brewer">
+    <Modal title="Manage Brewers" onClose={onClose} accent={accent} subHeader={tabBar} closeTutAttr="close-brewer" size="lg">
       {activeMachine && (
         <MachinePanelBody
           key={activeMachine.id}

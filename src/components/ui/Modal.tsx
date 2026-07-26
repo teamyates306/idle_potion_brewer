@@ -8,16 +8,24 @@ interface ModalProps {
   subHeader?: ReactNode;
   accent?: string;
   closeTutAttr?: string;
+  /** Desktop-only width bump (≥1024px). "md" keeps the phone-sized sheet
+   *  everywhere; "lg"/"xl" widen ONLY at the lg: breakpoint so the mobile
+   *  layout is untouched. Pair "xl" with lg: multi-column content. */
+  size?: "md" | "lg" | "xl";
 }
 
-export default function Modal({ title, onClose, children, subHeader, accent = "#a8572f", closeTutAttr }: ModalProps) {
+// All width overrides are lg:-prefixed on purpose — below 1024px every panel
+// renders exactly as before (bottom sheet, sm:max-w-md).
+const SIZE_CLASS = { md: "", lg: "lg:max-w-2xl", xl: "lg:max-w-4xl" } as const;
+
+export default function Modal({ title, onClose, children, subHeader, accent = "#a8572f", closeTutAttr, size = "md" }: ModalProps) {
   return (
     <div
       className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-[#2a1c0e]/55 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-md max-h-[85dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+        className={`w-full sm:max-w-md ${SIZE_CLASS[size]} max-h-[85dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Sticky title row */}
