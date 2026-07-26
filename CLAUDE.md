@@ -7,7 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev              # vite dev server, http://localhost:5173
 npm run build             # tsc -b && vite build (type-check is part of build)
-npm run test               # vitest run (single run)
+npm run test               # vitest run — BOTH projects (logic + ui)
+npm run test:logic         # LIGHT: pure game-math tests only (*.test.ts, node env, ~2s)
+npm run test:ui            # HEAVY: component tests only (*.test.tsx, jsdom + testing-library)
 npm run test:watch         # vitest watch mode
 npx vitest run src/components/ui/RailBadge.test.tsx   # single test file
 ```
@@ -25,6 +27,13 @@ npx tsx scripts/verifyContent.ts                                      # sanity-c
 npx tsx scripts/tierAnalysis.ts                                       # re-derives potion tier thresholds / rarity brackets
 npx tsx scripts/gaxSmoke.ts                                            # 23 headless checks for the GAX market engine
 ```
+
+### Two-speed test suite
+The suite is split into two vitest projects (see `vite.config.ts`):
+- **logic (light)** — `*.test.ts` under `src/`, pure game-math/engine tests running in a plain node environment with no setup files. Fast (~2s). When working on game mechanics (anything under `src/engine/`, `src/data/`, tuning constants, store math), run `npm run test:logic` — there is no need to pay for the heavy UI project.
+- **ui (heavy)** — `*.test.tsx`, component tests in jsdom with @testing-library and the jest-dom setup file. Run `npm run test:ui` when touching components; `npm test` runs both and should pass before a commit.
+
+The file extension IS the project selector: put pure-logic tests in `.test.ts` (never import React/components from them, or they'll break in the node env) and component tests in `.test.tsx`. Shared fixtures live in `src/test/factories.ts` (zeroed-attribute ingredients, `DEFAULT_FORMULAS`, deterministic rng) and `src/test/storeHarness.ts` (gameStore snapshot/reset + patch helpers for UI tests — always `resetGameStore()` in `beforeEach`, since the store is module-global across tests in a file).
 
 No lint script is configured. `.claude/worktrees/` contains stale agent-run copies of the repo — never edit files under it.
 

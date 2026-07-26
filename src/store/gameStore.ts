@@ -510,7 +510,7 @@ export interface WelcomeBack {
   machineXpEarned: number;
 }
 
-interface GameState {
+export interface GameState {
   coins: number;
   workshopName: string;
   workers: Worker[];
