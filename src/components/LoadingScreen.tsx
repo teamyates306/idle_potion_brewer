@@ -28,10 +28,18 @@ function useFlavourLine() {
   return LINES[i];
 }
 
-export default function LoadingScreen() {
+/** Full-screen overlay shown while the scene warms up underneath it (see
+ *  App.tsx). Sits above floating text / toasts (z 9999) so offline catch-up
+ *  events can't leak through. Opacity is a hair under 1: a fully opaque layer
+ *  lets the compositor skip rasterising what it covers, which would defer
+ *  exactly the first-paint work this screen exists to absorb. */
+export default function LoadingScreen({ fading = false, fadeMs = 400 }: { fading?: boolean; fadeMs?: number }) {
   const line = useFlavourLine();
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#2a1c0e]">
+    <div
+      className="fixed inset-0 z-[10000] flex flex-col items-center justify-center gap-4 bg-[#2a1c0e]"
+      style={{ opacity: fading ? 0 : 0.998, transition: `opacity ${fadeMs}ms ease-out`, pointerEvents: fading ? "none" : "auto" }}
+    >
       <div className="animate-bounce" style={{ animationDuration: "1.4s" }}>
         <MachineArt size={96} brewing progress={0.6} />
       </div>

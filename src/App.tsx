@@ -5,7 +5,9 @@ import GaxDashboard from "./components/GaxDashboard";
 import TickerTape from "./components/ui/TickerTape";
 import GameClock from "./components/ui/GameClock";
 import { attrLabel } from "./engine/gax";
-import Workshop from "./components/Workshop";
+import Workshop, { MACHINE_HUE } from "./components/Workshop";
+import { HUE_SHIFTS } from "./components/art/WorkerArt";
+import { tintedSpriteName } from "./util/hueRotate";
 import QuestView from "./components/QuestView";
 import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
@@ -68,14 +70,73 @@ const CORE_SPRITES = [
   "/sprites/trough-160.png", "/sprites/trough-240.png", "/sprites/trough-320.png", "/sprites/trough-400.png",
 ];
 
+// Pre-tinted sheets (scripts/pretintSprites.ts) — every hue the game can
+// actually draw, so no worker or cauldron decodes its sheet on first paint.
+const TINTED_SPRITES = [
+  ...["worker", "worker-manic", "worker-explorer", "worker-caravan", "worker-pounder"].flatMap((name) =>
+    HUE_SHIFTS.filter((h) => h !== 0).map((h) => "/sprites/tinted/" + tintedSpriteName(name + ".png", h))),
+  ...MACHINE_HUE.filter((h) => h !== 0).map((h) => "/sprites/tinted/" + tintedSpriteName("machine.png", h)),
+];
+
+// Load AND decode: onload only means the bytes arrived; the first draw would
+// still pay for decoding, which is exactly the hitch the loading screen is
+// meant to absorb. A missing sprite resolves anyway so it can't hang the gate.
 function preloadImage(src: string): Promise<void> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve(); // a missing sprite shouldn't hang the loading screen
+    const done = () => resolve();
+    img.onload = () => { if (typeof img.decode === "function") img.decode().then(done, done); else done(); };
+    img.onerror = done;
     img.src = src;
   });
 }
+
+/** Web font actually loaded (display=swap would otherwise reflow every label
+ *  a moment after reveal). Bounded so a blocked font CDN can't hang the gate. */
+function fontsReady(timeoutMs: number): Promise<void> {
+  if (typeof document === "undefined" || !("fonts" in document)) return Promise.resolve();
+  const load = Promise.all([
+    document.fonts.load("400 12px Silkscreen"),
+    document.fonts.load("700 12px Silkscreen"),
+    document.fonts.ready,
+  ]).then(() => undefined, () => undefined);
+  return Promise.race([load, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
+}
+
+/** Resolve once the main thread has been quiet for `needed` consecutive
+ *  probes: a 16 ms timer that fires more than `maxLagMs` late means
+ *  something (React commit, layout, a measure/recentre timer, an image
+ *  decode callback) was hogging the thread. This is deliberately NOT a
+ *  frame-rate check — display refresh is throttled/variable per device and
+ *  says nothing about whether OUR warm-up work has finished. Ends with two
+ *  animation frames so the settled state has actually been painted.
+ *  Bounded by `timeoutMs` so a genuinely slow device still gets in. */
+function mainThreadQuiet(needed: number, maxLagMs: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let good = 0;
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(deadline); resolve(); };
+    const deadline = setTimeout(finish, timeoutMs);
+    const probe = () => {
+      const scheduled = performance.now();
+      setTimeout(() => {
+        if (done) return;
+        const lag = performance.now() - scheduled - 16;
+        good = lag <= maxLagMs ? good + 1 : 0;
+        if (good >= needed) requestAnimationFrame(() => requestAnimationFrame(finish));
+        else probe();
+      }, 16);
+    };
+    probe();
+  });
+}
+
+// Warm-up budget: the overlay never lifts before MIN (long enough for the
+// scene's own post-mount recentre timers at 150/500/1200 ms to have fired
+// behind it), and never later than MAX.
+const LOADING_MIN_MS = 1300;
+const LOADING_MAX_MS = 7000;
+const LOADING_FADE_MS = 400;
 
 // Dev-only chrome (Dev Dashboard toggle) renders only when the app is
 // served from localhost — never on the hosted live build.
@@ -147,12 +208,15 @@ export default function App() {
   usePerformanceMonitor();
   useOnlineSync();
 
-  // Loading screen: hold the reveal until the workshop's core sprites are
-  // decoded and the day/night CSS vars have been computed at least once —
-  // otherwise the scene used to paint piecemeal (bricks before windows,
-  // walkers mid-stride) and briefly show fallback colours before Atmosphere's
-  // own effect corrected them a frame later.
-  const [ready, setReady] = useState(false);
+  // Loading screen as a WARM-UP, not just a download gate. The scene mounts
+  // immediately underneath the overlay, so its expensive first frames (SVG
+  // wall raster, the potion pile's filtered bottles, layout + recentre
+  // timers, image decodes, the font swap) all happen out of sight. The
+  // overlay lifts only when: every sprite is decoded, the web font is in,
+  // and the main thread has gone quiet (no more mount/layout/decode work)
+  // for a run of probes — bounded by LOADING_MAX_MS so a slow device is
+  // never locked out.
+  const [loading, setLoading] = useState<"warming" | "fading" | "done">("warming");
   useEffect(() => {
     // Defensive reset: a page navigated to us (e.g. "Back to the workshop"
     // from the leaderboard) can arrive with a stray scroll/pan position —
@@ -161,9 +225,18 @@ export default function App() {
     // app, so it should always start pinned at the origin.
     window.scrollTo(0, 0);
     applyDayNightVars();
-    const assets = Promise.all(CORE_SPRITES.map(preloadImage));
-    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, 500));
-    Promise.all([assets, minDelay]).then(() => setReady(true));
+    let cancelled = false;
+    const t0 = performance.now();
+    const assets = Promise.all([...CORE_SPRITES, ...TINTED_SPRITES].map(preloadImage));
+    const minDelay = new Promise<void>((resolve) => setTimeout(resolve, LOADING_MIN_MS));
+    Promise.all([assets, fontsReady(3000), minDelay])
+      .then(() => mainThreadQuiet(12, 30, Math.max(0, LOADING_MAX_MS - (performance.now() - t0))))
+      .then(() => {
+        if (cancelled) return;
+        setLoading("fading");
+        setTimeout(() => { if (!cancelled) setLoading("done"); }, LOADING_FADE_MS);
+      });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -194,9 +267,9 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshQuests, settleGax]);
 
-  if (!ready) return <LoadingScreen />;
-
   return (
+    <>
+    {loading !== "done" && <LoadingScreen fading={loading === "fading"} fadeMs={LOADING_FADE_MS} />}
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
       <Atmosphere />
 
@@ -482,6 +555,7 @@ export default function App() {
         </Modal>
       )}
     </div>
+    </>
   );
 }
 

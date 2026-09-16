@@ -1,7 +1,7 @@
 import type { WorkerSpecialization } from "../../types";
 import { tintedSpriteName } from "../../util/hueRotate";
 
-const HUE_SHIFTS = [0, 60, 120, 180, 240, 300] as const;
+export const HUE_SHIFTS = [0, 60, 120, 180, 240, 300] as const;
 export function workerHue(id: number) { return HUE_SHIFTS[id % HUE_SHIFTS.length]; }
 
 const FRAME_W  = 32;

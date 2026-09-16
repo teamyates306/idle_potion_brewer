@@ -66,7 +66,7 @@ const HEAT_DECAY     = 0.22;
 const POTION_FLY_MS  = 2000; // must match fly-potion animation duration
 const POTION_LAND_MS = Math.round(POTION_FLY_MS * 0.82); // ~82% = when bottle arrives at pile
 
-const MACHINE_HUE    = [0, 120, 200, 270, 330];
+export const MACHINE_HUE = [0, 120, 200, 270, 330];
 const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
 // Muted, warm "ember" spark palettes (one per machine) — cozy, not neon.
 const MACHINE_SPARK_COLORS = [
