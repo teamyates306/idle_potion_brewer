@@ -1103,12 +1103,8 @@ const WorkerTrackSprite = React.memo(function WorkerTrackSprite({ idx, worker, x
   } else if (workerPhase === "inbound") {
     up = (1 - workerProgress) * TRACK;
     opacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
-  } else if (workerPhase === "shuttle") {
-    // Fast trips: pace trough ↔ door continuously, always visible.
-    up = workerProgress * TRACK;
-    opacity = 1;
   }
-  const active = workerPhase === "outbound" || workerPhase === "inbound" || workerPhase === "shuttle";
+  const active = workerPhase === "outbound" || workerPhase === "inbound";
   return (
     <div
       className="absolute"

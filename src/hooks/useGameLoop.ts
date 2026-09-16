@@ -10,7 +10,6 @@ import {
   isAutoClickAccumulatorEmpty,
 } from "../engine/autoclick";
 import type { BrewingMachine, Worker } from "../types";
-import { easeInOut } from "../engine/ambientClock";
 
 // =============================================================================
 // The game loop.
@@ -52,22 +51,32 @@ const WALK_SECS = 3;
 // read as jitter. The simulation is untouched (trips and brews still complete
 // at their true rate, every deposit and potion is real); only the depiction
 // changes once a cycle is shorter than the eye can follow:
-//   * trips under SHUTTLE_TRIP_SECS: the sprite stays visible and paces
-//     trough ↔ door on a continuous clock with period max(trip, SHUTTLE_MIN_
-//     PERIOD_SECS), so it never blinks and never resets mid-stride;
+//   * trips under SHUTTLE_TRIP_SECS: the sprite plays exactly the choreography
+//     of a SHUTTLE_PERIOD_SECS trip (walk to the door, fade out, a moment away,
+//     fade back in walking down) but timed off a free-running clock instead of
+//     the trip's own start time — so it always leaves through and returns
+//     from the door, never blinks, and never resets mid-stride when the next
+//     (real, much shorter) trip begins;
 //   * brews under FAST_BREW_SECS: the bar is shown full with the true rate
 //     ("Brewing ×2.4/s") instead of a sawtooth nobody can read.
 export const SHUTTLE_TRIP_SECS = 6;
-export const SHUTTLE_MIN_PERIOD_SECS = 4;
+export const SHUTTLE_PERIOD_SECS = 6;
 export const FAST_BREW_SECS = 2;
 
-/** 0 = at the trough, 1 = at the door; eased triangle wave on a free-running
- *  clock (offset per worker so a crew doesn't march in lockstep). */
-function shuttlePosition(nowMs: number, idx: number, tripSecs: number): number {
-  const period = Math.max(tripSecs, SHUTTLE_MIN_PERIOD_SECS);
-  const t = ((nowMs / 1000 + idx * 0.61) % period) / period;
-  const tri = t < 0.5 ? t * 2 : 2 - t * 2;
-  return easeInOut(tri);
+/** Leave → away → return choreography for a trip of `total` seconds at
+ *  `elapsed` seconds in: a WALK_SECS walk each way (capped at 40% of the trip)
+ *  with the sprite out of sight in between. */
+function walkState(elapsed: number, total: number): WorkerLoopState {
+  const walkSecs = Math.min(WALK_SECS, total * 0.4);
+  if (elapsed < walkSecs) return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" };
+  if (elapsed < total - walkSecs) return { workerProgress: 0, workerPhase: "away" };
+  return { workerProgress: (elapsed - (total - walkSecs)) / walkSecs, workerPhase: "inbound" };
+}
+
+/** Free-running "elapsed" for a fast trip's visual loop — offset per worker
+ *  so a crew on the same route doesn't march in lockstep. */
+function shuttleElapsed(nowMs: number, idx: number): number {
+  return (nowMs / 1000 + idx * 0.61 * SHUTTLE_PERIOD_SECS) % SHUTTLE_PERIOD_SECS;
 }
 
 // describePotion() re-derives a deterministic name/hash from ingredients — pure
@@ -86,10 +95,7 @@ function cachedPotionName(machine: BrewingMachine, ids: string[], ingredients: P
 
 export interface WorkerLoopState {
   workerProgress: number;
-  /** "shuttle": the trip is too short to animate as leave → away → return
-   *  (see SHUTTLE_TRIP_SECS); the sprite stays on screen and paces between
-   *  the trough and the door on a steady, continuous clock. */
-  workerPhase: "idle" | "outbound" | "away" | "inbound" | "shuttle";
+  workerPhase: "idle" | "outbound" | "away" | "inbound";
 }
 
 export interface MachineLoopState {
@@ -213,11 +219,8 @@ function workerPhaseAt(w: Worker, idx: number, now: number, fx?: MasteryEffects)
   const total = workerTripSecondsFor(w, fx);
   const elapsed = (now - w.trip_started_at) / 1000;
   if (total <= 0 || elapsed >= total) return IDLE_WORKER;
-  if (total < SHUTTLE_TRIP_SECS) return { workerProgress: shuttlePosition(now, idx, total), workerPhase: "shuttle" };
-  const walkSecs = Math.min(WALK_SECS, total * 0.4);
-  if (elapsed < walkSecs) return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" };
-  if (elapsed < total - walkSecs) return { workerProgress: 0, workerPhase: "away" };
-  return { workerProgress: (elapsed - (total - walkSecs)) / walkSecs, workerPhase: "inbound" };
+  if (total < SHUTTLE_TRIP_SECS) return walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS);
+  return walkState(elapsed, total);
 }
 
 /** Side-effect-free snapshot of every entity (used to prime the first paint). */
@@ -370,9 +373,17 @@ function startDriver(): () => void {
       if (total > 0 && elapsed >= total) {
         if (isTrade) g.completeTradeTrip(idx);
         else g.completeTrip(idx);
-        publishWorker(idx, 0, "idle");
+        // A fast trip completes several times per visual loop; its sprite is
+        // on the free-running clock, so keep that going rather than flashing
+        // an "idle" frame at the trough between back-to-back trips. (If the
+        // trip doesn't auto-repeat, the next tick sees no trip and idles.)
+        if (total < SHUTTLE_TRIP_SECS) {
+          const vis = walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS);
+          publishWorker(idx, vis.workerProgress, vis.workerPhase);
+        } else {
+          publishWorker(idx, 0, "idle");
+        }
       } else if (total > 0) {
-        const walkSecs = Math.min(WALK_SECS, total * 0.4);
         const pastHalf = elapsed / total >= 0.5;
         // Trades: the inputs are formally handed over exactly at the half-way
         // point (arrival at the settlement); markTradeConsumed also flips the
@@ -384,10 +395,10 @@ function startDriver(): () => void {
           if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
         }
 
-        if (total < SHUTTLE_TRIP_SECS) publishWorker(idx, shuttlePosition(now, idx, total), "shuttle");
-        else if (elapsed < walkSecs) publishWorker(idx, elapsed / walkSecs, "outbound");
-        else if (elapsed < total - walkSecs) publishWorker(idx, 0, "away");
-        else publishWorker(idx, (elapsed - (total - walkSecs)) / walkSecs, "inbound");
+        const vis = total < SHUTTLE_TRIP_SECS
+          ? walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS)
+          : walkState(elapsed, total);
+        publishWorker(idx, vis.workerProgress, vis.workerPhase);
       } else {
         publishWorker(idx, 0, "idle");
       }
