@@ -40,7 +40,7 @@ export default function DiscoveryReveal({ name, visuals, onDone }: { name: strin
   const filter = filterParts.length ? filterParts.join(" ") : undefined;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[25]">
+    <div className="pointer-events-none fixed inset-0 z-[9990]">
       {/* Dim the room to the vignette for a beat */}
       <div className="absolute inset-0 reveal-dim" style={{ background: "radial-gradient(ellipse at 50% 42%, rgba(20,12,4,0.35) 0%, rgba(20,12,4,0.7) 100%)" }} />
 

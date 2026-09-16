@@ -48,6 +48,7 @@ export default function WorkerArt({
   return (
     <div style={{ position: "relative", width: dispW, height: dispH, overflow: "hidden", filter: filterHue ? `hue-rotate(${filterHue}deg)` : undefined }}>
       <div
+        className="worker-walk-sheet"
         style={{
           // The frame window is the outer overflow:hidden box (dispW×dispH);
           // this inner element is the FULL sheet, stepped left via a compositor

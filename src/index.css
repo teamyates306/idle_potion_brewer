@@ -353,10 +353,24 @@ body {
 .sign-glint              { animation: sign-glint 900ms ease-in-out both; }
 
 /* Worker level-up: star-jump */
-@keyframes worker-jump   { 0% { transform: translateY(0) scale(1,1) } 18% { transform: translateY(2px) scale(1.15,0.85) } 45% { transform: translateY(-16px) scale(0.92,1.1) } 72% { transform: translateY(0) scale(1.08,0.92) } 100% { transform: translateY(0) scale(1,1) } }
-.worker-jump             { animation: worker-jump 620ms cubic-bezier(0.34,1.56,0.64,1) both; }
-@keyframes star-pop      { 0% { transform: translate(0,0) scale(0.2); opacity: 0 } 30% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1) rotate(90deg); opacity: 0 } }
-.star-pop                { animation: star-pop 700ms ease-out both; }
+@keyframes worker-jump {
+  0%   { transform: translateY(0) scale(1,1) }
+  16%  { transform: translateY(3px) scale(1.18,0.82) }   /* wind-up squash */
+  38%  { transform: translateY(-20px) scale(0.90,1.12) } /* rise */
+  56%  { transform: translateY(-20px) scale(0.90,1.12) } /* hang at the peak — the readable beat */
+  82%  { transform: translateY(0) scale(1.10,0.90) }     /* landing squash */
+  100% { transform: translateY(0) scale(1,1) }
+}
+.worker-jump              { animation: worker-jump 950ms cubic-bezier(0.34,1.56,0.64,1) both; }
+/* Pause the walk-cycle sprite sheet while the level-up hop plays (see
+   LevelUpJumper.tsx) — a still pose under the hop, not scrambling legs. Not
+   set inline by WorkerArt, so this class rule has the property to itself. */
+.worker-jumping .worker-walk-sheet { animation-play-state: paused; }
+@keyframes star-pop       { 0% { transform: translate(0,0) scale(0.2); opacity: 0 } 30% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1) rotate(90deg); opacity: 0 } }
+.star-pop                 { animation: star-pop 700ms ease-out both; }
+/* Tier-up callout label above the cauldron */
+@keyframes tier-callout-in { 0% { opacity: 0; transform: translate(-50%, 6px) } 20% { opacity: 1; transform: translate(-50%, 0) } 80% { opacity: 1 } 100% { opacity: 0 } }
+.tier-callout              { animation: tier-callout-in 1400ms ease-out both; }
 
 /* Notice board: quest stamped DONE, paper lifts off */
 @keyframes stamp-in      { 0% { transform: translate(-50%,-50%) rotate(-14deg) scale(2.4); opacity: 0 } 60% { transform: translate(-50%,-50%) rotate(-14deg) scale(0.92); opacity: 1 } 100% { transform: translate(-50%,-50%) rotate(-14deg) scale(1); opacity: 1 } }

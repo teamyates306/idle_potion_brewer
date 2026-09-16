@@ -782,12 +782,16 @@ const MachineColumn = React.memo(function MachineColumn({
     let timer = 0;
     const unsub = subscribeGameEvent((evt) => {
       if (evt.channel !== "tier-up" || evt.machineId !== machine.id) return;
-      setTierFlash({ id: evt.id, label: evt.text });
+      // evt.text is the potion TIER name this cauldron just brewed for the
+      // first time — a property of the POTION, not the machine (that's the
+      // separate, existing "machine level" stat from XP). Spell that out so
+      // it doesn't read as the cauldron itself levelling up.
+      setTierFlash({ id: evt.id, label: `New best potion: ${evt.text}` });
       window.clearTimeout(timer);
       timer = window.setTimeout(() => setTierFlash(null), 1400);
       if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
         const rect = cauldronRef.current.getBoundingClientRect();
-        spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.1, text: `${evt.text}!`, color: "#fde68a", size: "lg", arcX: 0, glow: true, duration: 2600 });
+        spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.1, text: `New best: ${evt.text}!`, color: "#fde68a", size: "lg", arcX: 0, glow: true, duration: 2600 });
       }
     });
     return () => { unsub(); window.clearTimeout(timer); };
@@ -1074,6 +1078,9 @@ const MachineColumn = React.memo(function MachineColumn({
           <div key={tierFlash.id} className="pointer-events-none absolute inset-0">
             <div className="tier-flash absolute rounded-full" style={{ left: MOUTH_X - 40, top: MOUTH_Y - 12, width: 80, height: 24, background: "radial-gradient(ellipse, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 70%)" }} />
             <SteamBurst count={7} color="rgba(255,255,255,0.8)" spread={24} />
+            <div className="tier-callout absolute whitespace-nowrap text-center text-[9px] font-bold text-amber-100" style={{ left: MOUTH_X, top: MOUTH_Y - 34, transform: "translateX(-50%)", textShadow: "0 0 8px #fde68a, 0 1px 3px rgba(0,0,0,0.9)" }}>
+              {tierFlash.label}
+            </div>
           </div>
         )}
         {/* Overheat release */}
@@ -1913,9 +1920,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
       {reveal && <DiscoveryReveal key={reveal.id} name={reveal.name} visuals={reveal.visuals} onDone={clearReveal} />}
 
-      {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll */}
+      {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll.
+          z-[9990]: level-up tokens and quest-reward coins fly to the HUD /
+          badge from inside a full-screen modal (levelling happens on a
+          returning trip, quests are only claimed from the Quest Board modal,
+          both z-40+) — this has to outrank every modal (highest z-[200]) or
+          the flight is invisible. Stays just under FATLayer's 9999. */}
       {(flyingParticles.length > 0 || brewBursts.length > 0) && (
-        <div className="pointer-events-none fixed inset-0 z-[21]">
+        <div className="pointer-events-none fixed inset-0 z-[9990]">
           {flyingParticles.map((p) => <FlyingParticleEl key={p.id} p={p} />)}
           {brewBursts.map((b) => <BrewBurstEl key={b.id} b={b} />)}
         </div>
