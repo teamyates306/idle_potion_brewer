@@ -19,6 +19,14 @@ function lerpRGB(r1: number, g1: number, b1: number, r2: number, g2: number, b2:
   return `rgb(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)})`;
 }
 
+/** The liquid colour at a given brew progress for a cauldron of the given
+ *  hue — pale watery teal → rich saturated potion green as the brew completes.
+ *  Exported so the steam puffs can share the exact shade. */
+export function liquidColorFor(progress: number, hue: number): string {
+  const t = Math.max(0, Math.min(1, progress));
+  return hueRotateColor(lerpRGB(160, 200, 195, 35, 130, 110, t), hue);
+}
+
 /** The Bubbler — sprite-based cauldron rig.
  *  Layer order (bottom → top):
  *    1. liquid rect  — fully opaque, desaturated→saturated as brew progresses
@@ -30,7 +38,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
   const t = Math.max(0, Math.min(1, progress));
 
   // Pale watery teal → rich saturated potion green as brew completes.
-  const liquidColor = hueRotateColor(lerpRGB(160, 200, 195, 35, 130, 110, t), hue);
+  const liquidColor = liquidColorFor(t, hue);
   const needleColor = hueRotateColor("#f59e0b", hue);
   const bubbleColor = hueRotateColor("#bcd9cf", hue);
   const sprite = hue ? "/sprites/tinted/" + tintedSpriteName("machine.png", hue) : "/sprites/machine.png";

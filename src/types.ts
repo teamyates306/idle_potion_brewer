@@ -215,6 +215,10 @@ export interface BrewingMachine {
   upgrade_tokens: number;
   brew_started_at: number | null;
   brew_stalled: boolean; // true when running but inventory too low to brew
+  /** Highest potion prefix tier (0–9) this cauldron has ever produced —
+   *  drives the tier-up flash. Undefined on pre-feature saves: the first
+   *  brew records it silently. */
+  best_tier?: number;
 }
 
 /** Procedurally generated potion stored as a sorted hash -> count (see §7) */

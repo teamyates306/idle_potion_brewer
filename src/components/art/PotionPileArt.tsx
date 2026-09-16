@@ -1,4 +1,5 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import PileLife from "../fx/PileLife";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
@@ -20,16 +21,14 @@ const SCALE      = 130 / 120;
 // potionVisuals.ts — the same numbers PotionIcon uses — so a potion reads
 // with identical intensity in the pile, the discovered list and the sell
 // stash. (This file used to fork its own copies; they drifted.)
-// Particle spawn spots — start above the bottle neck (y < -13) so they rise clear of the sprite
-const PARTICLE_SPOTS = [
-  { dx:  0, dy: -14, delay: 0   },
-  { dx: -2, dy: -13, delay: 0.7 },
-  { dx:  2, dy: -15, delay: 1.4 },
-];
+// A random bottle "settles" (tiny rock) every so often — the pile reads as
+// physical rather than a static drawing. Transient CSS keyframe on ONE bottle.
+const SETTLE_MIN_MS = 12_000;
+const SETTLE_MAX_MS = 20_000;
 
-function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColors }: {
+function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColors, settling = false }: {
   x: number; y: number; liquidColor: string; liquidPoints: string; sprite: string; prefixTier: number;
-  blendColors?: string[];
+  blendColors?: string[]; settling?: boolean;
 }) {
   const fx = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)];
   const glowPx = fx.glow;
@@ -50,28 +49,13 @@ function Bottle({ x, y, liquidColor, liquidPoints, sprite, prefixTier, blendColo
     // animations replace the whole `filter` property each frame, so it can't
     // share an element with the static saturate/brightness/glow filter above.
     <g transform={`translate(${x} ${y})`} style={liq.prismatic ? { animation: "potion-prismatic 4s linear infinite" } : undefined}>
-      <g style={filter ? { filter } : undefined}>
+      {/* The settle wiggle goes on THIS inner group: a CSS transform animation
+          on the outer one would replace its translate() attribute. */}
+      <g className={settling ? "pile-settle" : undefined} style={filter ? { filter } : undefined}>
         <PotionLiquidFill liquidColor={liquidColor} liquidPoints={liquidPoints} blendColors={blendColors} />
         <image href={sprite} x="-8" y="-16" width="16" height="16" />
       </g>
     </g>
-  );
-}
-
-function BottleParticles({ x, y, liquidColor, prefixTier }: {
-  x: number; y: number; liquidColor: string; prefixTier: number;
-}) {
-  const numParticles = TIER_FX[Math.min(prefixTier, TIER_FX.length - 1)].particles;
-  if (numParticles === 0) return null;
-  return (
-    <>
-      {PARTICLE_SPOTS.slice(0, numParticles).map((p, i) => (
-        <circle key={i} cx={x + p.dx} cy={y + p.dy} r="2.5" fill={liquidColor} opacity="0">
-          <animate attributeName="cy" values={`${y + p.dy};${y + p.dy - 8}`} dur="1.8s" repeatCount="indefinite" begin={`${p.delay}s`} />
-          <animate attributeName="opacity" values="0;0.9;0" dur="1.8s" repeatCount="indefinite" begin={`${p.delay}s`} />
-        </circle>
-      ))}
-    </>
   );
 }
 
@@ -153,6 +137,23 @@ export default function PotionPileArt() {
   const count = bottleData.length;
   const shown = Math.min(totalCapacity, count);
 
+  // Occasional settle: pick one visible bottle every 12–20 s.
+  const [settle, setSettle] = useState<{ idx: number; key: number } | null>(null);
+  useEffect(() => {
+    if (shown === 0) return;
+    let timer = 0;
+    let clear = 0;
+    const schedule = () => {
+      timer = window.setTimeout(() => {
+        setSettle({ idx: Math.floor(Math.random() * shown), key: Date.now() });
+        clear = window.setTimeout(() => setSettle(null), 500);
+        schedule();
+      }, SETTLE_MIN_MS + Math.random() * (SETTLE_MAX_MS - SETTLE_MIN_MS));
+    };
+    schedule();
+    return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
+  }, [shown]);
+
   if (shown === 0 || piles.length === 0) return null;
 
   const pts: [number, number][] = [];
@@ -198,28 +199,34 @@ export default function PotionPileArt() {
   // from a "background" pile could wrongly cover one from a "foreground"
   // pile and read as floating in front of it.
   const depthOrder = pts
-    .map(([x, y], i) => ({ x, y, b: bottleData[i % bottleData.length] }))
+    .map(([x, y], i) => ({ x, y, i, b: bottleData[i % bottleData.length] }))
     .sort((a, b) => a.y - b.y);
 
+  const widthPx = Math.round(vbW * SCALE);
+  const heightPx = Math.round(vbH * SCALE);
+  // Bottle centres in the overlay's px space, for the fireflies.
+  const anchors = depthOrder.map(({ x, y, b }) => ({ x: (x - vbX) * SCALE, y: (y - 8 - vbY) * SCALE, tier: b.prefixTier, color: b.liquidColor }));
+
   return (
-    <svg
-      width={Math.round(vbW * SCALE)}
-      height={Math.round(vbH * SCALE)}
-      viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-      style={{ display: "block", overflow: "visible" }}
-      fill="none"
-    >
-      {shadows.map((s, i) => (
-        <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={5} fill="#000" opacity="0.25" />
-      ))}
-      {depthOrder.map(({ x, y, b }, i) => (
-        <Bottle key={i} x={x} y={y} liquidColor={b.liquidColor} liquidPoints={b.liquidPoints} sprite={b.sprite} prefixTier={b.prefixTier} blendColors={b.blendColors} />
-      ))}
-      {/* Particle layer rendered on top of all bottles, outside filtered groups */}
-      {depthOrder.map(({ x, y, b }, i) => (
-        <BottleParticles key={`p${i}`} x={x} y={y} liquidColor={b.liquidColor} prefixTier={b.prefixTier} />
-      ))}
-    </svg>
+    <div className="relative" style={{ width: widthPx, height: heightPx }}>
+      <svg
+        width={widthPx}
+        height={heightPx}
+        viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+        style={{ display: "block", overflow: "visible" }}
+        fill="none"
+      >
+        {shadows.map((s, i) => (
+          <ellipse key={i} cx={s.cx} cy={s.cy} rx={s.rx} ry={5} fill="#000" opacity="0.25" />
+        ))}
+        {depthOrder.map(({ x, y, i, b }, k) => (
+          <Bottle key={k} x={x} y={y} liquidColor={b.liquidColor} liquidPoints={b.liquidPoints} sprite={b.sprite} prefixTier={b.prefixTier} blendColors={b.blendColors} settling={settle?.idx === i} />
+        ))}
+      </svg>
+      {/* Fireflies around the high-tier bottles — HTML layer so their 30 Hz
+          movement never repaints the (filter-heavy) pile SVG. */}
+      <PileLife anchors={anchors} />
+    </div>
   );
 }
 

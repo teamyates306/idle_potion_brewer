@@ -243,6 +243,9 @@ export function getPotionTypeData(potionType: string) {
 
 // Prefix → visual effect tier (0 = dull/desaturated, 9 = maximum spectacle).
 // "Grand" kept as a legacy alias (old saves may hold quest text with old names).
+/** Canonical prefix per tier index 0–9 (inverse of PREFIX_TIERS). */
+export const TIER_NAMES = ["Diluted", "Lesser", "Common", "Refined", "Greater", "Superior", "Potent", "Exalted", "Mythic", "Transcendent"] as const;
+
 export const PREFIX_TIERS: Record<string, number> = {
   Diluted:      0,
   Lesser:       1,

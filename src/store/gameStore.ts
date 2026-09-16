@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createThrottledStorage } from "./persistStorage";
+import { parsePotionVisuals, TIER_NAMES } from "../util/potionVisuals";
 import type {
   ActiveTrade,
   BrewingMachine,
@@ -1006,12 +1007,14 @@ export const useGameStore = create<GameState>()(
         // over as many levels as the batched gain covers, so committing 1s of
         // XP at once is exactly equivalent to committing it tick by tick.
         let workersChanged = false;
+        const leveledUp: { id: number; level: number }[] = [];
         const workers = s.workers.map((w) => {
           const gain = xpByWorkerId[w.id];
           if (!gain) return w;
           workersChanged = true;
           const leveled = applyLevels(w.level, w.xp + gain, cfg.formulas);
           const levelsGained = leveled.level - w.level;
+          if (levelsGained > 0) leveledUp.push({ id: w.id, level: leveled.level });
           return {
             ...w,
             xp: leveled.xp,
@@ -1038,6 +1041,7 @@ export const useGameStore = create<GameState>()(
           ...(workersChanged ? { workers } : {}),
           ...(machinesChanged ? { machines } : {}),
         });
+        for (const l of leveledUp) pushGameEvent("levelup", `Lv ${l.level}`, undefined, { workerId: l.id });
       },
 
       setTripPhase: (workerIndex, phase) =>
@@ -1138,6 +1142,7 @@ export const useGameStore = create<GameState>()(
         }
 
         get().pushHint("first_gather_complete");
+        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id });
         if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) {
           get().pushHint("worker_first_token");
         }
@@ -1298,6 +1303,7 @@ export const useGameStore = create<GameState>()(
           trades_completed_count: (s.trades_completed_count ?? 0) + 1,
         });
         pushGameEvent("trough", `+${trade.outputCount} ${outName}`);
+        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id });
       },
 
       cancelTrade: (workerIndex) =>
@@ -1531,6 +1537,7 @@ export const useGameStore = create<GameState>()(
           ? prevDiscovered
           : [...prevDiscovered, potion.hash];
 
+        const brewedTier = parsePotionVisuals(potion.name).prefixTier;
         const updatedMachine: BrewingMachine = {
           ...machine,
           xp: leveled.xp,
@@ -1539,6 +1546,7 @@ export const useGameStore = create<GameState>()(
           upgrade_tokens: (machine.upgrade_tokens ?? 0) + machineLevelsGained,
           brew_started_at: now(),
           brew_stalled: false,
+          best_tier: Math.max(machine.best_tier ?? -1, brewedTier),
         };
 
         const totalBrews = (s.total_brews ?? 0) + outputs;
@@ -1559,6 +1567,12 @@ export const useGameStore = create<GameState>()(
           lifetime_potions_sold: (s.lifetime_potions_sold ?? 0) + ((s.autoSellHashes ?? []).includes(potion.hash) ? outputs : 0),
           machines: s.machines.map((m, i) => i === mi ? updatedMachine : m),
         });
+
+        // Cauldron tier-up: the first time THIS brewer produces a higher tier
+        // than it ever has (a pre-feature save just records its first tier).
+        if (machine.best_tier != null && brewedTier > machine.best_tier) {
+          pushGameEvent("tier-up", TIER_NAMES[brewedTier] ?? "", machineId, { tier: brewedTier, potionName: potion.name });
+        }
 
         // Award mastery XP for the completed brew cycle (time-invested based,
         // NOT multiplied by multi-brew outputs).
@@ -1586,7 +1600,7 @@ export const useGameStore = create<GameState>()(
           const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
           const bonus = Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
           set((cur) => ({ coins: cur.coins + bonus, lifetime_coins_earned: (cur.lifetime_coins_earned ?? 0) + bonus }));
-          pushGameEvent("discovery", `${potion.name} discovered!`);
+          pushGameEvent("discovery", `${potion.name} discovered!`, machineId, { potionName: potion.name });
           pushGameEvent("pile", `+${bonus.toLocaleString()} discovery bonus`);
           get().refreshQuests();
 
@@ -1823,6 +1837,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + quest.reward,
           quests_completed_count: (s.quests_completed_count ?? 0) + 1,
         });
+        pushGameEvent("quest-complete", `+${quest.reward.toLocaleString()}`);
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()}`);
         get().checkAchievements("coins", s.coins + quest.reward);
       },

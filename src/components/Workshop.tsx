@@ -11,12 +11,18 @@ import { useSettingsStore } from "../store/settingsStore";
 import { subscribeAmbient, lampFlickerOpacity } from "../engine/ambientClock";
 import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
-import MachineArt from "./art/MachineArt";
+import MachineArt, { liquidColorFor } from "./art/MachineArt";
+import DiscoveryReveal, { type RevealVisuals } from "./fx/DiscoveryReveal";
+import SteamPuffs from "./fx/SteamPuffs";
+import WeatherLayer from "./fx/WeatherLayer";
+import LevelUpJumper from "./fx/LevelUpJumper";
+import { lampsLit } from "./Atmosphere";
+import { getDayPhase } from "../hooks/useDayNight";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
 import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
 import NoticeBoardArt from "./art/NoticeBoardArt";
-import { IconStarToken, IconSleep } from "./ui/icons";
+import { IconStarToken, IconSleep, IconCoin } from "./ui/icons";
 import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE, TIER_FX } from "../util/potionVisuals";
 import PotionLiquidFill from "./art/PotionLiquidFill";
 import { describePotion } from "../engine/potions";
@@ -77,6 +83,14 @@ const MACHINE_SPARK_COLORS = [
   ["#c2703a","#d9924e","#a8542f","#e8c09a","#cf8a5e"], // brick ember
 ];
 
+// Sparks turn to embers once the cauldron is running hot (see handleCauldronClick).
+const EMBER_COLORS = ["#ff7a1a", "#ff9f3d", "#ffd08a", "#e04b0f", "#ffb347"];
+const HEAT_HOT = 0.85;      // lid starts rattling
+const HEAT_EMBERS = 0.7;    // spark palette switches to embers
+const HEAT_RELEASE = 0.45;  // cooling below this after being hot → "clank"
+// Cauldron mouth centre in the 108px art box (liquid ellipse cx=54, cy=46.5 of 110).
+const MOUTH_X = 53, MOUTH_Y = 45;
+
 interface Spark {
   id: number;
   x: number; y: number;
@@ -100,7 +114,7 @@ interface PotionBrewVisuals {
 
 interface FlyingParticle {
   id: number;
-  type: "ingredient" | "potion";
+  type: "ingredient" | "potion" | "token" | "coin";
   x: number;      // viewport x (fixed-position)
   y: number;      // viewport y
   dx: number;     // displacement to target
@@ -149,6 +163,33 @@ function BrewBurstEl({ b }: { b: BrewBurst }) {
         } as React.CSSProperties} />
       ))}
     </div>
+  );
+}
+
+/** A short column of steam puffs from the cauldron mouth — finite keyframes. */
+function SteamBurst({ count, color, spread = 14 }: { count: number; color: string; spread?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => {
+        const size = 10 + (i % 3) * 4;
+        return (
+          <span
+            key={i}
+            className="pointer-events-none absolute rounded-full steam-rise"
+            style={{
+              left: MOUTH_X - size / 2 + ((i * 7) % spread) - spread / 2,
+              top: MOUTH_Y - size / 2,
+              width: size, height: size,
+              background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+              opacity: 0,
+              "--sx": `${((i % 2) ? 1 : -1) * (4 + i * 3)}px`,
+              "--sy": `${-(48 + i * 9)}px`,
+              animationDelay: `${i * 70}ms`,
+            } as React.CSSProperties}
+          />
+        );
+      })}
+    </>
   );
 }
 
@@ -732,6 +773,25 @@ const MachineColumn = React.memo(function MachineColumn({
 
   const heatRef    = useRef(0);
   const [heatDisplay, setHeatDisplay] = useState(0);
+  // Overheat: once the cauldron has run hot, cooling back down "clanks".
+  const wasHotRef  = useRef(false);
+  const [clank, setClank] = useState(0);
+  // Tier-up flash (this cauldron beat its best-ever tier).
+  const [tierFlash, setTierFlash] = useState<{ id: number; label: string } | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const unsub = subscribeGameEvent((evt) => {
+      if (evt.channel !== "tier-up" || evt.machineId !== machine.id) return;
+      setTierFlash({ id: evt.id, label: evt.text });
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setTierFlash(null), 1400);
+      if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
+        const rect = cauldronRef.current.getBoundingClientRect();
+        spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.1, text: `${evt.text}!`, color: "#fde68a", size: "lg", arcX: 0, glow: true, duration: 2600 });
+      }
+    });
+    return () => { unsub(); window.clearTimeout(timer); };
+  }, [machine.id]);
   const [sparks, setSparks]    = useState<Spark[]>([]);
   const sparkIdRef = useRef(0);
   const [bumping, setBumping]  = useState(false);
@@ -766,6 +826,14 @@ const MachineColumn = React.memo(function MachineColumn({
       lastT = t;
       heatRef.current = Math.max(0, heatRef.current - HEAT_DECAY * dt);
       setHeatDisplay(heatRef.current);
+      if (wasHotRef.current && heatRef.current < HEAT_RELEASE) {
+        // Pressure release: one clank + a puff of steam as it cools.
+        wasHotRef.current = false;
+        setClank((n) => n + 1);
+        setBumping(false);
+        requestAnimationFrame(() => setBumping(true));
+        setTimeout(() => setBumping(false), 320);
+      }
       if (heatRef.current > 0) {
         heatRafRef.current = requestAnimationFrame(tick);
       } else {
@@ -891,6 +959,8 @@ const MachineColumn = React.memo(function MachineColumn({
     heatRef.current = newHeat;
     setHeatDisplay(newHeat);
     startHeatDecay();
+    if (newHeat >= HEAT_HOT) wasHotRef.current = true;
+    const palette = newHeat >= HEAT_EMBERS ? EMBER_COLORS : sparkColors;
 
     const sparkCount = Math.floor(2 + newHeat * 6);
     const nowMs = Date.now();
@@ -907,7 +977,7 @@ const MachineColumn = React.memo(function MachineColumn({
           dx: (Math.random() - 0.5) * 65,
           dy: -(28 + Math.random() * 50),
           size: 2 + Math.random() * 2.5,
-          color: sparkColors[Math.floor(Math.random() * sparkColors.length)],
+          color: palette[Math.floor(Math.random() * palette.length)],
           createdAt: nowMs,
         })),
       ];
@@ -949,6 +1019,10 @@ const MachineColumn = React.memo(function MachineColumn({
   }, [machine.brew_started_at, machine.brew_stalled]);
 
   const hasTokens = (machine.upgrade_tokens ?? 0) > 0;
+  const hot = heatDisplay >= HEAT_HOT;
+  const liquidColor = liquidColorFor(brewProgress, hue);
+  // The bar goes gold once this cauldron has produced an Exalted+ potion.
+  const barColor = (machine.best_tier ?? 0) >= 7 ? "#e0b23a" : accent;
 
   return (
     <div className="flex flex-col items-center" style={{ width: COL_W, flexShrink: 0 }}>
@@ -957,7 +1031,7 @@ const MachineColumn = React.memo(function MachineColumn({
         ref={cauldronRef}
         data-tut={machineIdx === 0 ? "cauldron" : undefined}
         onClick={handleCauldronClick}
-        className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${bumping ? "cauldron-bump" : ""}`}
+        className={`relative cursor-pointer select-none transition-transform active:scale-95 rounded-full ${bumping ? "cauldron-bump" : hot ? "cauldron-rattle" : ""}`}
         style={{
           boxShadow: [
             heatDisplay > 0.08
@@ -989,11 +1063,28 @@ const MachineColumn = React.memo(function MachineColumn({
             ].filter(Boolean).join(" ") || undefined,
           }}
         >
-          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} hue={hue} paused={loopsPaused} />
+          <MachineArt size={108} brewing={false} progress={brewProgress} uid={String(machine.id)} hue={hue} />
         </div>
 
-        {/* Ground shadow */}
-        <div className="pointer-events-none absolute -bottom-1.5 left-1/2" style={{ width: 88, height: 12, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(-50%) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
+        {/* Steam — replaces the bubble loops; tinted from the liquid */}
+        <SteamPuffs active={brewActive && !loopsPaused} color={liquidColor} x={MOUTH_X} y={MOUTH_Y} />
+
+        {/* Tier-up: white flash over the liquid + a column of steam */}
+        {tierFlash && (
+          <div key={tierFlash.id} className="pointer-events-none absolute inset-0">
+            <div className="tier-flash absolute rounded-full" style={{ left: MOUTH_X - 40, top: MOUTH_Y - 12, width: 80, height: 24, background: "radial-gradient(ellipse, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 70%)" }} />
+            <SteamBurst count={7} color="rgba(255,255,255,0.8)" spread={24} />
+          </div>
+        )}
+        {/* Overheat release */}
+        {clank > 0 && (
+          <div key={clank} className="pointer-events-none absolute inset-0">
+            <SteamBurst count={4} color="rgba(255,230,200,0.7)" />
+          </div>
+        )}
+
+        {/* Ground shadow — leans away from the sun (see --dn-shadow-dx/skew) */}
+        <div className="pointer-events-none absolute -bottom-1.5 left-1/2" style={{ width: 88, height: 12, background: "radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(calc(-50% + var(--dn-shadow-dx, 0px))) skewX(var(--dn-shadow-skew, 0deg)) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
 
         {/* Sparks */}
         {sparks.map((spark) => (
@@ -1039,7 +1130,9 @@ const MachineColumn = React.memo(function MachineColumn({
                   "--wb-rot": side === "left" ? "8deg" : "-8deg",
                 } as React.CSSProperties}
               >
-                <WorkerArt size={47} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
+                <LevelUpJumper workerId={w.id}>
+                  <WorkerArt size={47} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
+                </LevelUpJumper>
               </div>
             </div>
           );
@@ -1057,7 +1150,7 @@ const MachineColumn = React.memo(function MachineColumn({
       <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
         <div
           className="h-full w-full origin-left"
-          style={{ transform: `scaleX(${brewProgress})`, background: accent, transition: barSnap ? "none" : "transform 150ms linear" }}
+          style={{ transform: `scaleX(${brewProgress})`, background: barColor, transition: barSnap ? "none" : "transform 150ms linear" }}
         />
       </div>
 
@@ -1115,7 +1208,9 @@ const WorkerTrackSprite = React.memo(function WorkerTrackSprite({ idx, worker, x
         transition: "transform 150ms linear, opacity 150ms linear",
       }}
     >
-      <WorkerArt size={47} specialization={worker.specialization} active={active} hueShift={workerHue(worker.id)} />
+      <LevelUpJumper workerId={worker.id}>
+        <WorkerArt size={47} specialization={worker.specialization} active={active} hueShift={workerHue(worker.id)} />
+      </LevelUpJumper>
     </div>
   );
 });
@@ -1377,9 +1472,49 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     if (c !== el.scrollLeft) el.scrollLeft = c;
   };
 
-  // Global FAT for trough / pile channels
+  // Flying brew particles (ingredient jump in, potion jump out) + icon flights
+  const flyIdRef = useRef(0);
+  const [flyingParticles, setFlyingParticles] = useState<FlyingParticle[]>([]);
+
+  // Discovery reveal (one at a time; a newer discovery replaces the current).
+  const [reveal, setReveal] = useState<{ id: number; name: string; visuals: RevealVisuals } | null>(null);
+  const clearReveal = useCallback(() => setReveal(null), []);
+
+  // Icon flights (level-up token → Workers badge, quest coins → HUD counter).
+  const flyIcons = useCallback((type: "token" | "coin", from: DOMRect, to: DOMRect, count: number) => {
+    const startX = from.left + from.width / 2, startY = from.top + from.height / 2;
+    const endX = to.left + to.width / 2, endY = to.top + to.height / 2;
+    const items: FlyingParticle[] = Array.from({ length: count }, (_, i) => ({
+      id: flyIdRef.current++,
+      type,
+      x: startX + (Math.random() - 0.5) * 10, y: startY,
+      dx: endX - startX, dy: endY - startY,
+      arcX: (Math.random() - 0.5) * 60,
+      delay: i * 90, duration: 900,
+    }));
+    setFlyingParticles((prev) => (prev.length > 40 ? prev : [...prev, ...items]));
+    const ids = new Set(items.map((p) => p.id));
+    setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => !ids.has(p.id))), 900 + count * 90 + 200);
+  }, []);
+
+  // Global FAT for trough / pile channels + scene-wide reactions
   useEffect(() => {
     return subscribeGameEvent((evt) => {
+      if (evt.channel === "levelup") {
+        // The worker's earned token arcs from the sprite to the Workers badge.
+        const wid = evt.meta?.workerId;
+        const from = wid != null ? document.querySelector(`[data-worker-id="${wid}"]`)?.getBoundingClientRect() : null;
+        const to = document.querySelector('[data-tut="workers"]')?.getBoundingClientRect();
+        if (from && to) flyIcons("token", from, to, 1);
+        return;
+      }
+      if (evt.channel === "quest-complete") {
+        const from = document.querySelector("[data-notice-board]")?.getBoundingClientRect();
+        const to = document.querySelector('[data-hud="coins"]')?.getBoundingClientRect();
+        if (from && to) flyIcons("coin", from, to, 5);
+        return;
+      }
+      if (evt.channel === "tier-up" || evt.channel === "milestone") return;
       if (!useSettingsStore.getState().toastsEnabled) return;
       if (evt.channel === "cauldron") return;
 
@@ -1390,16 +1525,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const cy   = rect.top  + rect.height / 3;
 
       if (evt.channel === "discovery") {
-        spawnFAT({
-          x: window.innerWidth / 2,
-          y: window.innerHeight * 0.42,
-          text: evt.text,
-          color: "#fde68a",
-          arcX: 0,
-          size: "lg",
-          duration: 7000,
-          glow: true,
-        });
+        const name = evt.meta?.potionName;
+        if (name) {
+          const pv = parsePotionVisuals(name);
+          setReveal({ id: evt.id, name, visuals: { liquidColor: pv.liquidColor, prefixTier: pv.prefixTier, blendColors: pv.blendColors, ...getPotionTypeData(pv.potionType) } });
+        } else {
+          spawnFAT({ x: window.innerWidth / 2, y: window.innerHeight * 0.42, text: evt.text, color: "#fde68a", arcX: 0, size: "lg", duration: 7000, glow: true });
+        }
         return;
       }
 
@@ -1452,9 +1584,6 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     }
   }, [potionCount]);
 
-  // Flying brew particles (ingredient jump in, potion jump out)
-  const flyIdRef = useRef(0);
-  const [flyingParticles, setFlyingParticles] = useState<FlyingParticle[]>([]);
 
   const handleBrewStart = useCallback((cauldronRect: DOMRect, categories: string[]) => {
     // Battery-saver / low-quality mode skips decorative fly-ins entirely.
@@ -1745,7 +1874,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 <div className="relative" style={{ width: w, height: 32 }}>
                   <TroughPile />
                   <img src={`/sprites/trough-${sw}.png`} width={w} height={32} alt="" draggable={false} style={{ display: "block", position: "relative", zIndex: 50 }} />
-                  <div className="pointer-events-none absolute -bottom-4 left-1/2 h-5" style={{ width: "85%", background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(-50%) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
+                  <div className="pointer-events-none absolute -bottom-4 left-1/2 h-5" style={{ width: "85%", background: "radial-gradient(ellipse at top center, rgba(0,0,0,0.45) 0%, transparent 70%)", opacity: "var(--dn-shadow-op, 0.25)", transform: "translateX(calc(-50% + var(--dn-shadow-dx, 0px))) skewX(var(--dn-shadow-skew, 0deg)) scaleX(var(--dn-shadow-scale, 0.8))", transition: "opacity 3.5s ease-in-out, transform 3.5s ease-in-out" }} />
                 </div>
               );
             })()}
@@ -1781,6 +1910,8 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           </div>
         </div>
       </div>
+
+      {reveal && <DiscoveryReveal key={reveal.id} name={reveal.name} visuals={reveal.visuals} onDone={clearReveal} />}
 
       {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll */}
       {(flyingParticles.length > 0 || brewBursts.length > 0) && (
@@ -2097,12 +2228,9 @@ function WallVista({ width, walkers }: { width: number; walkers: WallWalkerCfg[]
   );
 }
 
-function WallWindowFrame({ cx }: { cx: number }) {
-  // Frame + glass texture on top — hand-authored pixel art, same 48×64
-  // canvas as the aperture clip so it lines up exactly; its glass pixels
-  // are semi-transparent so the day/night colour + hills tint through.
-  return <image href="/sprites/window.png" x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} style={{ imageRendering: "pixelated" }} />;
-}
+// Window frames: hand-authored 48×64 pixel art whose glass pixels are
+// semi-transparent so the day/night colour + hills tint through. Drawn as
+// HTML <img>s on top of the weather canvas (see WorkshopWall).
 function WallLamp({ cx }: { cx: number }) {
   return (
     <g transform={`translate(${cx},94)`}>
@@ -2119,28 +2247,48 @@ function WallLamp({ cx }: { cx: number }) {
 // lamp on its own compositor layer, opacity written by the shared ambient
 // clock. The GPU only re-composites 30×/s for the flicker and never repaints
 // the wall for it.
+// Lanterns are LIT at dusk and put OUT in the morning (see lampsLit), one by
+// one from the door outwards, each with a little flare as it catches — rather
+// than all fading together with the daylight.
 const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps }: { lamps: number[] }) {
   const refs = useRef<(HTMLDivElement | null)[]>([]);
   useEffect(() => {
+    const center = lamps.reduce((a, b) => a + b, 0) / Math.max(1, lamps.length);
+    const rank: number[] = new Array(lamps.length).fill(0);
+    lamps.map((cx, i) => ({ i, d: Math.abs(cx - center) })).sort((a, b) => a.d - b.d).forEach((o, r) => { rank[o.i] = r; });
+    let wasLit: boolean | null = null;
+    let changedAt = 0;
     return subscribeAmbient((t) => {
-      const o = lampFlickerOpacity(t);
-      for (const el of refs.current) if (el) el.style.opacity = String(o);
+      const lit = lampsLit(getDayPhase());
+      if (wasLit === null) { wasLit = lit; changedAt = -100; }      // first tick: no sequence, just the state
+      else if (lit !== wasLit) { wasLit = lit; changedAt = t; }
+      const flicker = lampFlickerOpacity(t);
+      for (let i = 0; i < refs.current.length; i++) {
+        const el = refs.current[i];
+        if (!el) continue;
+        const since = t - changedAt - rank[i] * (lit ? 0.22 : 0.12);
+        const on = lit ? (since >= 0 ? 1 : 0) : (since >= 0 ? 0 : 1);
+        const flare = lit && since >= 0 && since < 0.35 ? 1 + 0.45 * (1 - since / 0.35) : 1;
+        el.style.opacity = (on * flicker).toFixed(3);
+        el.style.transform = `scale(${flare.toFixed(3)})`;
+      }
     });
-  }, []);
+  }, [lamps]);
   return (
     <>
       {lamps.map((cx, i) => (
         <div
           key={cx}
           className="pointer-events-none absolute z-[1]"
-          style={{ left: cx - 14, top: 95, width: 28, height: 10, opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}
+          style={{ left: cx - 14, top: 95, width: 28, height: 10 }}
         >
           <div
             ref={(el) => { refs.current[i] = el; }}
             style={{
               width: 28, height: 10, borderRadius: "50%",
               background: "radial-gradient(ellipse 70% 70% at 50% 30%, rgba(255,176,64,0.9) 0%, rgba(255,96,16,0.4) 55%, rgba(255,48,0,0) 100%)",
-              willChange: "opacity",
+              opacity: 0,
+              willChange: "opacity, transform",
             }}
           />
         </div>
@@ -2154,12 +2302,27 @@ const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps }: { l
 // WorkshopWall's SVG) so it grows with the text instead of clipping it.
 const WorkshopSign = React.memo(function WorkshopSign({ x }: { x: number }) {
   const name = useGameStore((s) => s.workshopName);
+  // Coin milestones (see CoinCounter) send a glint sweeping across the plaque.
+  const [glint, setGlint] = useState(0);
+  useEffect(() => {
+    let timer = 0;
+    const unsub = subscribeGameEvent((evt) => {
+      if (evt.channel !== "milestone") return;
+      setGlint((n) => n + 1);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setGlint(0), 1000);
+    });
+    return () => { unsub(); window.clearTimeout(timer); };
+  }, []);
   return (
     <div
-      className="pointer-events-none absolute z-[1] flex min-w-[104px] items-center justify-center whitespace-nowrap rounded-[3px] border border-[#6b5035] bg-[#3a2008] px-2 py-0.5"
+      className="pointer-events-none absolute z-[1] flex min-w-[104px] items-center justify-center overflow-hidden whitespace-nowrap rounded-[3px] border border-[#6b5035] bg-[#3a2008] px-2 py-0.5"
       style={{ left: x, top: 55.5, transform: "translate(-50%, -50%)" }}
     >
       <span className="text-[9px] font-normal uppercase tracking-[0.2em] text-[#c8a050]">{name}</span>
+      {glint > 0 && (
+        <span key={glint} className="sign-glint pointer-events-none absolute inset-y-0 left-0 w-1/3" style={{ background: "linear-gradient(90deg, transparent 0%, rgba(255,230,160,0.55) 50%, transparent 100%)" }} />
+      )}
     </div>
   );
 });
@@ -2172,7 +2335,8 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
   const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
   const step = width / n;
-  const windows = computeWindowPositions(width);
+  // Memoised: WeatherLayer keys its canvas effect on this array.
+  const windows = useMemo(() => computeWindowPositions(width), [width]);
   const lamps = computeLampPositions(width);
   const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
   const walkerQualityCap = useGameStore((s) => WALKER_CAP_BY_QUALITY[s.graphics.quality]);
@@ -2229,9 +2393,6 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
           <WallWindowLight key={x} cx={x} />
         ))}
         <WallVista width={width} walkers={walkers} />
-        {windows.map((x) => (
-          <WallWindowFrame key={x} cx={x} />
-        ))}
         {lamps.map((x) => (
           <WallLamp key={x} cx={x} />
         ))}
@@ -2242,6 +2403,20 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
             and needs to grow with the text, neither of which SVG does well. */}
         <rect width={width} height="144" fill="url(#wallFade)" />
       </svg>
+      {/* Weather seen through the windows — an HTML canvas above the vista,
+          below the frames (which therefore live here as <img>s rather than in
+          the SVG; same geometry, same picture). */}
+      <WeatherLayer width={width} windows={windows} />
+      {windows.map((cx) => (
+        <img
+          key={cx}
+          src="/sprites/window.png"
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute"
+          style={{ left: cx - WIN_W / 2, top: WIN_Y, width: WIN_W, height: WIN_H, imageRendering: "pixelated" }}
+        />
+      ))}
     </button>
   );
 });
@@ -2297,9 +2472,10 @@ function FlyingParticleEl({ p }: { p: FlyingParticle }) {
         animationTimingFunction: p.type === "ingredient" ? "ease-in" : "cubic-bezier(0.22,1,0.36,1)",
       } as React.CSSProperties}
     >
-      {p.type === "ingredient"
-        ? <IngredientSvg category={p.category!} size={20} />
-        : <FlyPotion potion={p.potion!} />}
+      {p.type === "ingredient" ? <IngredientSvg category={p.category!} size={20} />
+        : p.type === "potion" ? <FlyPotion potion={p.potion!} />
+        : p.type === "token" ? <span className="text-yellow-400" style={{ filter: "drop-shadow(0 0 4px #fbbf24)", display: "inline-flex", transform: "scale(1.6)" }}><IconStarToken /></span>
+        : <span className="text-amber-300" style={{ filter: "drop-shadow(0 0 4px #fbbf24)", display: "inline-flex", transform: "scale(1.4)" }}><IconCoin style={{ width: 14, height: 14 }} /></span>}
     </div>
   );
 }

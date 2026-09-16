@@ -2,6 +2,14 @@ import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
 import { getDayPhase, computeDayNight } from "../hooks/useDayNight";
 import { subscribeAmbient, cycleProgress, moteSample } from "../engine/ambientClock";
+import { currentWeather } from "../engine/weather";
+
+/** Lanterns are LIT (rather than fading with the light) from dusk until
+ *  early morning: phase 0.72 ≈ 17:17 through 0.30 ≈ 07:12. Shared with the
+ *  lamp flicker overlay so both ignite together. */
+export function lampsLit(phase: number): boolean {
+  return phase >= 0.72 || phase < 0.30;
+}
 
 // Static mote descriptors — generated once at module load.
 // All animation is driven by CSS @keyframes on the GPU compositor thread.
@@ -30,6 +38,11 @@ export function applyDayNightVars() {
   const dn   = computeDayNight(getDayPhase());
   const root = document.documentElement.style;
   const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
+  // Weather outside (engine/weather.ts): rain overcasts the daylight and cools
+  // the room; snow bounces light so nights are a shade brighter.
+  const weather = currentWeather();
+  const rainy = weather.kind === "rain" ? weather.intensity : 0;
+  const snowy = weather.kind === "snow" ? weather.intensity : 0;
 
   // Vignette opacity: a warm edge-darkening that is present by day and most
   // visible at night. Driving element opacity (vs. recolouring the gradient)
@@ -39,7 +52,7 @@ export function applyDayNightVars() {
   // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.10
   const warmAlpha = Math.max(sr, ss) * 0.10;
   // Cool tint: a faint dusk wash, kept low so the cosy daytime never goes dark.
-  const coolAlpha = (1 - dy) * 0.04;
+  const coolAlpha = (1 - dy) * 0.04 + rainy * 0.03;
 
   // The two are composited into ONE rgba (cool over warm, exact source-over
   // algebra) so a single full-screen layer carries both — each full-screen
@@ -63,12 +76,17 @@ export function applyDayNightVars() {
   root.setProperty("--dn-shadow-scale", (0.65 + shadowStrength * 0.55).toFixed(3));
 
   // Window light shafts: bright during the day, angled by sun position
-  root.setProperty("--dn-daylight-op", dn.dayness.toFixed(3));
+  root.setProperty("--dn-daylight-op", (dn.dayness * (1 - rainy * 0.3 - snowy * 0.15)).toFixed(3));
   const dayFrac = Math.max(-1, Math.min(1, (dn.phase - 0.5) / 0.4)); // −1 dawn → 0 noon → +1 dusk
   root.setProperty("--dn-sun-skew", `${(dayFrac * 32).toFixed(1)}deg`);
-  // Beam opacity: same at dawn/dusk, 0.8× at noon (vertical beams are slightly dimmer)
-  const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength);
+  // Beam opacity: same at dawn/dusk, 0.8× at noon (vertical beams are slightly
+  // dimmer); overcast weather softens them.
+  const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength) * (1 - rainy * 0.65 - snowy * 0.4);
   root.setProperty("--dn-beam-op", beamOp.toFixed(3));
+  // Object shadows (cauldrons, trough) lean away from the sun like the beams
+  // do — only by day; at night the lamps sit overhead so they fall straight.
+  root.setProperty("--dn-shadow-dx",   `${(-dayFrac * 9 * dn.dayness).toFixed(1)}px`);
+  root.setProperty("--dn-shadow-skew", `${(-dayFrac * 18 * dn.dayness).toFixed(1)}deg`);
 
   // Workshop wall: lamps, outside-scene night dimming.
   //
@@ -77,12 +95,12 @@ export function applyDayNightVars() {
   // var(…) …))`, which silently fails: nesting a var() inside calc() inside a
   // filter function resolves to the fallback on every engine tested (the scene
   // stayed at full daytime brightness even at 1am).
-  root.setProperty("--dn-scene-dark-op", ((1 - dn.dayness) * 0.62).toFixed(3));
-  const lf = (0.5 + dn.lampGlow * 0.5).toFixed(2);
-  const lg = (dn.lampGlow * 0.18).toFixed(2);
-  root.setProperty("--dn-lamp-flame",    `rgba(251,191,36,${lf})`);
-  root.setProperty("--dn-lamp-glow",     `rgba(251,191,36,${lg})`);
-  root.setProperty("--dn-lamp-glow-op",  dn.lampGlow.toFixed(3));
+  root.setProperty("--dn-scene-dark-op", ((1 - dn.dayness) * 0.62 * (1 - snowy * 0.2)).toFixed(3));
+  // Lantern glow pools: lit or not (see lampsLit), rather than a slow fade —
+  // the 3 s CSS transition on the pools gives the "lights coming on" beat
+  // while the flicker overlays ignite one by one from the door outwards.
+  const lampGlow = lampsLit(dn.phase) ? 0.85 + dn.sunsetness * 0.2 : 0;
+  root.setProperty("--dn-lamp-glow-op",  lampGlow.toFixed(3));
 }
 
 // Motes: static descriptors above, positions written to inline styles at

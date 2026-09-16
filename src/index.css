@@ -302,3 +302,68 @@ body {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
+
+/* ── Payoff moments & ambience (src/components/fx, Workshop.tsx). Every one of
+   these is FINITE: they run for a moment and stop. Continuous motion belongs
+   on the ambient clock, never in an infinite keyframe. ── */
+
+/* Discovery reveal */
+@keyframes reveal-dim    { 0% { opacity: 0 } 10% { opacity: 1 } 85% { opacity: 1 } 100% { opacity: 0 } }
+.reveal-dim              { animation: reveal-dim 3200ms ease-in-out both; }
+@keyframes reveal-ring   { 0% { transform: scale(0.2); opacity: 0 } 20% { opacity: 0.9 } 100% { transform: scale(1.6); opacity: 0 } }
+.reveal-ring             { animation: reveal-ring 1200ms ease-out 250ms both; }
+@keyframes reveal-spark  { 0% { transform: translate(0,0) scale(0.3); opacity: 0 } 25% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 0 } }
+.reveal-spark            { animation: reveal-spark 900ms ease-out both; }
+@keyframes reveal-bottle {
+  0%   { transform: translateY(60px) scale(0.4) rotate(-12deg); opacity: 0 }
+  22%  { transform: translateY(0) scale(1.08) rotate(6deg); opacity: 1 }
+  40%  { transform: scale(1) rotate(-3deg) }
+  60%  { transform: scale(1) rotate(2deg) }
+  85%  { transform: scale(1) rotate(0); opacity: 1 }
+  100% { transform: translateY(-20px) scale(0.6); opacity: 0 }
+}
+.reveal-bottle           { animation: reveal-bottle 3200ms cubic-bezier(0.22,1,0.36,1) both; transform-origin: 50% 60%; }
+@keyframes reveal-name {
+  0%   { transform: scale(1.5); opacity: 0 }
+  15%  { transform: scale(0.96); opacity: 1 }
+  19%  { transform: scale(1.02) translateX(-2px) }
+  23%  { transform: scale(1) translateX(2px) }
+  27%  { transform: scale(1) translateX(0) }
+  85%  { opacity: 1 }
+  100% { opacity: 0 }
+}
+.reveal-name             { animation: reveal-name 3200ms ease-out 450ms both; }
+
+/* Cauldron tier-up flash + steam columns */
+@keyframes tier-flash    { 0% { opacity: 0 } 15% { opacity: 0.95 } 100% { opacity: 0 } }
+.tier-flash              { animation: tier-flash 900ms ease-out both; }
+@keyframes steam-rise    { 0% { transform: translate(0,0) scale(0.5); opacity: 0 } 15% { opacity: 0.7 } 100% { transform: translate(var(--sx,0px), var(--sy,-60px)) scale(1.6); opacity: 0 } }
+.steam-rise              { animation: steam-rise 1100ms ease-out both; }
+
+/* Overheat: the lid rattles while the cauldron runs hot (bounded run) */
+@keyframes cauldron-rattle { 0%,100% { transform: translate(0,0) rotate(0) } 25% { transform: translate(-1.5px,0.5px) rotate(-1.2deg) } 50% { transform: translate(1.5px,-0.5px) rotate(1.2deg) } 75% { transform: translate(-1px,0.5px) rotate(-0.8deg) } }
+.cauldron-rattle         { animation: cauldron-rattle 120ms linear 14; }
+
+/* Coin milestone: shower + HUD flare + sign glint */
+@keyframes coin-rain     { 0% { transform: translate(0,0) rotate(0); opacity: 0 } 10% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) rotate(540deg); opacity: 0 } }
+.coin-rain               { animation: coin-rain 1100ms cubic-bezier(0.3,0.2,0.6,1) both; }
+@keyframes coin-milestone-glow { 0% { box-shadow: 0 0 0 0 rgba(251,191,36,0) } 20% { box-shadow: 0 0 22px 8px rgba(251,191,36,0.75) } 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0) } }
+.coin-milestone-glow     { animation: coin-milestone-glow 1400ms ease-out both; }
+@keyframes sign-glint    { 0% { transform: translateX(-140%) skewX(-20deg); opacity: 0 } 15% { opacity: 1 } 100% { transform: translateX(340%) skewX(-20deg); opacity: 0 } }
+.sign-glint              { animation: sign-glint 900ms ease-in-out both; }
+
+/* Worker level-up: star-jump */
+@keyframes worker-jump   { 0% { transform: translateY(0) scale(1,1) } 18% { transform: translateY(2px) scale(1.15,0.85) } 45% { transform: translateY(-16px) scale(0.92,1.1) } 72% { transform: translateY(0) scale(1.08,0.92) } 100% { transform: translateY(0) scale(1,1) } }
+.worker-jump             { animation: worker-jump 620ms cubic-bezier(0.34,1.56,0.64,1) both; }
+@keyframes star-pop      { 0% { transform: translate(0,0) scale(0.2); opacity: 0 } 30% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1) rotate(90deg); opacity: 0 } }
+.star-pop                { animation: star-pop 700ms ease-out both; }
+
+/* Notice board: quest stamped DONE, paper lifts off */
+@keyframes stamp-in      { 0% { transform: translate(-50%,-50%) rotate(-14deg) scale(2.4); opacity: 0 } 60% { transform: translate(-50%,-50%) rotate(-14deg) scale(0.92); opacity: 1 } 100% { transform: translate(-50%,-50%) rotate(-14deg) scale(1); opacity: 1 } }
+.stamp-in                { animation: stamp-in 320ms cubic-bezier(0.2,1.6,0.5,1) both; }
+@keyframes paper-off     { 0%,55% { transform: translate(0,0) rotate(0); opacity: 1 } 100% { transform: translate(6px,-18px) rotate(18deg); opacity: 0 } }
+.paper-off               { animation: paper-off 1500ms ease-in both; }
+
+/* Potion pile: a bottle settles */
+@keyframes pile-settle   { 0%,100% { transform: rotate(0) } 30% { transform: rotate(-3deg) translateY(1px) } 65% { transform: rotate(2deg) } }
+.pile-settle             { animation: pile-settle 450ms ease-in-out both; transform-box: fill-box; transform-origin: 50% 100%; }

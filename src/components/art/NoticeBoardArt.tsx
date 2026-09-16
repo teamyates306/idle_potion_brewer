@@ -6,6 +6,7 @@ import AdventurerSprite from "./AdventurerSprite";
 import IngredientSvg from "./IngredientSvg";
 import { useGameStore } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
+import { subscribeGameEvent } from "../../util/gameEvents";
 import { useNoticeBoardTuningStore } from "../../store/noticeBoardTuningStore";
 import { generateAdventurer } from "../../data/questSprites";
 import { fmt } from "../../util/format";
@@ -65,7 +66,7 @@ interface BoardData {
 // The board face itself: cork PNG + the three pinned papers. Drawn at native
 // 76×52; callers scale it. `dayNight` toggles the wall's ambient dim/brighten
 // overlays (on for the wall, off for the zoom popup so colours read true).
-function BoardFace({ data, dayNight }: { data: BoardData; dayNight: boolean }) {
+function BoardFace({ data, dayNight, stamp = 0 }: { data: BoardData; dayNight: boolean; stamp?: number }) {
   const { cfg, startingHue, hardQuest, questAdventurer, bountyIngredients, hasBounty } = data;
   const { wotm, quest, bounty } = cfg;
   return (
@@ -111,12 +112,21 @@ function BoardFace({ data, dayNight }: { data: BoardData; dayNight: boolean }) {
           className="absolute"
           style={{ left: quest.xOffset, top: quest.yOffset, transform: `scale(${quest.scale})`, transformOrigin: "top left", filter: quest.saturation !== 1 ? `saturate(${quest.saturation})` : undefined }}
         >
-          <Paper sheet={SHEET_LARGE_LS} w={30} h={26} className="px-0.5 py-0.5">
-            <AdventurerSprite adventurer={questAdventurer} size={16} />
-            <div className="flex items-center gap-px text-[4px] font-bold leading-none text-[#6a3d10]">
-              <IconCoin style={{ width: "4px", height: "4px" }} />{fmt(hardQuest.reward)}
-            </div>
-          </Paper>
+          {/* A completed quest gets a red DONE stamp slammed on, then the
+              paper lifts off the board — keyed so each completion replays. */}
+          <div key={stamp} className={stamp ? "paper-off" : undefined}>
+            <Paper sheet={SHEET_LARGE_LS} w={30} h={26} className="px-0.5 py-0.5">
+              <AdventurerSprite adventurer={questAdventurer} size={16} />
+              <div className="flex items-center gap-px text-[4px] font-bold leading-none text-[#6a3d10]">
+                <IconCoin style={{ width: "4px", height: "4px" }} />{fmt(hardQuest.reward)}
+              </div>
+              {stamp > 0 && (
+                <div className="stamp-in pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border border-[#b3261e] px-0.5 text-[5px] font-black uppercase leading-none tracking-wider text-[#b3261e]" style={{ borderWidth: 1, opacity: 0.9 }}>
+                  Done
+                </div>
+              )}
+            </Paper>
+          </div>
         </div>
       )}
 
@@ -203,6 +213,19 @@ export default memo(function NoticeBoardArt({ centerX }: { centerX: number }) {
     return ids.map((id) => ingredients[id]).filter(Boolean) as Ingredient[];
   }, [discoveryBounty, ingredients]);
 
+  // Quest turned in → stamp + paper-off on the board (1.7 s).
+  const [stamp, setStamp] = useState(0);
+  useEffect(() => {
+    let timer = 0;
+    const unsub = subscribeGameEvent((evt) => {
+      if (evt.channel !== "quest-complete") return;
+      setStamp((n) => n + 1);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setStamp(0), 1700);
+    });
+    return () => { unsub(); window.clearTimeout(timer); };
+  }, []);
+
   // Escape closes the zoom popup.
   useEffect(() => {
     if (!zoom) return;
@@ -222,6 +245,7 @@ export default memo(function NoticeBoardArt({ centerX }: { centerX: number }) {
   return (
     <>
       <div
+        data-notice-board=""
         className="pointer-events-none absolute z-[2]"
         style={{
           top: 74 + cfg.boardY,
@@ -244,7 +268,7 @@ export default memo(function NoticeBoardArt({ centerX }: { centerX: number }) {
             filter: cfg.saturation !== 1 ? `saturate(${cfg.saturation})` : undefined,
           }}
         >
-          <BoardFace data={data} dayNight />
+          <BoardFace data={data} dayNight stamp={stamp} />
 
           {/* Magnifier — bottom-left corner. pointer-events-auto so it's clickable
               even though the board overlay itself lets wall clicks through. */}
