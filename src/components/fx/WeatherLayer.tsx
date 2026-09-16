@@ -9,7 +9,16 @@ import { useSettingsStore } from "../../store/settingsStore";
 const WIN_W = 48, WIN_H = 64, WIN_Y = 70, WIN_R = 7;
 const WALL_H = 144;
 
-interface Drop { x: number; y: number; len: number; speed: number; alpha: number }
+// Particles are allocated PER WINDOW, not spread across the wall. The wall is
+// ~2100px wide but only ~14 apertures of 48px are see-through — barely a third
+// of it — so a count spread over the full width put fewer than two raindrops
+// in any one window and the weather read as a few stray specks. Per window,
+// every particle lands inside the clip and actually contributes, which buys a
+// proper downpour for a far smaller total than scaling a uniform spread up.
+const RAIN_PER_WINDOW = 16;
+const SNOW_PER_WINDOW = 17;
+
+interface Drop { x: number; y: number; len: number; speed: number; alpha: number; seed: number }
 interface Flake { x: number; y: number; r: number; speed: number; sway: number; phase: number }
 
 /** Deterministic pseudo-random in [0,1) from an index (so reloads look alike). */
@@ -58,12 +67,41 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       kind = k;
       drops = [];
       flakes = [];
+      // Seed y across the whole aperture (and a little above it) so a window
+      // shows weather already in progress rather than the first drops
+      // arriving from the top after you switch to it.
+      const seedY = (r: number) => WIN_Y - 10 + r * (WIN_H + 20);
+
       if (k === "rain") {
-        const n = Math.round(width / 26 * intensity);
-        for (let i = 0; i < n; i++) drops.push({ x: prand(i, 1) * width, y: prand(i, 2) * WALL_H, len: 5 + prand(i, 3) * 4, speed: 150 + prand(i, 4) * 60, alpha: 0.35 + prand(i, 5) * 0.3 });
+        const per = Math.max(8, Math.round(RAIN_PER_WINDOW * intensity));
+        let i = 0;
+        for (const cx of windows) {
+          for (let j = 0; j < per; j++, i++) {
+            drops.push({
+              x: cx - WIN_W / 2 + prand(i, 1) * WIN_W,
+              y: seedY(prand(i, 2)),
+              len: 7 + prand(i, 3) * 7,
+              speed: 200 + prand(i, 4) * 90,
+              alpha: 0.5 + prand(i, 5) * 0.35,
+              seed: prand(i, 12),
+            });
+          }
+        }
       } else if (k === "snow") {
-        const n = Math.round(width / 34 * intensity);
-        for (let i = 0; i < n; i++) flakes.push({ x: prand(i, 6) * width, y: prand(i, 7) * WALL_H, r: 1 + prand(i, 8) * 1.2, speed: 11 + prand(i, 9) * 10, sway: 3 + prand(i, 10) * 5, phase: prand(i, 11) * 6.28 });
+        const per = Math.max(6, Math.round(SNOW_PER_WINDOW * intensity));
+        let i = 0;
+        for (const cx of windows) {
+          for (let j = 0; j < per; j++, i++) {
+            flakes.push({
+              x: cx - WIN_W / 2 + prand(i, 6) * WIN_W,
+              y: seedY(prand(i, 7)),
+              r: 1.5 + prand(i, 8) * 1.6,
+              speed: 14 + prand(i, 9) * 13,
+              sway: 3 + prand(i, 10) * 5,
+              phase: prand(i, 11) * 6.28,
+            });
+          }
+        }
       }
       if (k === "clear") ctx.clearRect(0, 0, width, WALL_H);
     };
@@ -99,32 +137,37 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       const dt = lastT ? Math.min(0.1, t - lastT) : 0;
       lastT = t;
       // Night dims the outside scene by up to 62% (see --dn-scene-dark-op);
-      // dim the weather with it so it never reads as glowing in the dark.
+      // dim the weather with it so it never reads as glowing in the dark —
+      // but only partly, since it IS backlit by the window itself and a
+      // full-strength dim made a downpour all but vanish after dusk.
       const dark = (1 - computeDayNight(getDayPhase()).dayness) * 0.62;
-      const dim = 1 - dark;
+      const dim = 1 - dark * 0.55;
 
       ctx.clearRect(0, 0, width, WALL_H);
       ctx.save();
       clipToWindows();
       if (kind === "rain") {
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5;
         ctx.lineCap = "round";
         for (const d of drops) {
           d.y += d.speed * dt;
-          if (d.y > WIN_Y + WIN_H + 4) { d.y = WIN_Y - d.len - prand(d.x, 12) * 30; }
-          ctx.strokeStyle = `rgba(200,220,240,${(d.alpha * dim).toFixed(3)})`;
+          if (d.y > WIN_Y + WIN_H + 4) { d.y = WIN_Y - d.len - d.seed * 30; }
+          ctx.strokeStyle = `rgba(205,225,245,${(d.alpha * dim).toFixed(3)})`;
           ctx.beginPath();
           ctx.moveTo(d.x, d.y);
-          ctx.lineTo(d.x - 1, d.y + d.len);
+          // A pronounced lean reads as falling fast; near-vertical at this
+          // scale just looks like a static dotted line.
+          ctx.lineTo(d.x - 2.5, d.y + d.len);
           ctx.stroke();
         }
       } else {
+        ctx.fillStyle = `rgba(248,251,255,${(0.7 * dim + 0.3).toFixed(3)})`;
         for (const f of flakes) {
           f.y += f.speed * dt;
           if (f.y > WIN_Y + WIN_H + 3) { f.y = WIN_Y - 3; }
           const x = f.x + Math.sin(t * 0.9 + f.phase) * f.sway;
-          ctx.fillStyle = `rgba(245,248,255,${(0.85 * dim + 0.15).toFixed(3)})`;
-          ctx.fillRect(Math.round(x), Math.round(f.y), Math.round(f.r), Math.round(f.r));
+          const s = Math.max(2, Math.round(f.r)); // never a sub-pixel speck
+          ctx.fillRect(Math.round(x), Math.round(f.y), s, s);
         }
       }
       ctx.restore();
