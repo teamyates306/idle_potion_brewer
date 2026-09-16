@@ -20,12 +20,6 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
   const gaxMarket = useGameStore((s) => s.gaxMarket);
   const settleGax = useGameStore((s) => s.settleGax);
-  // Quest-giver tantrum penalty — applies regardless of GAX unlock state (see
-  // gaxPriceAndRecord, the actual sale hook), so this breakdown must fold it
-  // in too, not just the GAX rows below.
-  const salesPenalty = useGameStore((s) => s.salesPenalty);
-  const penaltyActive = !!salesPenalty && Date.now() < salesPenalty.expiresAt;
-  const penaltyMult = penaltyActive ? salesPenalty!.multiplier : 1;
 
   // Opening a detail view is a lazy settle trigger.
   useEffect(() => { if (gaxUnlocked) settleGax(); }, [gaxUnlocked, settleGax]);
@@ -34,11 +28,11 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
     () => (gaxUnlocked ? gaxPotionQuote(gaxMarket, gaxDayIndex(Date.now()), stats) : null),
     [gaxUnlocked, gaxMarket, stats]
   );
-  // Nothing to show unless the GAX is moving the price OR the tantrum penalty is active.
-  if (!quote && !penaltyActive) return null;
+  // Nothing to show unless the GAX is moving the price.
+  if (!quote) return null;
 
-  const gaxMult = quote?.mult ?? 1;
-  const finalMult = gaxMult * penaltyMult;
+  const gaxMult = quote.mult;
+  const finalMult = gaxMult;
   const sellNow = Math.round(baseValue * finalMult);
   const pct = Math.round(finalMult * 100);
   // Only surface attributes actually moving the price; the rest trade at par.
@@ -101,20 +95,6 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
         })()}
         {quote && movers.length === 0 && (
           <div className="text-slate-500">All of this potion's markets are trading at par.</div>
-        )}
-        {penaltyActive && salesPenalty && (
-          <div className="flex justify-between">
-            <span className="flex items-center gap-1 text-slate-400">
-              Bad reputation
-              <span className="ml-1 text-[10px] text-slate-500">(quest-giver tantrum)</span>
-            </span>
-            <span className="font-semibold text-rose-600">
-              -{salesPenalty.discountPct.toFixed(1)}%
-              <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] opacity-80">
-                ({fmt(Math.round(baseValue * gaxMult * penaltyMult) - Math.round(baseValue * gaxMult))}<IconCoin />)
-              </span>
-            </span>
-          </div>
         )}
         <div className="mt-1.5 flex justify-between border-t border-amber-800/30 pt-1.5 font-semibold text-amber-800">
           <span>×{finalMult.toFixed(2)} — selling for</span>

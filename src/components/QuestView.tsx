@@ -3,7 +3,7 @@ import { ScrollText, Check, Hourglass, FlaskConical, RotateCcw } from "lucide-re
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import AdventurerSprite from "./art/AdventurerSprite";
-import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS, QUEST_TANTRUM_WINDOW_MS } from "../store/gameStore";
+import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { questProgress, DIFFICULTIES, type Quest, type QuestDifficulty } from "../engine/quests";
 import { generateAdventurer, generateAdventurerLevel, CLASS_LABELS } from "../data/questSprites";
@@ -92,35 +92,9 @@ function fmtCountdown(ms: number): string {
   return `${sec}s`;
 }
 
-// Broad "complete at least one quest" clock — applies once to the whole
-// board, not per-card. Ticks live off the parent's 1s interval.
-function QuestPatienceBar({ lastQuestCompletionAt }: { lastQuestCompletionAt: number }) {
-  const elapsed = Date.now() - lastQuestCompletionAt;
-  const pct = Math.min(100, (elapsed / QUEST_TANTRUM_WINDOW_MS) * 100);
-  const msLeft = QUEST_TANTRUM_WINDOW_MS - elapsed;
-  const urgent = msLeft < 2 * 60 * 60 * 1000; // under 2h left
-  const barColor = pct >= 90 ? "bg-rose-500" : pct >= 65 ? "bg-amber-500" : "bg-emerald-500";
-
-  return (
-    <div className="mb-3 rounded-lg border border-slate-700 bg-slate-800/50 p-2.5">
-      <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider">
-        <span className="flex items-center gap-1 text-slate-400">
-          <Hourglass size={11} /> Complete a quest before patience runs out
-        </span>
-        <span className={urgent ? "text-rose-500" : "text-slate-400"}>{fmtCountdown(msLeft)} left</span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-slate-900">
-        <div className={`h-full transition-[width] ${barColor}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 export default function QuestView({ onClose }: { onClose: () => void }) {
   const activeQuests = useGameStore((s) => s.activeQuests);
   const questCooldowns = useGameStore((s) => s.questCooldowns);
-  const questsUnlocked = useGameStore((s) => s.questsUnlocked);
-  const lastQuestCompletionAt = useGameStore((s) => s.lastQuestCompletionAt);
   const refreshQuests = useGameStore((s) => s.refreshQuests);
   const discovered = useGameStore((s) => s.discovered);
   const discoveryBounty = useGameStore((s) => s.discoveryBounty);
@@ -179,14 +153,8 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
           <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
             Quests are fulfilled from your potion inventory — the potions must actually be sitting in
             your stash, so don't auto-sell a recipe you're saving for a quest. Matching any recipe with
-            the requested name counts, regardless of which exact ingredients brewed it. Complete at
-            least one of your three active quests every 24 hours, or word gets around and potion
-            prices take a temporary hit.
+            the requested name counts, regardless of which exact ingredients brewed it.
           </p>
-        )}
-
-        {questsUnlocked && lastQuestCompletionAt != null && (
-          <QuestPatienceBar lastQuestCompletionAt={lastQuestCompletionAt} />
         )}
 
         {/* Desktop shows the three difficulty tiers side by side */}

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { subscribeFAT, type FATItem } from "../../util/fat";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useGameStore } from "../../store/gameStore";
-import { useTantrumStore } from "../../store/tantrumStore";
 
 // Concurrent floating-text cap per graphics quality tier (0 Basic … 3 Very
 // High) — mirrors WORKER_CAP_BY_QUALITY in Workshop.tsx. Late-game, a lot of
@@ -67,15 +66,10 @@ const FATElement = React.memo(function FATElement({ item, onDone }: { item: FATI
 export default function FATLayer() {
   const [items, setItems] = useState<FATItem[]>([]);
   const toastsEnabled = useSettingsStore((s) => s.toastsEnabled);
-  // Fully suppressed during the tantrum animation — the ingredient/potion/
-  // coin floating text was cluttering the little scene and competing for
-  // frame budget with its own animations, not just visually crowding it.
-  const tantrumActive = useTantrumStore((s) => s.active);
 
   useEffect(() => {
     return subscribeFAT((item) => {
       if (!useSettingsStore.getState().toastsEnabled) return;
-      if (useTantrumStore.getState().active) return;
       // Hard cap on concurrent floating texts, scaled by graphics quality —
       // when a lot is happening late game, unbounded DOM nodes (each with its
       // own animation + text shadow) are the main source of jitter. Oldest
@@ -89,7 +83,7 @@ export default function FATLayer() {
   const remove = useCallback((id: number) =>
     setItems((prev) => prev.filter((i) => i.id !== id)), []);
 
-  if (!toastsEnabled || tantrumActive) return null;
+  if (!toastsEnabled) return null;
 
   return (
     <>

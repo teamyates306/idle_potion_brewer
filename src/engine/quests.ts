@@ -15,8 +15,7 @@ export interface Quest {
   difficulty: QuestDifficulty;
   requirements: QuestRequirement[];
   reward: number;
-  /** Real wall-clock ms timestamp the quest was issued — drives the 24h
-   *  "quest-giver tantrum" expiry check (see checkQuestTantrum in gameStore). */
+  /** Real wall-clock ms timestamp the quest was issued. */
   issuedAt: number;
 }
 
