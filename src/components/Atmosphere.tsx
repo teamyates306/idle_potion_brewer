@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
+import { useSettingsStore } from "../store/settingsStore";
 import { getDayPhase, computeDayNight } from "../hooks/useDayNight";
 import { subscribeAmbient, cycleProgress, moteSample } from "../engine/ambientClock";
-import { currentWeather } from "../engine/weather";
+import { resolveWeather } from "../engine/weather";
 
 /** Lanterns are LIT (rather than fading with the light) from dusk until
  *  early morning: phase 0.72 ≈ 17:17 through 0.30 ≈ 07:12. Shared with the
@@ -40,7 +41,9 @@ export function applyDayNightVars() {
   const { dayness: dy, sunriseness: sr, sunsetness: ss } = dn;
   // Weather outside (engine/weather.ts): rain overcasts the daylight and cools
   // the room; snow bounces light so nights are a shade brighter.
-  const weather = currentWeather();
+  // Plain getState: applyDayNightVars isn't a component, and its own 3 s
+  // interval picks up a mode change well inside the tint's 3.5 s transition.
+  const weather = resolveWeather(useSettingsStore.getState().weatherMode);
   const rainy = weather.kind === "rain" ? weather.intensity : 0;
   const snowy = weather.kind === "snow" ? weather.intensity : 0;
 

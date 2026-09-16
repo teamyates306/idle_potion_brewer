@@ -1,8 +1,9 @@
-import { Bell, BellOff, Crown, Layers } from "lucide-react";
+import { Bell, BellOff, Crown, Layers, CloudSun, Sun, CloudRain, Snowflake } from "lucide-react";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
 import { useGameStore } from "../store/gameStore";
 import { useSettingsStore } from "../store/settingsStore";
+import type { WeatherMode } from "../engine/weather";
 
 const QUALITY_LABELS = ["Basic", "Medium", "High", "Very High"] as const;
 const QUALITY_DESCS = [
@@ -42,9 +43,65 @@ function QualitySlider({ quality, onChange }: { quality: 0 | 1 | 2 | 3; onChange
   );
 }
 
+// Weather outside the windows. "Auto" follows the deterministic per-day
+// spell (see engine/weather.ts); the rest hold one kind so a player can just
+// go and look at the rain instead of waiting for it to roll around.
+const WEATHER_OPTIONS: { mode: WeatherMode; label: string; icon: typeof Sun }[] = [
+  { mode: "auto",  label: "Auto",  icon: CloudSun },
+  { mode: "clear", label: "Clear", icon: Sun },
+  { mode: "rain",  label: "Rain",  icon: CloudRain },
+  { mode: "snow",  label: "Snow",  icon: Snowflake },
+];
+
+function WeatherPicker({ mode, onChange, disabled }: { mode: WeatherMode; onChange: (m: WeatherMode) => void; disabled: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-600 bg-slate-800/60 px-4 py-3 space-y-2">
+      <div className="flex items-center gap-3">
+        <span className="text-amber-400"><CloudSun size={16} /></span>
+        <div className="min-w-0">
+          <div className="text-sm text-slate-200">Weather</div>
+          <div className="text-[11px] text-slate-500 leading-tight">
+            {disabled
+              ? "Needs Medium graphics or higher"
+              : mode === "auto"
+              ? "Follows the sky — changes every few days"
+              : `Held at ${mode} until you change it`}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-1.5">
+        {WEATHER_OPTIONS.map(({ mode: m, label, icon: Icon }) => {
+          const active = mode === m;
+          return (
+            <button
+              key={m}
+              onClick={() => onChange(m)}
+              disabled={disabled}
+              title={m === "auto" ? "Follow the in-game sky" : `Always ${label.toLowerCase()}`}
+              className={`flex flex-1 flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[10px] font-semibold uppercase tracking-wide transition ${
+                disabled
+                  ? "cursor-not-allowed border-slate-700 bg-slate-900/60 text-slate-600"
+                  : active
+                  ? "border-amber-500 bg-amber-500/15 text-amber-300"
+                  : "border-slate-600 bg-slate-900/40 text-slate-400 hover:border-amber-600/40 hover:text-slate-200"
+              }`}
+            >
+              <Icon size={15} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsModal({ onClose, onOpenAccount }: { onClose: () => void; onOpenAccount?: () => void }) {
   const toastsEnabled = useSettingsStore((s) => s.toastsEnabled);
   const toggleToasts = useSettingsStore((s) => s.toggleToasts);
+  const weatherMode = useSettingsStore((s) => s.weatherMode);
+  const setWeatherMode = useSettingsStore((s) => s.setWeatherMode);
   const quality    = useGameStore((s) => s.graphics.quality);
   const setQuality = useGameStore((s) => s.setQuality);
   const workshopName   = useGameStore((s) => s.workshopName);
@@ -106,6 +163,8 @@ export default function SettingsModal({ onClose, onOpenAccount }: { onClose: () 
 
         <p className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Visual Effects</p>
         <QualitySlider quality={quality} onChange={setQuality} />
+        {/* Weather is drawn on the window canvas, which is off at Basic. */}
+        <WeatherPicker mode={weatherMode} onChange={setWeatherMode} disabled={quality < 1} />
 
         <p className="pt-1 text-[11px] italic text-slate-600">
           Visual effects are reduced automatically on low-end devices.

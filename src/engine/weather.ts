@@ -33,14 +33,22 @@ function hash32(n: number): number {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-// Dev override (Dev Dashboard / console): force a kind regardless of the day.
-let override: WeatherKind | null = null;
-export function setWeatherOverride(kind: WeatherKind | null): void { override = kind; }
+/** What the player picked in Settings: follow the sky, or hold one kind. */
+export type WeatherMode = "auto" | WeatherKind;
 
-/** The weather right now, honouring any dev override. */
-export function currentWeather(): Weather {
-  const w = weatherForDay(gameDay());
-  return override ? { ...w, kind: override, intensity: Math.max(w.intensity, 0.8) } : w;
+export const WEATHER_MODES: readonly WeatherMode[] = ["auto", "clear", "rain", "snow"];
+
+/**
+ * The weather to draw right now. "auto" follows the deterministic per-day
+ * spell; any other mode holds that kind indefinitely (a forced kind comes in
+ * at a decent intensity so picking it actually shows something). Pure — the
+ * mode is passed in, so the engine stays free of the settings store and this
+ * stays trivially testable.
+ */
+export function resolveWeather(mode: WeatherMode, day: number = gameDay()): Weather {
+  const w = weatherForDay(day);
+  if (mode === "auto") return w;
+  return { ...w, kind: mode, intensity: Math.max(w.intensity, 0.8) };
 }
 
 /** Weather for a given game day (defaults to now). */

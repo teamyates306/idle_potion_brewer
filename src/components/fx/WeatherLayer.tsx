@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { subscribeAmbient } from "../../engine/ambientClock";
-import { currentWeather, type WeatherKind } from "../../engine/weather";
+import { resolveWeather, type WeatherKind } from "../../engine/weather";
 import { computeDayNight, getDayPhase } from "../../hooks/useDayNight";
 import { useGameStore } from "../../store/gameStore";
+import { useSettingsStore } from "../../store/settingsStore";
 
 // Window aperture geometry — must match WIN_W/WIN_H/WIN_Y in Workshop.tsx.
 const WIN_W = 48, WIN_H = 64, WIN_Y = 70, WIN_R = 7;
@@ -27,6 +28,10 @@ function prand(i: number, salt: number): number {
 export default function WeatherLayer({ width, windows }: { width: number; windows: number[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const quality = useGameStore((s) => s.graphics.quality);
+  // Subscribed (not read through getState) so tapping a weather button in
+  // Settings rebuilds the drops immediately instead of waiting out the
+  // once-a-second spell check below.
+  const weatherMode = useSettingsStore((s) => s.weatherMode);
   const enabled = quality >= 1;
 
   useEffect(() => {
@@ -35,7 +40,15 @@ export default function WeatherLayer({ width, windows }: { width: number; window
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let kind: WeatherKind = "clear";
+    // Start from a blank canvas every time this effect (re)runs — switching
+    // weather in Settings restarts it, and the last frame of the old weather
+    // would otherwise stay painted behind the new one (or forever, if the new
+    // one is "clear" and so never draws again).
+    ctx.clearRect(0, 0, width, WALL_H);
+
+    // null, not "clear": the first resolve must always rebuild, otherwise
+    // selecting Clear matches the initial value and skips the clear entirely.
+    let kind: WeatherKind | null = null;
     let drops: Drop[] = [];
     let flakes: Flake[] = [];
     let lastT = 0;
@@ -79,7 +92,7 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       const sec = Math.floor(t);
       if (sec !== lastDayCheck) {
         lastDayCheck = sec;
-        const w = currentWeather();
+        const w = resolveWeather(weatherMode);
         if (w.kind !== kind) rebuild(w.kind, w.intensity);
       }
       if (kind === "clear") return;
@@ -116,7 +129,7 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       }
       ctx.restore();
     });
-  }, [enabled, width, windows]);
+  }, [enabled, width, windows, weatherMode]);
 
   if (!enabled) return null;
   return (

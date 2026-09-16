@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { currentWeather, setWeatherOverride, weatherForDay, WEATHER_SPELL_DAYS } from "./weather";
+import { describe, expect, it } from "vitest";
+import { resolveWeather, weatherForDay, WEATHER_MODES, WEATHER_SPELL_DAYS, type WeatherMode } from "./weather";
 
 describe("weather", () => {
-  afterEach(() => setWeatherOverride(null));
 
   it("is deterministic per game day and constant within a spell", () => {
     for (let spell = 0; spell < 50; spell++) {
@@ -37,11 +36,41 @@ describe("weather", () => {
     }
   });
 
-  it("dev override forces a kind and clears cleanly", () => {
-    setWeatherOverride("snow");
-    expect(currentWeather().kind).toBe("snow");
-    expect(currentWeather().intensity).toBeGreaterThanOrEqual(0.8);
-    setWeatherOverride(null);
-    expect(currentWeather().kind).toBe(weatherForDay().kind);
+  it("auto mode follows the day's own spell", () => {
+    for (const day of [0, 1, 7, 27_297]) {
+      expect(resolveWeather("auto", day)).toEqual(weatherForDay(day));
+    }
+  });
+
+  it("a picked mode holds that kind on every day", () => {
+    for (const mode of ["clear", "rain", "snow"] as const) {
+      for (const day of [0, 3, 9, 27_297]) {
+        expect(resolveWeather(mode, day).kind).toBe(mode);
+      }
+    }
+  });
+
+  it("shows a picked kind at a visible intensity, so tapping it does something", () => {
+    for (const mode of ["rain", "snow"] as const) {
+      for (let day = 0; day < 60; day++) {
+        expect(resolveWeather(mode, day).intensity).toBeGreaterThanOrEqual(0.8);
+      }
+    }
+  });
+
+  it("keeps the day's spell bookkeeping intact when a kind is held", () => {
+    const day = 10;
+    const held = resolveWeather("snow", day);
+    const auto = weatherForDay(day);
+    expect(held.spellStart).toBe(auto.spellStart);
+    expect(held.spellDays).toBe(auto.spellDays);
+  });
+
+  it("offers exactly the modes the Settings picker renders", () => {
+    expect(WEATHER_MODES).toEqual(["auto", "clear", "rain", "snow"]);
+    // Every advertised mode must resolve to something drawable.
+    for (const mode of WEATHER_MODES as readonly WeatherMode[]) {
+      expect(["clear", "rain", "snow"]).toContain(resolveWeather(mode, 5).kind);
+    }
   });
 });
