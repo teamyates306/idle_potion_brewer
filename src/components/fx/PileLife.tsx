@@ -19,27 +19,39 @@ export default function PileLife({ anchors }: { anchors: PileBottleAnchor[] }) {
   const candidates = anchors.filter((a) => a.tier >= MIN_TIER);
   const count = Math.min(MAX_FIREFLIES, candidates.length);
 
+  // The pile rebuilds `anchors` on every render — i.e. on every brew and every
+  // sale — so keying the animation effect on the array itself tore down the
+  // subscription and reset every firefly mid-flight each time a potion moved.
+  // Read the latest anchors through a ref instead, and only restart when the
+  // number of flies actually changes.
+  const candidatesRef = useRef(candidates);
+  candidatesRef.current = candidates;
+
   useEffect(() => {
     if (count === 0) return;
     // Each firefly picks a bottle, orbits it for a while, then drifts to another.
     const state = Array.from({ length: count }, (_, i) => ({
-      target: Math.floor(Math.random() * candidates.length),
-      from: Math.floor(Math.random() * candidates.length),
+      target: i,
+      from: i,
       switchedAt: -RETARGET_S * Math.random(),
       phase: Math.random() * 6.28,
       speed: 0.9 + Math.random() * 0.5,
       idx: i,
     }));
     return subscribeAmbient((t) => {
+      const list = candidatesRef.current;
+      if (list.length === 0) return;
       for (const s of state) {
         const el = refs.current[s.idx];
         if (!el) continue;
         if (t - s.switchedAt > RETARGET_S) {
           s.from = s.target;
-          s.target = Math.floor(Math.random() * candidates.length);
+          s.target = Math.floor(Math.random() * list.length);
           s.switchedAt = t;
         }
-        const a = candidates[s.from], b = candidates[s.target];
+        // The pile can shrink under us between renders, so wrap rather than
+        // indexing past the end.
+        const a = list[s.from % list.length], b = list[s.target % list.length];
         if (!a || !b) continue;
         // Ease between the two anchors over the first 1.5 s of a leg.
         const k = Math.min(1, (t - s.switchedAt) / 1.5);
@@ -54,8 +66,7 @@ export default function PileLife({ anchors }: { anchors: PileBottleAnchor[] }) {
         el.style.opacity = glow.toFixed(3);
       }
     });
-    // Anchors change when the pile changes; a new set restarts the flies.
-  }, [count, anchors]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [count]);
 
   if (count === 0) return null;
   return (

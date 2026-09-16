@@ -10,8 +10,6 @@ interface Props {
    *  same CSS matrix — equivalent to `filter: hue-rotate()` on the wrapper,
    *  without a per-frame GPU filter pass. Must be one of Workshop.MACHINE_HUE. */
   hue?: number;
-  /** Freeze the bubble loop (cauldron scrolled out of view). */
-  paused?: boolean;
 }
 
 /** Interpolate between two RGB values by t (0→1). */
@@ -34,7 +32,7 @@ export function liquidColorFor(progress: number, hue: number): string {
  *    3. needle       — spins at clock-face centre (54.5, 13.5)
  *    4. bubbles      — rise through the cauldron opening
  */
-export default function MachineArt({ size = 110, brewing = false, progress = 0, hue = 0, paused = false }: Props) {
+export default function MachineArt({ size = 110, brewing = false, progress = 0, hue = 0 }: Props) {
   const t = Math.max(0, Math.min(1, progress));
 
   // Pale watery teal → rich saturated potion green as brew completes.
@@ -42,7 +40,6 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
   const needleColor = hueRotateColor("#f59e0b", hue);
   const bubbleColor = hueRotateColor("#bcd9cf", hue);
   const sprite = hue ? "/sprites/tinted/" + tintedSpriteName("machine.png", hue) : "/sprites/machine.png";
-  const bubbleStyle = paused ? { animationPlayState: "paused" as const } : undefined;
 
   // Clock needle — pivots at (54.5, 13.5), length 5px.
   const angle = (t * 2 - 0.5) * Math.PI;
@@ -71,9 +68,9 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
       {/* 4 — bubbles (y shifted -8 to follow the liquid ellipse's new cy) */}
       {brewing && (
         <g>
-          <circle cx="44" cy="43" r="2.4" fill={bubbleColor} className="animate-bubble" style={bubbleStyle} />
-          <circle cx="54" cy="44" r="3"   fill={bubbleColor} className="animate-bubble" style={{ animationDelay: "0.4s", ...bubbleStyle }} />
-          <circle cx="68" cy="43" r="2"   fill={bubbleColor} className="animate-bubble" style={{ animationDelay: "0.8s", ...bubbleStyle }} />
+          <circle cx="44" cy="43" r="2.4" fill={bubbleColor} className="animate-bubble" />
+          <circle cx="54" cy="44" r="3"   fill={bubbleColor} className="animate-bubble" style={{ animationDelay: "0.4s" }} />
+          <circle cx="68" cy="43" r="2"   fill={bubbleColor} className="animate-bubble" style={{ animationDelay: "0.8s" }} />
         </g>
       )}
     </svg>

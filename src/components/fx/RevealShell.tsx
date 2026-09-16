@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 
 export interface RevealShellProps {
   /** How long before the reveal auto-dismisses (ms). */
@@ -43,16 +43,26 @@ const SPARKS = Array.from({ length: 10 }, (_, i) => {
  * component with a different icon, ring colour and two lines of copy.
  */
 export default function RevealShell({ durationMs, onDone, ringColor, icon, kicker, title, subtitle }: RevealShellProps) {
+  // onDone ADVANCES A QUEUE, so it must fire exactly once per reveal: two
+  // quick taps (or a tap landing in the same frame the timer fires) would
+  // otherwise pop two entries and silently skip the moment behind this one.
+  const doneRef = useRef(false);
+  const finish = useCallback(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone();
+  }, [onDone]);
+
   useEffect(() => {
-    const t = setTimeout(onDone, durationMs);
+    const t = setTimeout(finish, durationMs);
     return () => clearTimeout(t);
-  }, [durationMs, onDone]);
+  }, [durationMs, finish]);
 
   return (
     <div
       className="fixed inset-0 z-[9990] cursor-pointer"
       style={{ "--reveal-ms": `${durationMs}ms` } as React.CSSProperties}
-      onClick={onDone}
+      onClick={finish}
       role="button"
       aria-label="Dismiss"
     >

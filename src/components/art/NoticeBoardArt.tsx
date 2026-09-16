@@ -245,7 +245,6 @@ export default memo(function NoticeBoardArt({ centerX }: { centerX: number }) {
   return (
     <>
       <div
-        data-notice-board=""
         className="pointer-events-none absolute z-[2]"
         style={{
           top: 74 + cfg.boardY,

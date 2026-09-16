@@ -114,7 +114,6 @@ export default function CoinCounter() {
   return (
     <div
       key={`m${milestone}`}
-      data-hud="coins"
       className={`relative flex items-center gap-1.5 rounded-full bg-amber-950/70 px-3 py-1.5 text-sm font-semibold text-amber-300 lg:px-4 lg:py-2 lg:text-base ${milestone ? "coin-milestone-glow" : ""}`}
     >
       <span key={`i${iconPop}`} className={iconPop ? "coin-pop" : ""} style={{ display: "inline-flex" }}>

@@ -9,6 +9,16 @@ import {
   createAutoClickAccumulator,
   isAutoClickAccumulatorEmpty,
 } from "../engine/autoclick";
+import {
+  displayBrewProgress,
+  visualWalkState,
+  isFastTrip,
+  FAST_BREW_SECS,
+  type WorkerPhase,
+} from "../engine/tripChoreography";
+// Re-exported so consumers keep importing the loop's public surface from one
+// place (Workshop reads FAST_BREW_SECS to label a fast brew's true rate).
+export { FAST_BREW_SECS, SHUTTLE_TRIP_SECS, SHUTTLE_PERIOD_SECS } from "../engine/tripChoreography";
 import type { BrewingMachine, Worker } from "../types";
 
 // =============================================================================
@@ -37,47 +47,10 @@ export const LOGIC_TICK_MS = 80;
 export const RENDER_TICK_MS = 125;
 /** How often accumulated auto-click progress is written into the store. */
 export const AUTOCLICK_COMMIT_MS = 1000;
-/** Brew progress is quantised to this before publishing — 1/2048 of a bar is
- *  far below a device pixel, so a very long brew doesn't re-render its column
- *  on every single tick for an invisible change. */
-const PROGRESS_QUANTUM = 1 / 2048;
 
-const WALK_SECS = 3;
-
-// ---- High-throughput presentation --------------------------------------------
-// Late-game workers and cauldrons cycle faster than an animation can read: a
-// 2 s round trip is a 0.8 s walk out, a 0.4 s vanish and a 0.8 s walk back;
-// a 0.5 s brew is a progress bar sawtoothing at 2 Hz sampled at 8 Hz. Both
-// read as jitter. The simulation is untouched (trips and brews still complete
-// at their true rate, every deposit and potion is real); only the depiction
-// changes once a cycle is shorter than the eye can follow:
-//   * trips under SHUTTLE_TRIP_SECS: the sprite plays exactly the choreography
-//     of a SHUTTLE_PERIOD_SECS trip (walk to the door, fade out, a moment away,
-//     fade back in walking down) but timed off a free-running clock instead of
-//     the trip's own start time — so it always leaves through and returns
-//     from the door, never blinks, and never resets mid-stride when the next
-//     (real, much shorter) trip begins;
-//   * brews under FAST_BREW_SECS: the bar is shown full with the true rate
-//     ("Brewing ×2.4/s") instead of a sawtooth nobody can read.
-export const SHUTTLE_TRIP_SECS = 6;
-export const SHUTTLE_PERIOD_SECS = 6;
-export const FAST_BREW_SECS = 2;
-
-/** Leave → away → return choreography for a trip of `total` seconds at
- *  `elapsed` seconds in: a WALK_SECS walk each way (capped at 40% of the trip)
- *  with the sprite out of sight in between. */
-function walkState(elapsed: number, total: number): WorkerLoopState {
-  const walkSecs = Math.min(WALK_SECS, total * 0.4);
-  if (elapsed < walkSecs) return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" };
-  if (elapsed < total - walkSecs) return { workerProgress: 0, workerPhase: "away" };
-  return { workerProgress: (elapsed - (total - walkSecs)) / walkSecs, workerPhase: "inbound" };
-}
-
-/** Free-running "elapsed" for a fast trip's visual loop — offset per worker
- *  so a crew on the same route doesn't march in lockstep. */
-function shuttleElapsed(nowMs: number, idx: number): number {
-  return (nowMs / 1000 + idx * 0.61 * SHUTTLE_PERIOD_SECS) % SHUTTLE_PERIOD_SECS;
-}
+// How trips and brews are DEPICTED once they cycle faster than the eye can
+// follow lives in engine/tripChoreography.ts — pure and unit-tested, since
+// it's the logic that produced the sprite-bouncing and idle-flash bugs.
 
 // describePotion() re-derives a deterministic name/hash from ingredients — pure
 // but non-trivial. A machine's recipe only changes when its slots change, so
@@ -95,7 +68,7 @@ function cachedPotionName(machine: BrewingMachine, ids: string[], ingredients: P
 
 export interface WorkerLoopState {
   workerProgress: number;
-  workerPhase: "idle" | "outbound" | "away" | "inbound";
+  workerPhase: WorkerPhase;
 }
 
 export interface MachineLoopState {
@@ -104,11 +77,6 @@ export interface MachineLoopState {
   /** Final brew time of the current recipe (0 when not brewing). Below
    *  FAST_BREW_SECS the bar is published full and steady — see there. */
   brewSecs: number;
-}
-
-export interface LoopProgress {
-  workers: WorkerLoopState[];
-  machines: MachineLoopState[];
 }
 
 // ---- Derived-time caches ----------------------------------------------------
@@ -206,8 +174,7 @@ function publishWorker(idx: number, progress: number, phase: WorkerLoopState["wo
 }
 
 function publishMachine(idx: number, rawProgress: number, active: boolean, brewSecs: number): void {
-  const fast = active && brewSecs > 0 && brewSecs < FAST_BREW_SECS;
-  const progress = !active ? 0 : fast ? 1 : Math.round(rawProgress / PROGRESS_QUANTUM) * PROGRESS_QUANTUM;
+  const progress = displayBrewProgress(rawProgress, brewSecs, active);
   const secs = active ? brewSecs : 0;
   const prev = machineStates[idx];
   if (prev && prev.brewActive === active && prev.brewProgress === progress && prev.brewSecs === secs) return;
@@ -219,8 +186,7 @@ function workerPhaseAt(w: Worker, idx: number, now: number, fx?: MasteryEffects)
   const total = workerTripSecondsFor(w, fx);
   const elapsed = (now - w.trip_started_at) / 1000;
   if (total <= 0 || elapsed >= total) return IDLE_WORKER;
-  if (total < SHUTTLE_TRIP_SECS) return walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS);
-  return walkState(elapsed, total);
+  return visualWalkState(now, elapsed, total, idx);
 }
 
 /** Side-effect-free snapshot of every entity (used to prime the first paint). */
@@ -269,12 +235,6 @@ export function useMachineLoopState(idx: number): MachineLoopState {
     () => { ensurePrimed(); return machineStates[idx] ?? IDLE_MACHINE; },
     () => IDLE_MACHINE,
   );
-}
-
-/** Whole published snapshot — for tests and non-React consumers. */
-export function getLoopProgress(): LoopProgress {
-  ensurePrimed();
-  return { workers: workerStates.slice(), machines: machineStates.slice() };
 }
 
 // ---- Driver -----------------------------------------------------------------
@@ -377,8 +337,8 @@ function startDriver(): () => void {
         // on the free-running clock, so keep that going rather than flashing
         // an "idle" frame at the trough between back-to-back trips. (If the
         // trip doesn't auto-repeat, the next tick sees no trip and idles.)
-        if (total < SHUTTLE_TRIP_SECS) {
-          const vis = walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS);
+        if (isFastTrip(total)) {
+          const vis = visualWalkState(now, elapsed, total, idx);
           publishWorker(idx, vis.workerProgress, vis.workerPhase);
         } else {
           publishWorker(idx, 0, "idle");
@@ -395,9 +355,7 @@ function startDriver(): () => void {
           if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
         }
 
-        const vis = total < SHUTTLE_TRIP_SECS
-          ? walkState(shuttleElapsed(now, idx), SHUTTLE_PERIOD_SECS)
-          : walkState(elapsed, total);
+        const vis = visualWalkState(now, elapsed, total, idx);
         publishWorker(idx, vis.workerProgress, vis.workerPhase);
       } else {
         publishWorker(idx, 0, "idle");
