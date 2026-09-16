@@ -7,7 +7,8 @@ import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState } from "../h
 import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
-import { useSettingsStore } from "../store/settingsStore";
+import { useSettingsStore, useOptimizedGfx } from "../store/settingsStore";
+import { subscribeAmbient, lampFlickerOpacity } from "../engine/ambientClock";
 import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt from "./art/MachineArt";
@@ -691,6 +692,7 @@ const MachineColumn = React.memo(function MachineColumn({
   const quality = useGameStore((s) => s.graphics.quality);
   const maxSparks = SPARK_CAP_BY_QUALITY[quality];
   const cfg = useConfigStore();
+  const optimized = useOptimizedGfx();
 
   const heatRef    = useRef(0);
   const [heatDisplay, setHeatDisplay] = useState(0);
@@ -732,6 +734,20 @@ const MachineColumn = React.memo(function MachineColumn({
   useEffect(() => {
     return () => cancelAnimationFrame(heatRafRef.current);
   }, []);
+
+  // Off-screen pause (optimised renderer): the scene pans horizontally, so a
+  // cauldron can sit outside the visible strip for minutes. Its bubble and
+  // worker-bump loops are stateless, so freezing them while it is clipped is
+  // invisible and stops them forcing compositor frames.
+  const [inView, setInView] = useState(true);
+  useEffect(() => {
+    const el = cauldronRef.current;
+    if (!el || !optimized || typeof IntersectionObserver === "undefined") { setInView(true); return; }
+    const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [optimized]);
+  const loopsPaused = optimized && !inView;
 
   // Remove expired sparks
   useEffect(() => {
@@ -917,14 +933,16 @@ const MachineColumn = React.memo(function MachineColumn({
         <div
           style={{
             filter: [
-              hue ? `hue-rotate(${hue}deg)` : null,
+              // Optimised renderer: the hue is baked into the sprite +
+              // overlay colours (MachineArt hue prop) — no per-frame filter.
+              hue && !optimized ? `hue-rotate(${hue}deg)` : null,
               heatDisplay > 0
                 ? `sepia(${heatDisplay * 0.45}) saturate(${1 + heatDisplay * 1.4}) brightness(${1 + heatDisplay * 0.18})`
                 : null,
             ].filter(Boolean).join(" ") || undefined,
           }}
         >
-          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} />
+          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} hue={optimized ? hue : 0} paused={loopsPaused} />
         </div>
 
         {/* Ground shadow */}
@@ -970,7 +988,7 @@ const MachineColumn = React.memo(function MachineColumn({
                   animationDuration: `${dur}s`,
                   animationIterationCount: "infinite",
                   animationTimingFunction: "ease-in-out",
-                  animationPlayState: brewActive ? "running" : "paused",
+                  animationPlayState: brewActive && !loopsPaused ? "running" : "paused",
                   "--wb-rot": side === "left" ? "8deg" : "-8deg",
                 } as React.CSSProperties}
               >
@@ -1461,6 +1479,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, []);
 
   const graphics        = useGameStore((s) => s.graphics);
+  const optimizedGfx    = useOptimizedGfx();
   const cleanView       = useSettingsStore((s) => s.cleanViewEnabled);
   const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
   const beamWidth        = useBeamTuningStore((s) => s.width);
@@ -1581,6 +1600,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={openMap} width={contentWidth} />
+          {optimizedGfx && <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} />}
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -2034,20 +2054,61 @@ function WallWindowFrame({ cx }: { cx: number }) {
   // are semi-transparent so the day/night colour + hills tint through.
   return <image href="/sprites/window.png" x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} style={{ imageRendering: "pixelated" }} />;
 }
-function WallLamp({ cx }: { cx: number }) {
+function WallLamp({ cx, flicker }: { cx: number; flicker: boolean }) {
   return (
     <g transform={`translate(${cx},94)`}>
       <image href="/sprites/lamp.png" x="-7" y="-24" width="14" height="28" />
-      {/* Flickering orange glow pool — outer g fades with day/night, inner ellipse animates */}
-      <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
-        <ellipse cx="0" cy="6" rx="14" ry="5"
-          fill="url(#lampGlowGrad)"
-          style={{ animation: "lamp-flicker 2.8s ease-in-out infinite" }}
-        />
-      </g>
+      {/* Flickering orange glow pool — outer g fades with day/night, inner
+          ellipse animates. In the optimised renderer the flicker is drawn by
+          <LampFlickerOverlay> (HTML, 30 Hz JS clock) instead: a CSS animation
+          on an SVG child can't be composited on its own, so it repainted this
+          whole wall every vsync. */}
+      {flicker && (
+        <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
+          <ellipse cx="0" cy="6" rx="14" ry="5"
+            fill="url(#lampGlowGrad)"
+            style={{ animation: "lamp-flicker 2.8s ease-in-out infinite" }}
+          />
+        </g>
+      )}
     </g>
   );
 }
+
+// Same glow pool as WallLamp's ellipse (28×10 ellipse at (cx, 100), radial
+// gradient #ffb040 90% → #ff6010 40% at 55% → transparent), as one tiny HTML
+// element per lamp on its own compositor layer, opacity written by the shared
+// ambient clock. The GPU only re-composites 30×/s for the flicker and never
+// repaints the wall for it.
+const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps }: { lamps: number[] }) {
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+  useEffect(() => {
+    return subscribeAmbient((t) => {
+      const o = lampFlickerOpacity(t);
+      for (const el of refs.current) if (el) el.style.opacity = String(o);
+    });
+  }, []);
+  return (
+    <>
+      {lamps.map((cx, i) => (
+        <div
+          key={cx}
+          className="pointer-events-none absolute z-[1]"
+          style={{ left: cx - 14, top: 95, width: 28, height: 10, opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}
+        >
+          <div
+            ref={(el) => { refs.current[i] = el; }}
+            style={{
+              width: 28, height: 10, borderRadius: "50%",
+              background: "radial-gradient(ellipse 70% 70% at 50% 30%, rgba(255,176,64,0.9) 0%, rgba(255,96,16,0.4) 55%, rgba(255,48,0,0) 100%)",
+              willChange: "opacity",
+            }}
+          />
+        </div>
+      ))}
+    </>
+  );
+});
 
 // ── Sign name — hanging plaque, centred above the door. Read-only (renaming
 // moved to the Settings modal); the plaque background lives here (not in
@@ -2084,6 +2145,7 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
   }));
   const forceSpawnToken = useWalkerTuningStore((s) => s.forceSpawnToken);
   const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken, walkerQualityCap);
+  const optimized = useOptimizedGfx();
 
   return (
     <button
@@ -2139,7 +2201,7 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
           <WallWindowFrame key={x} cx={x} />
         ))}
         {lamps.map((x) => (
-          <WallLamp key={x} cx={x} />
+          <WallLamp key={x} cx={x} flicker={!optimized} />
         ))}
         {/* Single central door — workers emerge here */}
         <WallDoor cx={center} />

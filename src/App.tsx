@@ -147,6 +147,13 @@ export default function App() {
   usePerformanceMonitor();
   useOnlineSync();
 
+  // Rail badges are portalled to <body>, so the renderer flag lives on <html>
+  // where index.css can reach everything (see the backdrop-filter rule there).
+  const graphicsMode = useSettingsStore((s) => s.graphicsMode);
+  useEffect(() => {
+    document.documentElement.classList.toggle("gfx-legacy", graphicsMode === "legacy");
+  }, [graphicsMode]);
+
   // Loading screen: hold the reveal until the workshop's core sprites are
   // decoded and the day/night CSS vars have been computed at least once —
   // otherwise the scene used to paint piecemeal (bricks before windows,

@@ -310,3 +310,15 @@ body {
   67%        { opacity: 0.80; }
   83%        { opacity: 0.90; }
 }
+
+/* Optimised renderer (default; Settings → "Optimised renderer"): backdrop
+   blur is the most expensive effect CSS has — the GPU reads back and blurs
+   everything behind the element every frame anything behind it moves, and
+   the workshop is always moving. Every use in the game sits on an opaque or
+   ≥55%-opaque fill, so a flat fill reads the same. <html class="gfx-legacy">
+   restores the blur for comparison. */
+html:not(.gfx-legacy) .backdrop-blur,
+html:not(.gfx-legacy) .backdrop-blur-sm {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

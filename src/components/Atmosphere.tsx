@@ -1,6 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useGameStore } from "../store/gameStore";
+import { useOptimizedGfx } from "../store/settingsStore";
 import { getDayPhase, computeDayNight } from "../hooks/useDayNight";
+import { subscribeAmbient, cycleProgress, moteSample } from "../engine/ambientClock";
 
 // Static mote descriptors — generated once at module load.
 // All animation is driven by CSS @keyframes on the GPU compositor thread.
@@ -45,6 +47,19 @@ export function applyDayNightVars() {
   const coolAlpha = (1 - dy) * 0.04;
   root.setProperty("--dn-cool-tint", `rgba(46,38,62,${coolAlpha.toFixed(3)})`);
 
+  // Merged tint (optimised renderer): the cool layer composited over the warm
+  // layer, as ONE rgba — exact source-over algebra, so a single full-screen
+  // layer replaces two (each full-screen translucent layer costs a whole
+  // screen of blended pixels per frame on a phone).
+  const a = warmAlpha + coolAlpha - warmAlpha * coolAlpha;
+  if (a > 0) {
+    const wk = (warmAlpha * (1 - coolAlpha)) / a, ck = coolAlpha / a;
+    const r = Math.round(215 * wk + 46 * ck), g = Math.round(145 * wk + 38 * ck), b = Math.round(55 * wk + 62 * ck);
+    root.setProperty("--dn-tint", `rgba(${r},${g},${b},${a.toFixed(3)})`);
+  } else {
+    root.setProperty("--dn-tint", "rgba(215,145,55,0)");
+  }
+
   // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
   root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
 
@@ -76,11 +91,51 @@ export function applyDayNightVars() {
   root.setProperty("--dn-lamp-glow-op",  dn.lampGlow.toFixed(3));
 }
 
+// Optimised renderer: the same mote descriptors and the same `mote-float`
+// keyframe maths (ambientClock.moteSample), but written to inline styles at
+// 30 Hz by the shared clock instead of 28 independent vsync CSS animations.
+function ClockMotes({ motes }: { motes: typeof MOTES }) {
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+  useEffect(() => {
+    return subscribeAmbient((t) => {
+      for (let i = 0; i < motes.length; i++) {
+        const el = refs.current[i];
+        if (!el) continue;
+        const m = motes[i];
+        const s = moteSample(cycleProgress(t, m.dur, m.delay), m.rise, m.mid, m.end);
+        el.style.transform = `translate3d(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px, 0)`;
+        el.style.opacity = s.opacity.toFixed(3);
+      }
+    });
+  }, [motes]);
+  return (
+    <>
+      {motes.map((m, i) => (
+        <div
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          className="absolute rounded-full"
+          style={{
+            left:       `${m.left}%`,
+            top:        `${m.top}%`,
+            width:      `${m.size}px`,
+            height:     `${m.size}px`,
+            background: `rgba(255, 230, 160, ${m.op})`,
+            opacity: 0,
+            willChange: "transform, opacity",
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 export default function Atmosphere() {
   const motes    = useGameStore((s) => s.graphics.motes);
   const vignette = useGameStore((s) => s.graphics.vignette);
   const dayNight = useGameStore((s) => s.graphics.dayNight);
   const quality  = useGameStore((s) => s.graphics.quality);
+  const optimized = useOptimizedGfx();
   // Fewer simultaneous composited layers at quality 2 ("High") than 3 ("Very
   // High") — motes is already off entirely below quality 2.
   const activeMotes = quality >= 3 ? MOTES : MOTES.slice(0, Math.ceil(MOTE_COUNT / 2));
@@ -107,8 +162,19 @@ export default function Atmosphere() {
         />
       )}
 
+      {/* Optimised renderer: ONE merged tint layer (see --dn-tint) */}
+      {dayNight && optimized && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[3]"
+          style={{
+            background: "var(--dn-tint, rgba(215,145,55,0))",
+            transition: "background 3.5s ease-in-out",
+          }}
+        />
+      )}
+
       {/* Warm tint: amber layer for dawn / dusk — same hue always, only alpha varies */}
-      {dayNight && (
+      {dayNight && !optimized && (
         <div
           className="pointer-events-none fixed inset-0 z-[3]"
           style={{
@@ -119,7 +185,7 @@ export default function Atmosphere() {
       )}
 
       {/* Cool tint: night-blue layer — same hue always, only alpha varies */}
-      {dayNight && (
+      {dayNight && !optimized && (
         <div
           className="pointer-events-none fixed inset-0 z-[3]"
           style={{
@@ -135,7 +201,7 @@ export default function Atmosphere() {
           className="pointer-events-none fixed inset-0 z-[3] overflow-hidden"
           style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 3.5s ease-in-out" }}
         >
-          {activeMotes.map((m, i) => (
+          {optimized ? <ClockMotes motes={activeMotes} /> : activeMotes.map((m, i) => (
             <div
               key={i}
               className="absolute rounded-full"

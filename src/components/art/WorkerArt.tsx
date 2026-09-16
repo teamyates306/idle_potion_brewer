@@ -1,4 +1,6 @@
 import type { WorkerSpecialization } from "../../types";
+import { useOptimizedGfx } from "../../store/settingsStore";
+import { tintedSpriteName } from "../../util/hueRotate";
 
 const HUE_SHIFTS = [0, 60, 120, 180, 240, 300] as const;
 export function workerHue(id: number) { return HUE_SHIFTS[id % HUE_SHIFTS.length]; }
@@ -31,14 +33,22 @@ export default function WorkerArt({
   active = true,
   hueShift = 0,
 }: Props) {
-  const { src, frameCount, sheetW } = SPRITE[specialization] ?? SPRITE.none;
+  const { src: baseSrc, frameCount, sheetW } = SPRITE[specialization] ?? SPRITE.none;
+  // Optimised renderer: the hue variants are baked into
+  // public/sprites/tinted/ (scripts/pretintSprites.ts, pixel-identical to the
+  // CSS filter), so no `filter` is needed on the element at all. Legacy: the
+  // runtime hue-rotate filter, as before.
+  const optimized = useOptimizedGfx();
+  const baked = optimized && hueShift !== 0 && (HUE_SHIFTS as readonly number[]).includes(hueShift);
+  const src = baked ? baseSrc.replace("/sprites/", "/sprites/tinted/").replace(/[^/]+$/, (f) => tintedSpriteName(f, hueShift)) : baseSrc;
+  const filterHue = baked ? 0 : hueShift;
   const scale  = size / FRAME_H;
   const dispW  = Math.round(FRAME_W  * scale);
   const dispH  = Math.round(FRAME_H  * scale);
   const dispSW = Math.round(sheetW   * scale);
 
   return (
-    <div style={{ position: "relative", width: dispW, height: dispH, overflow: "hidden", filter: hueShift ? `hue-rotate(${hueShift}deg)` : undefined }}>
+    <div style={{ position: "relative", width: dispW, height: dispH, overflow: "hidden", filter: filterHue ? `hue-rotate(${filterHue}deg)` : undefined }}>
       <div
         style={{
           // The frame window is the outer overflow:hidden box (dispW×dispH);
