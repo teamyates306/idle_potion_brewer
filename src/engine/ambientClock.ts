@@ -112,7 +112,8 @@ export function cycleProgress(tSeconds: number, durationS: number, delayS: numbe
   return p < 0 ? p + 1 : p;
 }
 
-// `@keyframes lamp-flicker` (index.css), ease-in-out, 2.8s in every use.
+// Lantern flicker curve (formerly `@keyframes lamp-flicker` in index.css; this
+// is now the only definition), ease-in-out, 2.8 s period.
 const LAMP_STOPS: ReadonlyArray<readonly [number, number]> = [
   [0, 1], [0.10, 0.72], [0.22, 0.95], [0.38, 0.60], [0.52, 1], [0.67, 0.80], [0.83, 0.90], [1, 1],
 ];
@@ -121,7 +122,8 @@ export function lampFlickerOpacity(tSeconds: number, delayS: number = 0): number
   return keyframeValue(LAMP_STOPS, cycleProgress(tSeconds, LAMP_FLICKER_S, delayS), easeInOut);
 }
 
-// `@keyframes mote-float` (index.css), ease-in-out, per-mote duration/delay.
+// Dust-mote path (formerly `@keyframes mote-float` in index.css; this is now
+// the only definition), ease-in-out, per-mote duration/delay.
 //   0%   translate(0,0)             opacity 0
 //   8%                              opacity 1
 //   50%  translate(mid, rise*0.48)

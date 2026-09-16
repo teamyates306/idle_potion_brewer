@@ -1,4 +1,4 @@
-import { Bell, BellOff, Crown, Layers, Zap, ZapOff } from "lucide-react";
+import { Bell, BellOff, Crown, Layers } from "lucide-react";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
 import { useGameStore } from "../store/gameStore";
@@ -45,9 +45,6 @@ function QualitySlider({ quality, onChange }: { quality: 0 | 1 | 2 | 3; onChange
 export default function SettingsModal({ onClose, onOpenAccount }: { onClose: () => void; onOpenAccount?: () => void }) {
   const toastsEnabled = useSettingsStore((s) => s.toastsEnabled);
   const toggleToasts = useSettingsStore((s) => s.toggleToasts);
-  const graphicsMode = useSettingsStore((s) => s.graphicsMode);
-  const setGraphicsMode = useSettingsStore((s) => s.setGraphicsMode);
-  const optimized = graphicsMode !== "legacy";
   const quality    = useGameStore((s) => s.graphics.quality);
   const setQuality = useGameStore((s) => s.setQuality);
   const workshopName   = useGameStore((s) => s.workshopName);
@@ -109,29 +106,6 @@ export default function SettingsModal({ onClose, onOpenAccount }: { onClose: () 
 
         <p className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Visual Effects</p>
         <QualitySlider quality={quality} onChange={setQuality} />
-
-        <button
-          onClick={() => setGraphicsMode(optimized ? "legacy" : "optimized")}
-          className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${
-            optimized
-              ? "border-slate-600 bg-slate-800/60 text-slate-200 hover:border-amber-600/40"
-              : "border-slate-700 bg-slate-900/60 text-slate-500"
-          }`}
-          title="Pre-tinted sprites, one merged tint layer, 30 Hz ambient effects, no backdrop blur, off-screen loops paused. Off = previous renderer."
-        >
-          <div className="flex items-center gap-3">
-            <span className={optimized ? "text-amber-400" : "text-slate-600"}>
-              {optimized ? <Zap size={16} /> : <ZapOff size={16} />}
-            </span>
-            <div className="text-left">
-              <div className="leading-tight">Optimised renderer</div>
-              <div className="text-[11px] text-slate-500">{optimized ? "Lower GPU load and battery use — same look" : "Legacy renderer (for comparison)"}</div>
-            </div>
-          </div>
-          <div className={`ml-4 h-5 w-9 shrink-0 rounded-full transition-colors ${optimized ? "bg-amber-500" : "bg-slate-700"}`}>
-            <div className={`mt-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${optimized ? "translate-x-4" : "translate-x-0.5"}`} />
-          </div>
-        </button>
 
         <p className="pt-1 text-[11px] italic text-slate-600">
           Visual effects are reduced automatically on low-end devices.

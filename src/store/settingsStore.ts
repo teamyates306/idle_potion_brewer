@@ -11,15 +11,7 @@ interface SettingsState {
    *  (and cauldron clicking) fills the screen uncluttered. */
   cleanViewEnabled: boolean;
   toggleCleanView: () => void;
-  /** "optimized" (default) = pre-tinted sprites, one merged tint layer, 30 Hz
-   *  ambient effects, no backdrop blur, off-screen loops paused. "legacy" =
-   *  the previous renderer (per-frame CSS filters / vsync CSS animations),
-   *  kept so the two can be compared side by side. */
-  graphicsMode: GraphicsMode;
-  setGraphicsMode: (mode: GraphicsMode) => void;
 }
-
-export type GraphicsMode = "optimized" | "legacy";
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
@@ -30,14 +22,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleNewMap: () => set((s) => ({ newMapEnabled: !s.newMapEnabled })),
       cleanViewEnabled: false,
       toggleCleanView: () => set((s) => ({ cleanViewEnabled: !s.cleanViewEnabled })),
-      graphicsMode: "optimized",
-      setGraphicsMode: (graphicsMode) => set({ graphicsMode }),
     }),
     { name: "ipb-settings" }
   )
 );
-
-/** True unless the player switched to the legacy renderer in Settings. */
-export function useOptimizedGfx(): boolean {
-  return useSettingsStore((s) => s.graphicsMode !== "legacy");
-}

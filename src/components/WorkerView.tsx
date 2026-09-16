@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   MapPin, Gauge, Package, ArrowUpCircle, UserPlus, Hammer, Zap, Timer,
   CheckSquare, Square, X, Store,
@@ -128,6 +128,11 @@ interface WorkerRowProps {
 }
 const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, checked, dimmed, tripPct, tripColor, onSelect, onDetail, dataTut }: WorkerRowProps) {
   const tokens = worker.upgrade_tokens ?? 0;
+  // A completed trip drops the bar 100% → 0%: snap rather than slide back,
+  // which on fast trips (several a second) read as a shudder.
+  const prevPctRef = useRef(tripPct);
+  const barSnap = tripPct < prevPctRef.current;
+  prevPctRef.current = tripPct;
   return (
     <button
       {...(dataTut ? { "data-tut": dataTut } : {})}
@@ -156,7 +161,7 @@ const WorkerRow = React.memo(function WorkerRow({ worker, idx, selectMode, check
         </div>
         <div className="mt-0.5 truncate text-xs italic text-slate-400">"{worker.flavor_status ?? "Awaiting orders"}"</div>
         <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-700">
-          <div className="h-full w-full origin-left rounded-full transition-transform duration-75" style={{ transform: `scaleX(${tripPct / 100})`, background: tripColor }} />
+          <div className={`h-full w-full origin-left rounded-full ${barSnap ? "" : "transition-transform duration-75"}`} style={{ transform: `scaleX(${tripPct / 100})`, background: tripColor }} />
         </div>
       </div>
       {!selectMode && <span className="text-slate-600">›</span>}

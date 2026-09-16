@@ -171,16 +171,8 @@ body {
 }
 .token-reveal { animation: token-reveal 0.34s ease-out both; }
 
-/* Dust motes — purely CSS-driven, no JS rAF. Each mote is a static DOM element
-   that floats upward with a subtle sinusoidal drift via mid/end keyframe points.
-   transform: translate3d() keeps this on the GPU compositor thread. */
-@keyframes mote-float {
-  0%   { transform: translate3d(0, 0, 0);                                              opacity: 0; }
-  8%   { opacity: 1; }
-  50%  { transform: translate3d(var(--mote-mid, 6px), calc(var(--mote-rise, -40px) * 0.48), 0); }
-  92%  { opacity: 1; }
-  100% { transform: translate3d(var(--mote-end, 0px), var(--mote-rise, -40px), 0);    opacity: 0; }
-}
+/* Dust motes and lantern flicker are driven by src/engine/ambientClock.ts
+   (one 30 Hz JS clock), not by CSS keyframes — see that file for why. */
 
 /* Battery-saver mode: suppress decorative fly-in animations */
 .anim-throttle [style*="fly-ingredient"],
@@ -300,25 +292,13 @@ body {
   75%        { transform: translateY(-1.4px) rotate(6deg);  }
 }
 
-/* Lantern glow flicker — inner element; outer wrapper carries day/night opacity */
-@keyframes lamp-flicker {
-  0%,  100% { opacity: 1;    }
-  10%        { opacity: 0.72; }
-  22%        { opacity: 0.95; }
-  38%        { opacity: 0.60; }
-  52%        { opacity: 1;    }
-  67%        { opacity: 0.80; }
-  83%        { opacity: 0.90; }
-}
-
-/* Optimised renderer (default; Settings → "Optimised renderer"): backdrop
-   blur is the most expensive effect CSS has — the GPU reads back and blurs
-   everything behind the element every frame anything behind it moves, and
-   the workshop is always moving. Every use in the game sits on an opaque or
-   ≥55%-opaque fill, so a flat fill reads the same. <html class="gfx-legacy">
-   restores the blur for comparison. */
-html:not(.gfx-legacy) .backdrop-blur,
-html:not(.gfx-legacy) .backdrop-blur-sm {
+/* No backdrop blur anywhere: it is the most expensive effect CSS has — the
+   GPU reads back and blurs everything behind the element every frame anything
+   behind it moves, and the workshop is always moving. Every use in the game
+   sits on an opaque or ≥55%-opaque fill, so a flat fill reads the same. The
+   Tailwind classes are left in place; this rule neutralises them. */
+.backdrop-blur,
+.backdrop-blur-sm {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }

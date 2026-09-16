@@ -10,6 +10,7 @@ import {
   isAutoClickAccumulatorEmpty,
 } from "../engine/autoclick";
 import type { BrewingMachine, Worker } from "../types";
+import { easeInOut } from "../engine/ambientClock";
 
 // =============================================================================
 // The game loop.
@@ -44,6 +45,31 @@ const PROGRESS_QUANTUM = 1 / 2048;
 
 const WALK_SECS = 3;
 
+// ---- High-throughput presentation --------------------------------------------
+// Late-game workers and cauldrons cycle faster than an animation can read: a
+// 2 s round trip is a 0.8 s walk out, a 0.4 s vanish and a 0.8 s walk back;
+// a 0.5 s brew is a progress bar sawtoothing at 2 Hz sampled at 8 Hz. Both
+// read as jitter. The simulation is untouched (trips and brews still complete
+// at their true rate, every deposit and potion is real); only the depiction
+// changes once a cycle is shorter than the eye can follow:
+//   * trips under SHUTTLE_TRIP_SECS: the sprite stays visible and paces
+//     trough ↔ door on a continuous clock with period max(trip, SHUTTLE_MIN_
+//     PERIOD_SECS), so it never blinks and never resets mid-stride;
+//   * brews under FAST_BREW_SECS: the bar is shown full with the true rate
+//     ("Brewing ×2.4/s") instead of a sawtooth nobody can read.
+export const SHUTTLE_TRIP_SECS = 6;
+export const SHUTTLE_MIN_PERIOD_SECS = 4;
+export const FAST_BREW_SECS = 2;
+
+/** 0 = at the trough, 1 = at the door; eased triangle wave on a free-running
+ *  clock (offset per worker so a crew doesn't march in lockstep). */
+function shuttlePosition(nowMs: number, idx: number, tripSecs: number): number {
+  const period = Math.max(tripSecs, SHUTTLE_MIN_PERIOD_SECS);
+  const t = ((nowMs / 1000 + idx * 0.61) % period) / period;
+  const tri = t < 0.5 ? t * 2 : 2 - t * 2;
+  return easeInOut(tri);
+}
+
 // describePotion() re-derives a deterministic name/hash from ingredients — pure
 // but non-trivial. A machine's recipe only changes when its slots change, so
 // cache the derived potion name per machine id, keyed on the ingredient list.
@@ -60,12 +86,18 @@ function cachedPotionName(machine: BrewingMachine, ids: string[], ingredients: P
 
 export interface WorkerLoopState {
   workerProgress: number;
-  workerPhase: "idle" | "outbound" | "away" | "inbound";
+  /** "shuttle": the trip is too short to animate as leave → away → return
+   *  (see SHUTTLE_TRIP_SECS); the sprite stays on screen and paces between
+   *  the trough and the door on a steady, continuous clock. */
+  workerPhase: "idle" | "outbound" | "away" | "inbound" | "shuttle";
 }
 
 export interface MachineLoopState {
   brewProgress: number;
   brewActive: boolean;
+  /** Final brew time of the current recipe (0 when not brewing). Below
+   *  FAST_BREW_SECS the bar is published full and steady — see there. */
+  brewSecs: number;
 }
 
 export interface LoopProgress {
@@ -144,7 +176,7 @@ export function machineBrewSecondsFor(machine: BrewingMachine, fx?: MasteryEffec
 // ---- Published progress store ----------------------------------------------
 
 const IDLE_WORKER: WorkerLoopState = Object.freeze({ workerProgress: 0, workerPhase: "idle" as const });
-const IDLE_MACHINE: MachineLoopState = Object.freeze({ brewProgress: 0, brewActive: false });
+const IDLE_MACHINE: MachineLoopState = Object.freeze({ brewProgress: 0, brewActive: false, brewSecs: 0 });
 
 const workerStates: WorkerLoopState[] = [];
 const machineStates: MachineLoopState[] = [];
@@ -167,18 +199,21 @@ function publishWorker(idx: number, progress: number, phase: WorkerLoopState["wo
   workerStates[idx] = phase === "idle" ? IDLE_WORKER : { workerProgress: progress, workerPhase: phase };
 }
 
-function publishMachine(idx: number, rawProgress: number, active: boolean): void {
-  const progress = active ? Math.round(rawProgress / PROGRESS_QUANTUM) * PROGRESS_QUANTUM : 0;
+function publishMachine(idx: number, rawProgress: number, active: boolean, brewSecs: number): void {
+  const fast = active && brewSecs > 0 && brewSecs < FAST_BREW_SECS;
+  const progress = !active ? 0 : fast ? 1 : Math.round(rawProgress / PROGRESS_QUANTUM) * PROGRESS_QUANTUM;
+  const secs = active ? brewSecs : 0;
   const prev = machineStates[idx];
-  if (prev && prev.brewActive === active && prev.brewProgress === progress) return;
-  machineStates[idx] = !active && progress === 0 ? IDLE_MACHINE : { brewProgress: progress, brewActive: active };
+  if (prev && prev.brewActive === active && prev.brewProgress === progress && prev.brewSecs === secs) return;
+  machineStates[idx] = !active ? IDLE_MACHINE : { brewProgress: progress, brewActive: active, brewSecs: secs };
 }
 
-function workerPhaseAt(w: Worker, now: number, fx?: MasteryEffects): WorkerLoopState {
+function workerPhaseAt(w: Worker, idx: number, now: number, fx?: MasteryEffects): WorkerLoopState {
   if ((!w.assigned_location && !w.assigned_settlement) || !w.trip_started_at) return IDLE_WORKER;
   const total = workerTripSecondsFor(w, fx);
   const elapsed = (now - w.trip_started_at) / 1000;
   if (total <= 0 || elapsed >= total) return IDLE_WORKER;
+  if (total < SHUTTLE_TRIP_SECS) return { workerProgress: shuttlePosition(now, idx, total), workerPhase: "shuttle" };
   const walkSecs = Math.min(WALK_SECS, total * 0.4);
   if (elapsed < walkSecs) return { workerProgress: elapsed / walkSecs, workerPhase: "outbound" };
   if (elapsed < total - walkSecs) return { workerProgress: 0, workerPhase: "away" };
@@ -191,19 +226,20 @@ function primeSnapshot(): void {
   const now = Date.now();
   const fx = computeMasteryEffects(g.masteryUnlocks);
   g.workers.forEach((w, i) => {
-    const s = workerPhaseAt(w, now, fx);
+    const s = workerPhaseAt(w, i, now, fx);
     publishWorker(i, s.workerProgress, s.workerPhase);
   });
   workerStates.length = g.workers.length;
   g.machines.forEach((m, i) => {
     const active = m.running && !(m.brew_stalled ?? false);
     let progress = 0;
+    let secs = 0;
     if (active && m.brew_started_at) {
-      const total = machineBrewSecondsFor(m, fx);
+      secs = machineBrewSecondsFor(m, fx);
       const elapsed = (now - m.brew_started_at) / 1000;
-      if (total > 0 && elapsed < total) progress = elapsed / total;
+      if (secs > 0 && elapsed < secs) progress = elapsed / secs;
     }
-    publishMachine(i, progress, active);
+    publishMachine(i, progress, active, secs);
   });
   machineStates.length = g.machines.length;
 }
@@ -348,7 +384,8 @@ function startDriver(): () => void {
           if (storePhase !== w.trip_phase) g.setTripPhase(idx, storePhase);
         }
 
-        if (elapsed < walkSecs) publishWorker(idx, elapsed / walkSecs, "outbound");
+        if (total < SHUTTLE_TRIP_SECS) publishWorker(idx, shuttlePosition(now, idx, total), "shuttle");
+        else if (elapsed < walkSecs) publishWorker(idx, elapsed / walkSecs, "outbound");
         else if (elapsed < total - walkSecs) publishWorker(idx, 0, "away");
         else publishWorker(idx, (elapsed - (total - walkSecs)) / walkSecs, "inbound");
       } else {
@@ -367,8 +404,10 @@ function startDriver(): () => void {
       if (!machine) break;
       const brewActive = machine.running && !(machine.brew_stalled ?? false);
       let brewProgress = 0;
+      let brewSecs = 0;
       if (brewActive && machine.brew_started_at) {
         const total = machineBrewSecondsFor(machine, fx);
+        brewSecs = total;
         // Uncommitted auto-click reduction counts towards the displayed
         // progress so the bar never waits for the next commit.
         const pendingMs = acc.reductionMsByMachineId[machine.id] ?? 0;
@@ -382,7 +421,7 @@ function startDriver(): () => void {
           if (brewProgress > 0) anyBrewTicking = true;
         }
       }
-      publishMachine(i, brewProgress, brewActive);
+      publishMachine(i, brewProgress, brewActive, brewSecs);
     }
     machineStates.length = machineCount;
 

@@ -3,11 +3,11 @@ import { createPortal } from "react-dom";
 import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState } from "../hooks/useGameLoop";
+import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState, FAST_BREW_SECS } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
-import { useSettingsStore, useOptimizedGfx } from "../store/settingsStore";
+import { useSettingsStore } from "../store/settingsStore";
 import { subscribeAmbient, lampFlickerOpacity } from "../engine/ambientClock";
 import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
@@ -668,6 +668,43 @@ function sameMachineWorkers(a: Worker[], b: Worker[]): boolean {
   return true;
 }
 
+// ── Floating-text coalescing ─────────────────────────────────────────────────
+// A level-25 worker on a short trip deposits several times a second, and a
+// cauldron with a crew of auto-clickers finishes a brew every half second.
+// One floating text per event at those rates is a wall of overlapping glyphs
+// that reads as jitter. Coalesce "+N thing" texts per (channel, thing): the
+// first event shows immediately, anything more inside FAT_COALESCE_MS is
+// summed into one text at the end of the window — so slow play is untouched
+// and fast play shows "+37 Rootmoss" once instead of "+3" twelve times. The
+// numbers are the real totals; nothing is dropped.
+const FAT_COALESCE_MS = 700;
+const fatBuckets = new Map<string, { count: number; timer: number; emit: (text: string) => void }>();
+function coalesceFatText(channel: string, text: string, emit: (text: string) => void): void {
+  const m = /^\+([\d,]+)(?: (.+))?$/.exec(text);
+  if (!m) { emit(text); return; }
+  const n = parseInt(m[1].replace(/,/g, ""), 10);
+  const name = m[2] ?? "";
+  const key = channel + "|" + name;
+  const format = (count: number) => (name ? `+${count} ${name}` : `+${count.toLocaleString()}`);
+  const bucket = fatBuckets.get(key);
+  if (bucket) { bucket.count += n; bucket.emit = emit; return; }
+  emit(text);
+  const openWindow = () => {
+    const timer = window.setTimeout(() => {
+      const b = fatBuckets.get(key);
+      if (!b) return;
+      if (b.count > 0) { b.emit(format(b.count)); b.count = 0; openWindow(); }
+      else fatBuckets.delete(key);
+    }, FAT_COALESCE_MS);
+    const b = fatBuckets.get(key);
+    if (b) b.timer = timer; else fatBuckets.set(key, { count: 0, timer, emit });
+  };
+  openWindow();
+}
+// Same idea for the per-brew particle effects (ingredient fly-in, potion
+// fly-out, splash burst): at most one set per cauldron per window.
+const BREW_FX_MIN_INTERVAL_MS = 700;
+
 const MachineColumn = React.memo(function MachineColumn({
   machine,
   machineIdx,
@@ -692,7 +729,6 @@ const MachineColumn = React.memo(function MachineColumn({
   const quality = useGameStore((s) => s.graphics.quality);
   const maxSparks = SPARK_CAP_BY_QUALITY[quality];
   const cfg = useConfigStore();
-  const optimized = useOptimizedGfx();
 
   const heatRef    = useRef(0);
   const [heatDisplay, setHeatDisplay] = useState(0);
@@ -706,7 +742,15 @@ const MachineColumn = React.memo(function MachineColumn({
   // Own subscription to the loop's published progress: this column
   // re-renders when ITS bar moves and at no other time (an idle brewer never
   // re-renders on a tick at all).
-  const { brewProgress, brewActive } = useMachineLoopState(machineIdx);
+  const { brewProgress, brewActive, brewSecs } = useMachineLoopState(machineIdx);
+  // Sub-2s brews are published as a full, steady bar (see FAST_BREW_SECS in
+  // useGameLoop.ts) and labelled with their true rate instead.
+  const fastBrew = brewActive && brewSecs > 0 && brewSecs < FAST_BREW_SECS;
+  // When a brew completes the bar goes 100% → 0%: snap, don't slide back.
+  const prevProgressRef = useRef(brewProgress);
+  const barSnap = brewProgress < prevProgressRef.current;
+  prevProgressRef.current = brewProgress;
+  const lastBrewFxAtRef = useRef(0);
   const hue    = MACHINE_HUE[machineIdx] ?? 0;
   const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
   const sparkColors = MACHINE_SPARK_COLORS[machineIdx] ?? MACHINE_SPARK_COLORS[0];
@@ -735,19 +779,19 @@ const MachineColumn = React.memo(function MachineColumn({
     return () => cancelAnimationFrame(heatRafRef.current);
   }, []);
 
-  // Off-screen pause (optimised renderer): the scene pans horizontally, so a
-  // cauldron can sit outside the visible strip for minutes. Its bubble and
-  // worker-bump loops are stateless, so freezing them while it is clipped is
-  // invisible and stops them forcing compositor frames.
+  // Off-screen pause: the scene pans horizontally, so a cauldron can sit
+  // outside the visible strip for minutes. Its bubble and worker-bump loops
+  // are stateless, so freezing them while it is clipped is invisible and
+  // stops them forcing compositor frames.
   const [inView, setInView] = useState(true);
   useEffect(() => {
     const el = cauldronRef.current;
-    if (!el || !optimized || typeof IntersectionObserver === "undefined") { setInView(true); return; }
+    if (!el || typeof IntersectionObserver === "undefined") { setInView(true); return; }
     const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0 });
     io.observe(el);
     return () => io.disconnect();
-  }, [optimized]);
-  const loopsPaused = optimized && !inView;
+  }, []);
+  const loopsPaused = !inView;
 
   // Remove expired sparks
   useEffect(() => {
@@ -768,15 +812,19 @@ const MachineColumn = React.memo(function MachineColumn({
       if (useSettingsStore.getState().toastsEnabled) {
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 3;
-        spawnFAT({
+        coalesceFatText("cauldron:" + machine.id, evt.text, (text) => spawnFAT({
           x: cx + (Math.random() - 0.5) * rect.width * 0.5,
           y: cy + (Math.random() - 0.5) * 34,
-          text: evt.text,
+          text,
           color: CHANNEL_COLOR.cauldron,
           arcX: (Math.random() - 0.5) * 36,
           size: "md",
-        });
+        }));
       }
+      // Particle effects: at most one set per window per cauldron.
+      const nowMs = Date.now();
+      if (nowMs - lastBrewFxAtRef.current < BREW_FX_MIN_INTERVAL_MS) return;
+      lastBrewFxAtRef.current = nowMs;
       // Potion-exit animation: derive full visuals (not just colour) from the
       // actual brewed potion, exactly like PotionPileArt's Bottle — otherwise
       // the splash/fly-to-pile animation shows a generic flat-colour Tonic
@@ -932,17 +980,16 @@ const MachineColumn = React.memo(function MachineColumn({
 
         <div
           style={{
+            // The cauldron's hue is baked into its sprite + overlay colours
+            // (MachineArt hue prop); only the transient click-heat is a filter.
             filter: [
-              // Optimised renderer: the hue is baked into the sprite +
-              // overlay colours (MachineArt hue prop) — no per-frame filter.
-              hue && !optimized ? `hue-rotate(${hue}deg)` : null,
               heatDisplay > 0
                 ? `sepia(${heatDisplay * 0.45}) saturate(${1 + heatDisplay * 1.4}) brightness(${1 + heatDisplay * 0.18})`
                 : null,
             ].filter(Boolean).join(" ") || undefined,
           }}
         >
-          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} hue={optimized ? hue : 0} paused={loopsPaused} />
+          <MachineArt size={108} brewing={brewActive} progress={brewProgress} uid={String(machine.id)} hue={hue} paused={loopsPaused} />
         </div>
 
         {/* Ground shadow */}
@@ -1010,7 +1057,7 @@ const MachineColumn = React.memo(function MachineColumn({
       <div className="mt-1 h-1.5 w-28 overflow-hidden rounded bg-stone-800/50 shadow-inner">
         <div
           className="h-full w-full origin-left"
-          style={{ transform: `scaleX(${brewProgress})`, background: accent, transition: "transform 150ms linear" }}
+          style={{ transform: `scaleX(${brewProgress})`, background: accent, transition: barSnap ? "none" : "transform 150ms linear" }}
         />
       </div>
 
@@ -1020,7 +1067,7 @@ const MachineColumn = React.memo(function MachineColumn({
         if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-700">No recipe</span>;
         if (!machine.running) return <span className="mt-1 text-[10px] text-stone-700">Idle</span>;
         if (machine.brew_stalled) return <span className="mt-1 text-[10px] font-semibold text-amber-900/90 animate-pulse">Need ingredients</span>;
-        return <span className="mt-1 text-[10px] text-amber-900/80">Brewing…</span>;
+        return <span className="mt-1 text-[10px] text-amber-900/80">{fastBrew ? `Brewing ×${(1 / brewSecs).toFixed(1)}/s` : "Brewing…"}</span>;
       })()}
       <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent, textShadow: "0 1px 1px rgba(40,30,15,0.35)" }}>{machine.name}</div>
 
@@ -1056,8 +1103,12 @@ const WorkerTrackSprite = React.memo(function WorkerTrackSprite({ idx, worker, x
   } else if (workerPhase === "inbound") {
     up = (1 - workerProgress) * TRACK;
     opacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
+  } else if (workerPhase === "shuttle") {
+    // Fast trips: pace trough ↔ door continuously, always visible.
+    up = workerProgress * TRACK;
+    opacity = 1;
   }
-  const active = workerPhase === "outbound" || workerPhase === "inbound";
+  const active = workerPhase === "outbound" || workerPhase === "inbound" || workerPhase === "shuttle";
   return (
     <div
       className="absolute"
@@ -1371,16 +1422,19 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         }
       } else {
         // pile: tight cluster close to the potion pile graphic
-        const spread = evt.channel === "trough" ? Math.min(rect.width * 0.4, 80) : Math.min(rect.width * 0.3, 50);
-        const rawX = cx + (Math.random() - 0.5) * spread;
-        const clampedX = Math.max(20, Math.min(window.innerWidth - 60, rawX));
-        spawnFAT({
-          x: clampedX,
-          y: cy + (Math.random() - 0.5) * (evt.channel === "trough" ? 24 : 28),
-          text: evt.text,
-          color: CHANNEL_COLOR[evt.channel as keyof typeof CHANNEL_COLOR],
-          arcX: (Math.random() - 0.5) * (evt.channel === "trough" ? 28 : 30),
-          size: "md",
+        const channel = evt.channel;
+        coalesceFatText(channel, evt.text, (text) => {
+          const spread = channel === "trough" ? Math.min(rect.width * 0.4, 80) : Math.min(rect.width * 0.3, 50);
+          const rawX = cx + (Math.random() - 0.5) * spread;
+          const clampedX = Math.max(20, Math.min(window.innerWidth - 60, rawX));
+          spawnFAT({
+            x: clampedX,
+            y: cy + (Math.random() - 0.5) * (channel === "trough" ? 24 : 28),
+            text,
+            color: CHANNEL_COLOR[channel as keyof typeof CHANNEL_COLOR],
+            arcX: (Math.random() - 0.5) * (channel === "trough" ? 28 : 30),
+            size: "md",
+          });
         });
       }
     });
@@ -1479,7 +1533,6 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   }, []);
 
   const graphics        = useGameStore((s) => s.graphics);
-  const optimizedGfx    = useOptimizedGfx();
   const cleanView       = useSettingsStore((s) => s.cleanViewEnabled);
   const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
   const beamWidth        = useBeamTuningStore((s) => s.width);
@@ -1600,7 +1653,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={openMap} width={contentWidth} />
-          {optimizedGfx && <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} />}
+          <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} />
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -1630,7 +1683,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {graphics.lampGlow && computeLampPositions(contentWidth).map((cx) => (
             <div
               key={cx}
-              className="pointer-events-none absolute lamp-flicker"
+              className="pointer-events-none absolute"
               style={{
                 top: 76,
                 left: cx - 57,
@@ -2054,32 +2107,22 @@ function WallWindowFrame({ cx }: { cx: number }) {
   // are semi-transparent so the day/night colour + hills tint through.
   return <image href="/sprites/window.png" x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} style={{ imageRendering: "pixelated" }} />;
 }
-function WallLamp({ cx, flicker }: { cx: number; flicker: boolean }) {
+function WallLamp({ cx }: { cx: number }) {
   return (
     <g transform={`translate(${cx},94)`}>
       <image href="/sprites/lamp.png" x="-7" y="-24" width="14" height="28" />
-      {/* Flickering orange glow pool — outer g fades with day/night, inner
-          ellipse animates. In the optimised renderer the flicker is drawn by
-          <LampFlickerOverlay> (HTML, 30 Hz JS clock) instead: a CSS animation
-          on an SVG child can't be composited on its own, so it repainted this
-          whole wall every vsync. */}
-      {flicker && (
-        <g style={{ opacity: "var(--dn-lamp-glow-op, 0)", transition: "opacity 3s ease-in-out" }}>
-          <ellipse cx="0" cy="6" rx="14" ry="5"
-            fill="url(#lampGlowGrad)"
-            style={{ animation: "lamp-flicker 2.8s ease-in-out infinite" }}
-          />
-        </g>
-      )}
+      {/* The flickering glow pool is <LampFlickerOverlay> (HTML, 30 Hz JS
+          clock), not an SVG child here: a CSS animation on an SVG child can't
+          be composited on its own, so it repainted this whole wall every vsync. */}
     </g>
   );
 }
 
-// Same glow pool as WallLamp's ellipse (28×10 ellipse at (cx, 100), radial
-// gradient #ffb040 90% → #ff6010 40% at 55% → transparent), as one tiny HTML
-// element per lamp on its own compositor layer, opacity written by the shared
-// ambient clock. The GPU only re-composites 30×/s for the flicker and never
-// repaints the wall for it.
+// Lantern glow pool: a 28×10 ellipse at (cx, 100) with a radial gradient
+// (#ffb040 90% → #ff6010 40% at 55% → transparent), one tiny HTML element per
+// lamp on its own compositor layer, opacity written by the shared ambient
+// clock. The GPU only re-composites 30×/s for the flicker and never repaints
+// the wall for it.
 const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps }: { lamps: number[] }) {
   const refs = useRef<(HTMLDivElement | null)[]>([]);
   useEffect(() => {
@@ -2145,7 +2188,6 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
   }));
   const forceSpawnToken = useWalkerTuningStore((s) => s.forceSpawnToken);
   const walkers = useWindowWalkers(width, windowWalkersOn, walkerTuning, forceSpawnToken, walkerQualityCap);
-  const optimized = useOptimizedGfx();
 
   return (
     <button
@@ -2164,12 +2206,6 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
             <stop offset="0.74" stopColor="transparent" />
             <stop offset="1" stopColor="#6b665e" stopOpacity="0.28" />
           </linearGradient>
-          {/* Lantern glow pool gradient — warm orange core, fades to transparent */}
-          <radialGradient id="lampGlowGrad" cx="50%" cy="30%" r="70%">
-            <stop offset="0%"   stopColor="#ffb040" stopOpacity="0.90" />
-            <stop offset="55%"  stopColor="#ff6010" stopOpacity="0.40" />
-            <stop offset="100%" stopColor="#ff3000" stopOpacity="0" />
-          </radialGradient>
           {/* Window light glow gradient */}
           <radialGradient id="winGlow" cx="50%" cy="40%" r="50%">
             <stop offset="0%"   stopColor="#ffe8a0" stopOpacity="0.50" />
@@ -2201,7 +2237,7 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
           <WallWindowFrame key={x} cx={x} />
         ))}
         {lamps.map((x) => (
-          <WallLamp key={x} cx={x} flicker={!optimized} />
+          <WallLamp key={x} cx={x} />
         ))}
         {/* Single central door — workers emerge here */}
         <WallDoor cx={center} />

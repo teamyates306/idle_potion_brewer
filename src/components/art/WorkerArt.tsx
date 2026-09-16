@@ -1,5 +1,4 @@
 import type { WorkerSpecialization } from "../../types";
-import { useOptimizedGfx } from "../../store/settingsStore";
 import { tintedSpriteName } from "../../util/hueRotate";
 
 const HUE_SHIFTS = [0, 60, 120, 180, 240, 300] as const;
@@ -34,12 +33,11 @@ export default function WorkerArt({
   hueShift = 0,
 }: Props) {
   const { src: baseSrc, frameCount, sheetW } = SPRITE[specialization] ?? SPRITE.none;
-  // Optimised renderer: the hue variants are baked into
-  // public/sprites/tinted/ (scripts/pretintSprites.ts, pixel-identical to the
-  // CSS filter), so no `filter` is needed on the element at all. Legacy: the
-  // runtime hue-rotate filter, as before.
-  const optimized = useOptimizedGfx();
-  const baked = optimized && hueShift !== 0 && (HUE_SHIFTS as readonly number[]).includes(hueShift);
+  // The hue variants are baked into public/sprites/tinted/
+  // (scripts/pretintSprites.ts, pixel-identical to the CSS filter), so no
+  // `filter` is needed on the element. A hue outside the baked table falls
+  // back to the runtime filter so nothing ever renders untinted.
+  const baked = hueShift !== 0 && (HUE_SHIFTS as readonly number[]).includes(hueShift);
   const src = baked ? baseSrc.replace("/sprites/", "/sprites/tinted/").replace(/[^/]+$/, (f) => tintedSpriteName(f, hueShift)) : baseSrc;
   const filterHue = baked ? 0 : hueShift;
   const scale  = size / FRAME_H;
