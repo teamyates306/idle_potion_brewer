@@ -1837,7 +1837,7 @@ export const useGameStore = create<GameState>()(
           lifetime_coins_earned: (s.lifetime_coins_earned ?? 0) + quest.reward,
           quests_completed_count: (s.quests_completed_count ?? 0) + 1,
         });
-        pushGameEvent("quest-complete", `+${quest.reward.toLocaleString()}`);
+        pushGameEvent("quest-complete", `+${quest.reward.toLocaleString()}`, undefined, { questId: quest.id, difficulty: quest.difficulty, reward: quest.reward });
         pushGameEvent("pile-burst", `+${quest.reward.toLocaleString()}`);
         get().checkAchievements("coins", s.coins + quest.reward);
       },

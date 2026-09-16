@@ -13,6 +13,7 @@ import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt, { liquidColorFor } from "./art/MachineArt";
 import DiscoveryReveal, { type RevealVisuals } from "./fx/DiscoveryReveal";
+import QuestReward from "./fx/QuestReward";
 import SteamPuffs from "./fx/SteamPuffs";
 import WeatherLayer from "./fx/WeatherLayer";
 import LevelUpJumper from "./fx/LevelUpJumper";
@@ -1487,6 +1488,11 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const [reveal, setReveal] = useState<{ id: number; name: string; visuals: RevealVisuals } | null>(null);
   const clearReveal = useCallback(() => setReveal(null), []);
 
+  // Quest-complete reveal — same treatment, queued behind the discovery
+  // reveal if one is already showing so the two don't stack.
+  const [questReveal, setQuestReveal] = useState<{ id: number; questId: string; difficulty: string; reward: number } | null>(null);
+  const clearQuestReveal = useCallback(() => setQuestReveal(null), []);
+
   // Icon flights (level-up token → Workers badge, quest coins → HUD counter).
   const flyIcons = useCallback((type: "token" | "coin", from: DOMRect, to: DOMRect, count: number) => {
     const startX = from.left + from.width / 2, startY = from.top + from.height / 2;
@@ -1516,9 +1522,12 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         return;
       }
       if (evt.channel === "quest-complete") {
-        const from = document.querySelector("[data-notice-board]")?.getBoundingClientRect();
-        const to = document.querySelector('[data-hud="coins"]')?.getBoundingClientRect();
-        if (from && to) flyIcons("coin", from, to, 5);
+        // Big centre-screen reveal — the modal-only feedback (a subtle FAT
+        // toast + coin flight from the notice board) was easy to miss; this
+        // is deliberately as prominent as a new-potion discovery.
+        if (evt.meta?.questId && evt.meta.difficulty && evt.meta.reward != null) {
+          setQuestReveal({ id: evt.id, questId: evt.meta.questId, difficulty: evt.meta.difficulty, reward: evt.meta.reward });
+        }
         return;
       }
       if (evt.channel === "tier-up" || evt.channel === "milestone") return;
@@ -1919,6 +1928,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       </div>
 
       {reveal && <DiscoveryReveal key={reveal.id} name={reveal.name} visuals={reveal.visuals} onDone={clearReveal} />}
+      {!reveal && questReveal && (
+        <QuestReward key={questReveal.id} questId={questReveal.questId} difficulty={questReveal.difficulty} reward={questReveal.reward} onDone={clearQuestReveal} />
+      )}
 
       {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll.
           z-[9990]: level-up tokens and quest-reward coins fly to the HUD /

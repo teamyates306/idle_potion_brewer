@@ -13,6 +13,9 @@ export interface GameEventMeta {
   workerId?: number;
   tier?: number;
   potionName?: string;
+  questId?: string;
+  difficulty?: string;
+  reward?: number;
 }
 
 export interface GameEvent {
