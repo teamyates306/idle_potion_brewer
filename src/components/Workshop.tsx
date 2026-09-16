@@ -14,16 +14,23 @@ import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt, { liquidColorFor } from "./art/MachineArt";
 import DiscoveryReveal, { type RevealVisuals } from "./fx/DiscoveryReveal";
 import QuestReward from "./fx/QuestReward";
+import LevelUpReveal, { type LevelUpSubject } from "./fx/LevelUpReveal";
+
+// One shared queue drives every "big moment" popup — see the revealQueue
+// state below and RevealShell.tsx for why they're unified like this.
+type RevealItem =
+  | { id: number; kind: "discovery"; name: string; visuals: RevealVisuals }
+  | { id: number; kind: "quest"; questId: string; difficulty: string; reward: number }
+  | { id: number; kind: "levelup"; level: number; subject: LevelUpSubject };
 import SteamPuffs from "./fx/SteamPuffs";
 import WeatherLayer from "./fx/WeatherLayer";
-import LevelUpJumper from "./fx/LevelUpJumper";
 import { lampsLit } from "./Atmosphere";
 import { getDayPhase } from "../hooks/useDayNight";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
 import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
 import NoticeBoardArt from "./art/NoticeBoardArt";
-import { IconStarToken, IconSleep, IconCoin } from "./ui/icons";
+import { IconStarToken, IconSleep } from "./ui/icons";
 import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE, TIER_FX } from "../util/potionVisuals";
 import PotionLiquidFill from "./art/PotionLiquidFill";
 import { describePotion } from "../engine/potions";
@@ -115,7 +122,7 @@ interface PotionBrewVisuals {
 
 interface FlyingParticle {
   id: number;
-  type: "ingredient" | "potion" | "token" | "coin";
+  type: "ingredient" | "potion";
   x: number;      // viewport x (fixed-position)
   y: number;      // viewport y
   dx: number;     // displacement to target
@@ -1138,9 +1145,7 @@ const MachineColumn = React.memo(function MachineColumn({
                   "--wb-rot": side === "left" ? "8deg" : "-8deg",
                 } as React.CSSProperties}
               >
-                <LevelUpJumper workerId={w.id}>
-                  <WorkerArt size={47} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
-                </LevelUpJumper>
+                <WorkerArt size={47} specialization={w.specialization} active={false} hueShift={workerHue(w.id)} />
               </div>
             </div>
           );
@@ -1216,9 +1221,7 @@ const WorkerTrackSprite = React.memo(function WorkerTrackSprite({ idx, worker, x
         transition: "transform 150ms linear, opacity 150ms linear",
       }}
     >
-      <LevelUpJumper workerId={worker.id}>
-        <WorkerArt size={47} specialization={worker.specialization} active={active} hueShift={workerHue(worker.id)} />
-      </LevelUpJumper>
+      <WorkerArt size={47} specialization={worker.specialization} active={active} hueShift={workerHue(worker.id)} />
     </div>
   );
 });
@@ -1480,45 +1483,53 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
     if (c !== el.scrollLeft) el.scrollLeft = c;
   };
 
-  // Flying brew particles (ingredient jump in, potion jump out) + icon flights
+  // Flying brew particles (ingredient jump in, potion jump out)
   const flyIdRef = useRef(0);
   const [flyingParticles, setFlyingParticles] = useState<FlyingParticle[]>([]);
 
-  // Discovery reveal (one at a time; a newer discovery replaces the current).
-  const [reveal, setReveal] = useState<{ id: number; name: string; visuals: RevealVisuals } | null>(null);
-  const clearReveal = useCallback(() => setReveal(null), []);
-
-  // Quest-complete reveal — same treatment, queued behind the discovery
-  // reveal if one is already showing so the two don't stack.
-  const [questReveal, setQuestReveal] = useState<{ id: number; questId: string; difficulty: string; reward: number } | null>(null);
-  const clearQuestReveal = useCallback(() => setQuestReveal(null), []);
-
-  // Icon flights (level-up token → Workers badge, quest coins → HUD counter).
-  const flyIcons = useCallback((type: "token" | "coin", from: DOMRect, to: DOMRect, count: number) => {
-    const startX = from.left + from.width / 2, startY = from.top + from.height / 2;
-    const endX = to.left + to.width / 2, endY = to.top + to.height / 2;
-    const items: FlyingParticle[] = Array.from({ length: count }, (_, i) => ({
-      id: flyIdRef.current++,
-      type,
-      x: startX + (Math.random() - 0.5) * 10, y: startY,
-      dx: endX - startX, dy: endY - startY,
-      arcX: (Math.random() - 0.5) * 60,
-      delay: i * 90, duration: 900,
-    }));
-    setFlyingParticles((prev) => (prev.length > 40 ? prev : [...prev, ...items]));
-    const ids = new Set(items.map((p) => p.id));
-    setTimeout(() => setFlyingParticles((prev) => prev.filter((p) => !ids.has(p.id))), 900 + count * 90 + 200);
-  }, []);
+  // The four "big moment" popups — new potion, quest complete, worker or
+  // cauldron level-up — all render through RevealShell and share ONE queue.
+  // Several can fire in the same instant (a big multi-brew can discover a
+  // potion AND level the cauldron AND level a worker at once); queueing
+  // shows them one after another in the order they happened instead of a
+  // later one silently overwriting an in-flight reveal. Tapping the current
+  // one (see RevealShell) advances the queue immediately, so a backlog can
+  // be clicked straight through.
+  const [revealQueue, setRevealQueue] = useState<RevealItem[]>([]);
+  const enqueueReveal = useCallback((item: RevealItem) => setRevealQueue((q) => [...q, item]), []);
+  const advanceReveal = useCallback(() => setRevealQueue((q) => q.slice(1)), []);
+  const currentReveal = revealQueue[0] ?? null;
 
   // Global FAT for trough / pile channels + scene-wide reactions
   useEffect(() => {
     return subscribeGameEvent((evt) => {
       if (evt.channel === "levelup") {
-        // The worker's earned token arcs from the sprite to the Workers badge.
         const wid = evt.meta?.workerId;
-        const from = wid != null ? document.querySelector(`[data-worker-id="${wid}"]`)?.getBoundingClientRect() : null;
-        const to = document.querySelector('[data-tut="workers"]')?.getBoundingClientRect();
-        if (from && to) flyIcons("token", from, to, 1);
+        const level = evt.meta?.level;
+        if (wid != null && level != null) {
+          const w = useGameStore.getState().workers.find((x) => x.id === wid);
+          if (w) {
+            enqueueReveal({
+              id: evt.id, kind: "levelup", level,
+              subject: { kind: "worker", name: w.name, specialization: w.specialization, hue: workerHue(w.id) },
+            });
+          }
+        }
+        return;
+      }
+      if (evt.channel === "machine-levelup") {
+        const mid = evt.machineId;
+        const level = evt.meta?.level;
+        if (mid != null && level != null) {
+          const idx = machines.findIndex((m) => m.id === mid);
+          const m = machines[idx];
+          if (m) {
+            enqueueReveal({
+              id: evt.id, kind: "levelup", level,
+              subject: { kind: "machine", name: m.name, hue: MACHINE_HUE[idx] ?? 0 },
+            });
+          }
+        }
         return;
       }
       if (evt.channel === "quest-complete") {
@@ -1526,7 +1537,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         // toast + coin flight from the notice board) was easy to miss; this
         // is deliberately as prominent as a new-potion discovery.
         if (evt.meta?.questId && evt.meta.difficulty && evt.meta.reward != null) {
-          setQuestReveal({ id: evt.id, questId: evt.meta.questId, difficulty: evt.meta.difficulty, reward: evt.meta.reward });
+          enqueueReveal({ id: evt.id, kind: "quest", questId: evt.meta.questId, difficulty: evt.meta.difficulty, reward: evt.meta.reward });
         }
         return;
       }
@@ -1544,7 +1555,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         const name = evt.meta?.potionName;
         if (name) {
           const pv = parsePotionVisuals(name);
-          setReveal({ id: evt.id, name, visuals: { liquidColor: pv.liquidColor, prefixTier: pv.prefixTier, blendColors: pv.blendColors, ...getPotionTypeData(pv.potionType) } });
+          enqueueReveal({ id: evt.id, kind: "discovery", name, visuals: { liquidColor: pv.liquidColor, prefixTier: pv.prefixTier, blendColors: pv.blendColors, ...getPotionTypeData(pv.potionType) } });
         } else {
           spawnFAT({ x: window.innerWidth / 2, y: window.innerHeight * 0.42, text: evt.text, color: "#fde68a", arcX: 0, size: "lg", duration: 7000, glow: true });
         }
@@ -1927,9 +1938,14 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         </div>
       </div>
 
-      {reveal && <DiscoveryReveal key={reveal.id} name={reveal.name} visuals={reveal.visuals} onDone={clearReveal} />}
-      {!reveal && questReveal && (
-        <QuestReward key={questReveal.id} questId={questReveal.questId} difficulty={questReveal.difficulty} reward={questReveal.reward} onDone={clearQuestReveal} />
+      {currentReveal?.kind === "discovery" && (
+        <DiscoveryReveal key={currentReveal.id} name={currentReveal.name} visuals={currentReveal.visuals} onDone={advanceReveal} />
+      )}
+      {currentReveal?.kind === "quest" && (
+        <QuestReward key={currentReveal.id} questId={currentReveal.questId} difficulty={currentReveal.difficulty} reward={currentReveal.reward} onDone={advanceReveal} />
+      )}
+      {currentReveal?.kind === "levelup" && (
+        <LevelUpReveal key={currentReveal.id} subject={currentReveal.subject} level={currentReveal.level} onDone={advanceReveal} />
       )}
 
       {/* Flying brew particles + burst effects — fixed overlay escapes zoom/scroll.
@@ -2496,10 +2512,7 @@ function FlyingParticleEl({ p }: { p: FlyingParticle }) {
         animationTimingFunction: p.type === "ingredient" ? "ease-in" : "cubic-bezier(0.22,1,0.36,1)",
       } as React.CSSProperties}
     >
-      {p.type === "ingredient" ? <IngredientSvg category={p.category!} size={20} />
-        : p.type === "potion" ? <FlyPotion potion={p.potion!} />
-        : p.type === "token" ? <span className="text-yellow-400" style={{ filter: "drop-shadow(0 0 4px #fbbf24)", display: "inline-flex", transform: "scale(1.6)" }}><IconStarToken /></span>
-        : <span className="text-amber-300" style={{ filter: "drop-shadow(0 0 4px #fbbf24)", display: "inline-flex", transform: "scale(1.4)" }}><IconCoin style={{ width: 14, height: 14 }} /></span>}
+      {p.type === "ingredient" ? <IngredientSvg category={p.category!} size={20} /> : <FlyPotion potion={p.potion!} />}
     </div>
   );
 }

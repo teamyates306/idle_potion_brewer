@@ -307,14 +307,20 @@ body {
    these is FINITE: they run for a moment and stop. Continuous motion belongs
    on the ambient clock, never in an infinite keyframe. ── */
 
-/* Discovery reveal */
+/* Shared "big moment" reveal shell (RevealShell.tsx) — discovery, quest
+   complete, worker/cauldron level-up. .reveal-dim/.reveal-name/.reveal-icon
+   read their duration off --reveal-ms (set inline per instance) so a
+   shorter-lived moment type — a level-up fires far more often than a
+   discovery — still fades out gracefully instead of the component
+   unmounting mid-opacity; .reveal-ring/.reveal-spark are a fixed-length
+   burst at the START regardless of total duration, so they're left as-is. */
 @keyframes reveal-dim    { 0% { opacity: 0 } 10% { opacity: 1 } 85% { opacity: 1 } 100% { opacity: 0 } }
-.reveal-dim              { animation: reveal-dim 3200ms ease-in-out both; }
+.reveal-dim              { animation: reveal-dim var(--reveal-ms, 3200ms) ease-in-out both; }
 @keyframes reveal-ring   { 0% { transform: scale(0.2); opacity: 0 } 20% { opacity: 0.9 } 100% { transform: scale(1.6); opacity: 0 } }
 .reveal-ring             { animation: reveal-ring 1200ms ease-out 250ms both; }
 @keyframes reveal-spark  { 0% { transform: translate(0,0) scale(0.3); opacity: 0 } 25% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1); opacity: 0 } }
 .reveal-spark            { animation: reveal-spark 900ms ease-out both; }
-@keyframes reveal-bottle {
+@keyframes reveal-rise {
   0%   { transform: translateY(60px) scale(0.4) rotate(-12deg); opacity: 0 }
   22%  { transform: translateY(0) scale(1.08) rotate(6deg); opacity: 1 }
   40%  { transform: scale(1) rotate(-3deg) }
@@ -322,7 +328,7 @@ body {
   85%  { transform: scale(1) rotate(0); opacity: 1 }
   100% { transform: translateY(-20px) scale(0.6); opacity: 0 }
 }
-.reveal-bottle           { animation: reveal-bottle 3200ms cubic-bezier(0.22,1,0.36,1) both; transform-origin: 50% 60%; }
+.reveal-icon             { animation: reveal-rise var(--reveal-ms, 3200ms) cubic-bezier(0.22,1,0.36,1) both; transform-origin: 50% 60%; }
 @keyframes reveal-name {
   0%   { transform: scale(1.5); opacity: 0 }
   15%  { transform: scale(0.96); opacity: 1 }
@@ -332,7 +338,10 @@ body {
   85%  { opacity: 1 }
   100% { opacity: 0 }
 }
-.reveal-name             { animation: reveal-name 3200ms ease-out 450ms both; }
+.reveal-name             { animation: reveal-name var(--reveal-ms, 3200ms) ease-out 450ms both; }
+/* Skip hint — a fixed, short delay regardless of total reveal length. */
+@keyframes reveal-skip-hint { from { opacity: 0 } to { opacity: 0.55 } }
+.reveal-skip-hint        { animation: reveal-skip-hint 500ms ease-out 900ms both; }
 
 /* Cauldron tier-up flash + steam columns */
 @keyframes tier-flash    { 0% { opacity: 0 } 15% { opacity: 0.95 } 100% { opacity: 0 } }
@@ -352,22 +361,6 @@ body {
 @keyframes sign-glint    { 0% { transform: translateX(-140%) skewX(-20deg); opacity: 0 } 15% { opacity: 1 } 100% { transform: translateX(340%) skewX(-20deg); opacity: 0 } }
 .sign-glint              { animation: sign-glint 900ms ease-in-out both; }
 
-/* Worker level-up: star-jump */
-@keyframes worker-jump {
-  0%   { transform: translateY(0) scale(1,1) }
-  16%  { transform: translateY(3px) scale(1.18,0.82) }   /* wind-up squash */
-  38%  { transform: translateY(-20px) scale(0.90,1.12) } /* rise */
-  56%  { transform: translateY(-20px) scale(0.90,1.12) } /* hang at the peak — the readable beat */
-  82%  { transform: translateY(0) scale(1.10,0.90) }     /* landing squash */
-  100% { transform: translateY(0) scale(1,1) }
-}
-.worker-jump              { animation: worker-jump 950ms cubic-bezier(0.34,1.56,0.64,1) both; }
-/* Pause the walk-cycle sprite sheet while the level-up hop plays (see
-   LevelUpJumper.tsx) — a still pose under the hop, not scrambling legs. Not
-   set inline by WorkerArt, so this class rule has the property to itself. */
-.worker-jumping .worker-walk-sheet { animation-play-state: paused; }
-@keyframes star-pop       { 0% { transform: translate(0,0) scale(0.2); opacity: 0 } 30% { opacity: 1 } 100% { transform: translate(var(--sx), var(--sy)) scale(1) rotate(90deg); opacity: 0 } }
-.star-pop                 { animation: star-pop 700ms ease-out both; }
 /* Tier-up callout label above the cauldron */
 @keyframes tier-callout-in { 0% { opacity: 0; transform: translate(-50%, 6px) } 20% { opacity: 1; transform: translate(-50%, 0) } 80% { opacity: 1 } 100% { opacity: 0 } }
 .tier-callout              { animation: tier-callout-in 1400ms ease-out both; }

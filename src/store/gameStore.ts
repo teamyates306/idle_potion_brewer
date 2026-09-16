@@ -1041,7 +1041,7 @@ export const useGameStore = create<GameState>()(
           ...(workersChanged ? { workers } : {}),
           ...(machinesChanged ? { machines } : {}),
         });
-        for (const l of leveledUp) pushGameEvent("levelup", `Lv ${l.level}`, undefined, { workerId: l.id });
+        for (const l of leveledUp) pushGameEvent("levelup", `Lv ${l.level}`, undefined, { workerId: l.id, level: l.level });
       },
 
       setTripPhase: (workerIndex, phase) =>
@@ -1142,7 +1142,7 @@ export const useGameStore = create<GameState>()(
         }
 
         get().pushHint("first_gather_complete");
-        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id });
+        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id, level: leveled.level });
         if (levelsGained > 0 && (w.upgrade_tokens ?? 0) === 0) {
           get().pushHint("worker_first_token");
         }
@@ -1303,7 +1303,7 @@ export const useGameStore = create<GameState>()(
           trades_completed_count: (s.trades_completed_count ?? 0) + 1,
         });
         pushGameEvent("trough", `+${trade.outputCount} ${outName}`);
-        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id });
+        if (levelsGained > 0) pushGameEvent("levelup", `Lv ${leveled.level}`, undefined, { workerId: w.id, level: leveled.level });
       },
 
       cancelTrade: (workerIndex) =>
@@ -1572,6 +1572,10 @@ export const useGameStore = create<GameState>()(
         // than it ever has (a pre-feature save just records its first tier).
         if (machine.best_tier != null && brewedTier > machine.best_tier) {
           pushGameEvent("tier-up", TIER_NAMES[brewedTier] ?? "", machineId, { tier: brewedTier, potionName: potion.name });
+        }
+        // Cauldron level-up — the same global reveal as a worker levelling.
+        if (machineLevelsGained > 0) {
+          pushGameEvent("machine-levelup", `Lv ${leveled.level}`, machineId, { level: leveled.level });
         }
 
         // Award mastery XP for the completed brew cycle (time-invested based,

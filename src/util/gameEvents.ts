@@ -5,7 +5,8 @@ export type GameEventChannel =
   | "pile-burst"      // big coin payout (quest / bounty)
   | "discovery"       // new potion found (meta.potionName, machineId)
   | "tier-up"         // a cauldron beat its best-ever tier (text = tier name, machineId, meta.tier)
-  | "levelup"         // a worker levelled (meta.workerId)
+  | "levelup"         // a worker levelled (meta.workerId, meta.level)
+  | "machine-levelup"  // a cauldron levelled (machineId, meta.level)
   | "quest-complete"  // a quest was turned in (text = reward)
   | "milestone";      // lifetime coins crossed an order of magnitude (text = threshold)
 
@@ -16,6 +17,7 @@ export interface GameEventMeta {
   questId?: string;
   difficulty?: string;
   reward?: number;
+  level?: number;
 }
 
 export interface GameEvent {
