@@ -24,7 +24,11 @@ type SortKey = "value" | "recipes" | "name";
 
 export default function PotionView({ onClose, initialTab }: { onClose: () => void; initialTab?: Tab }) {
   const potionInv = useGameStore((s) => s.potionInv);
-  const discoveredPotions = useGameStore((s) => [...new Set(s.discoveredPotions ?? [])]);
+  // Select the raw array (stable identity) and dedupe in a memo — a selector
+  // that builds a fresh array returns a new reference on EVERY store write,
+  // which re-rendered this whole panel on each auto-click commit.
+  const discoveredPotionsRaw = useGameStore((s) => s.discoveredPotions);
+  const discoveredPotions = useMemo(() => [...new Set(discoveredPotionsRaw ?? [])], [discoveredPotionsRaw]);
   const sellPotion = useGameStore((s) => s.sellPotion);
   const sellAll = useGameStore((s) => s.sellAll);
   const autoSellHashes = useGameStore((s) => s.autoSellHashes);

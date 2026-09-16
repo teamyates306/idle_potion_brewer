@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
 import { useGameStore, playerClickPower } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { useGameLoop } from "../hooks/useGameLoop";
+import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
@@ -28,7 +28,6 @@ import {
   type TroughLayerCfg, type TroughJitterCfg,
 } from "../store/troughTuningStore";
 import type { BrewingMachine, Worker, Ingredient, Rarity } from "../types";
-import type { MachineLoopState } from "../hooks/useGameLoop";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 // On-screen worker sprite cap per graphics quality tier (0 Basic … 3 Very
@@ -654,11 +653,24 @@ function machineWorkerScreenPos(order: number, rect: DOMRect) {
 }
 
 // ── MachineColumn ────────────────────────────────────────────────────────────
+// Shallow compare of the per-machine worker lists MachineColumn receives —
+// only the fields it actually renders/uses, so the once-a-second XP commit
+// (which replaces every auto-clicking worker object) doesn't re-render columns.
+function sameMachineWorkers(a: Worker[], b: Worker[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i];
+    if (x === y) continue;
+    if (x.id !== y.id || x.auto_click_speed !== y.auto_click_speed || x.click_power_level !== y.click_power_level || x.specialization !== y.specialization) return false;
+  }
+  return true;
+}
+
 const MachineColumn = React.memo(function MachineColumn({
   machine,
   machineIdx,
-  loopState,
-  workers,
+  machineWorkers,
   onOpen,
   onBrewStart,
   onBrewComplete,
@@ -666,8 +678,8 @@ const MachineColumn = React.memo(function MachineColumn({
 }: {
   machine: BrewingMachine;
   machineIdx: number;
-  loopState: MachineLoopState;
-  workers: Worker[];
+  /** Workers assigned to THIS machine (pre-filtered by the parent). */
+  machineWorkers: Worker[];
   onOpen: (p: Panel, machineId?: number) => void;
   onBrewStart: (cauldronRect: DOMRect, categories: string[]) => void;
   onBrewComplete: (cauldronRect: DOMRect, visuals: PotionBrewVisuals) => void;
@@ -689,7 +701,10 @@ const MachineColumn = React.memo(function MachineColumn({
   const heatRafRef = useRef(0);
   const heatDecayActive = useRef(false);
 
-  const { brewProgress, brewActive } = loopState;
+  // Own subscription to the loop's published progress: this column
+  // re-renders when ITS bar moves and at no other time (an idle brewer never
+  // re-renders on a tick at all).
+  const { brewProgress, brewActive } = useMachineLoopState(machineIdx);
   const hue    = MACHINE_HUE[machineIdx] ?? 0;
   const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
   const sparkColors = MACHINE_SPARK_COLORS[machineIdx] ?? MACHINE_SPARK_COLORS[0];
@@ -773,14 +788,11 @@ const MachineColumn = React.memo(function MachineColumn({
   }, [machine.id, onBrewComplete, onBrewBurst]);
 
   // Auto-worker FAT
-  const machineWorkers = workers
-    .map((w, i) => ({ w, i }))
-    .filter((x) => x.w.assigned_machine_id === machine.id);
-  const machineWorkersSig = machineWorkers.map(({ w }) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`).join(",");
+  const machineWorkersSig = machineWorkers.map((w) => `${w.id}:${w.auto_click_speed}:${w.click_power_level}`).join(",");
 
   useEffect(() => {
     const ids: number[] = [];
-    machineWorkers.forEach(({ w }, order) => {
+    machineWorkers.forEach((w, order) => {
       const clickPeriod = Math.max(140, 1000 / Math.max(0.5, w.auto_click_speed));
       // Fast clickers late-game would spawn several floating texts per second
       // per worker — a major jitter source. Aggregate: emit at most one text
@@ -940,7 +952,7 @@ const MachineColumn = React.memo(function MachineColumn({
         ))}
 
         {/* Auto-clicker workers */}
-        {machineWorkers.map(({ w }, order) => {
+        {machineWorkers.map((w, order) => {
           const { side, horiz, top } = machineWorkerLayout(order);
           const dur = Math.max(0.18, 1 / Math.max(0.5, w.auto_click_speed));
           return (
@@ -997,27 +1009,72 @@ const MachineColumn = React.memo(function MachineColumn({
     </div>
   );
 }, (prev, next) =>
-  // useGameLoop rebuilds `loopState` as a fresh object every tick even when
-  // its values haven't changed (e.g. idle machines) — compare by value here
-  // so React.memo can actually skip re-rendering the SVG subtree instead of
-  // being defeated by the new object reference every ~125ms.
+  // Brew progress is read via useMachineLoopState inside, so the parent's
+  // renders (a worker hired, a potion sold, the 1 Hz auto-click commit…)
+  // only reach this SVG subtree when something it draws actually changed.
   prev.machine === next.machine &&
   prev.machineIdx === next.machineIdx &&
-  prev.workers === next.workers &&
+  sameMachineWorkers(prev.machineWorkers, next.machineWorkers) &&
   prev.onOpen === next.onOpen &&
   prev.onBrewStart === next.onBrewStart &&
   prev.onBrewComplete === next.onBrewComplete &&
-  prev.onBrewBurst === next.onBrewBurst &&
-  prev.loopState.brewProgress === next.loopState.brewProgress &&
-  prev.loopState.brewActive === next.loopState.brewActive
+  prev.onBrewBurst === next.onBrewBurst
 );
+
+// ── Worker track sprite ──────────────────────────────────────────────────────
+// One per (non-brewing, visible) worker. Subscribes to its own loop entry, so
+// only workers actually walking in/out of the door re-render on a tick — a
+// worker "away" for the long middle of a trip, or idle at home, costs nothing.
+const TRACK = 68;
+const EMPTY_WORKERS: Worker[] = [];
+const WorkerTrackSprite = React.memo(function WorkerTrackSprite({ idx, worker, xOffset }: { idx: number; worker: Worker; xOffset: number }) {
+  const { workerProgress, workerPhase } = useWorkerLoopState(idx);
+  let up = 0; let opacity = 1;
+  if (workerPhase === "outbound") {
+    up = workerProgress * TRACK;
+    opacity = workerProgress > 0.75 ? Math.max(0, 1 - (workerProgress - 0.75) / 0.25) : 1;
+  } else if (workerPhase === "away") {
+    up = TRACK; opacity = 0;
+  } else if (workerPhase === "inbound") {
+    up = (1 - workerProgress) * TRACK;
+    opacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
+  }
+  const active = workerPhase === "outbound" || workerPhase === "inbound";
+  return (
+    <div
+      className="absolute"
+      style={{
+        bottom: 10, left: "50%",
+        transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
+        opacity,
+        transition: "transform 150ms linear, opacity 150ms linear",
+      }}
+    >
+      <WorkerArt size={47} specialization={worker.specialization} active={active} hueShift={workerHue(worker.id)} />
+    </div>
+  );
+});
 
 // ── Main Workshop ─────────────────────────────────────────────────────────────
 export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: number) => void }) {
   const workers      = useGameStore((s) => s.workers);
   const machines     = useGameStore((s) => s.machines);
   const potionInv    = useGameStore((s) => s.potionInv);
-  const loopProgress = useGameLoop();
+  // Runs the single game loop. Deliberately does NOT re-render Workshop on
+  // ticks — sprites/columns subscribe to their own progress entries.
+  useGameLoopDriver();
+  const openMap = useCallback(() => onOpen("map"), [onOpen]);
+  // Per-machine worker lists, so each MachineColumn gets a stable, tiny prop
+  // instead of the whole roster.
+  const workersByMachine = useMemo(() => {
+    const m = new Map<number, Worker[]>();
+    for (const w of workers) {
+      if (w.assigned_machine_id == null) continue;
+      const list = m.get(w.assigned_machine_id);
+      if (list) list.push(w); else m.set(w.assigned_machine_id, [w]);
+    }
+    return m;
+  }, [workers]);
 
   // Refs for the scrollable container and each content section
   const scrollRef        = useRef<HTMLDivElement>(null);
@@ -1406,28 +1463,13 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const graphics        = useGameStore((s) => s.graphics);
   const cleanView       = useSettingsStore((s) => s.cleanViewEnabled);
   const surplusEditMode = useSurplusTuningStore((s) => s.editMode);
-  const beamTuning       = useBeamTuningStore((s) => ({ width: s.width, top: s.top }));
+  const beamWidth        = useBeamTuningStore((s) => s.width);
+  const beamTop          = useBeamTuningStore((s) => s.top);
   const anyTokens       = workers.some((w) => (w.upgrade_tokens ?? 0) > 0);
   const totalWorkerTokens = workers.reduce((a, w) => a + (w.upgrade_tokens ?? 0), 0);
   const anyMachineTokens  = machines.some((m) => (m.upgrade_tokens ?? 0) > 0);
   // Surface truly idle workers (no location, no machine, no trade run) so wasted hands are visible at a glance
   const idleWorkerCount = workers.filter((w) => !w.assigned_location && w.assigned_machine_id == null && !w.assigned_settlement).length;
-
-  const TRACK = 68;
-  const workerVisuals = loopProgress.workers.map(({ workerProgress, workerPhase }, idx) => {
-    let up = 0; let opacity = 1;
-    const xOffset = (idx - (workers.length - 1) / 2) * 20;
-    if (workerPhase === "outbound") {
-      up = workerProgress * TRACK;
-      opacity = workerProgress > 0.75 ? Math.max(0, 1 - (workerProgress - 0.75) / 0.25) : 1;
-    } else if (workerPhase === "away") {
-      up = TRACK; opacity = 0;
-    } else if (workerPhase === "inbound") {
-      up = (1 - workerProgress) * TRACK;
-      opacity = workerProgress < 0.25 ? workerProgress / 0.25 : 1;
-    }
-    return { up, opacity, xOffset, carrying: workerPhase === "inbound" };
-  });
 
   // Cap on-screen worker sprites at lower graphics tiers — each is its own
   // animated DOM node, and late-game rosters can run into the dozens.
@@ -1439,8 +1481,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       .map((w, idx) => idx)
       .filter((idx) => workers[idx]?.assigned_machine_id == null);
     if (pool.length <= cap) return new Set(pool);
-    const idle = pool.filter((idx) => loopProgress.workers[idx]?.workerPhase === "idle");
-    const active = pool.filter((idx) => loopProgress.workers[idx]?.workerPhase !== "idle");
+    const isIdle = (w: Worker | undefined) => !w || (!w.assigned_location && !w.assigned_settlement) || !w.trip_started_at;
+    const idle = pool.filter((idx) => isIdle(workers[idx]));
+    const active = pool.filter((idx) => !isIdle(workers[idx]));
     return new Set([...idle, ...active].slice(0, cap));
   })();
 
@@ -1537,7 +1580,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           {surplusEditMode && <SurplusZoneOverlay floorWidth={contentWidth} />}
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
-          <WorkshopWall onClick={() => onOpen("map")} width={contentWidth} />
+          <WorkshopWall onClick={openMap} width={contentWidth} />
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -1590,9 +1633,9 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               key={cx}
               className="pointer-events-none absolute"
               style={{
-                top: beamTuning.top,
-                left: cx - beamTuning.width / 2,
-                width: beamTuning.width,
+                top: beamTop,
+                left: cx - beamWidth / 2,
+                width: beamWidth,
                 height: 460,
                 background:
                   "linear-gradient(to bottom, rgba(255,235,140,0.32) 0%, rgba(255,235,140,0.14) 30%, rgba(255,235,140,0.04) 65%, transparent 100%)",
@@ -1610,24 +1653,16 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Worker track */}
           <div ref={workerSectionRef} className="relative flex flex-col items-center" style={{ minHeight: 100 }}>
-            {workerVisuals.map(({ up, opacity, xOffset, carrying }, idx) => {
-              if (workers[idx]?.assigned_machine_id != null) return null;
+            {workers.map((w, idx) => {
+              if (w.assigned_machine_id != null) return null;
               if (!visibleWorkerIdx.has(idx)) return null;
-              const phase = loopProgress.workers[idx]?.workerPhase;
-              const active = phase === "outbound" || phase === "inbound";
               return (
-                <div
+                <WorkerTrackSprite
                   key={idx}
-                  className="absolute"
-                  style={{
-                    bottom: 10, left: "50%",
-                    transform: `translate(calc(-50% + ${xOffset}px), -${up}px)`,
-                    opacity,
-                    transition: "transform 150ms linear, opacity 150ms linear",
-                  }}
-                >
-                  <WorkerArt size={47} specialization={workers[idx]?.specialization} active={active} hueShift={workerHue(workers[idx]?.id ?? 0)} />
-                </div>
+                  idx={idx}
+                  worker={w}
+                  xOffset={(idx - (workers.length - 1) / 2) * 20}
+                />
               );
             })}
           </div>
@@ -1653,8 +1688,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
                 key={machine.id}
                 machine={machine}
                 machineIdx={idx}
-                loopState={loopProgress.machines[idx] ?? { brewProgress: 0, brewActive: false }}
-                workers={workers}
+                machineWorkers={workersByMachine.get(machine.id) ?? EMPTY_WORKERS}
                 onOpen={onOpen}
                 onBrewStart={handleBrewStart}
                 onBrewComplete={handleBrewComplete}
@@ -1927,24 +1961,29 @@ function WallWindowLight({ cx }: { cx: number }) {
     </g>
   );
 }
-function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
-  const id = `win${Math.round(cx)}`;
-  const x = cx - 24, w = 48, y = 70, h = 64;
+// Window aperture geometry (wall-SVG user units) — shared by the union clip
+// and the frame art so they always line up exactly.
+const WIN_W = 48, WIN_H = 64, WIN_Y = 70;
+
+/** The outside vista, walkers, near-scenery and night wash — drawn ONCE for the
+ *  whole wall, clipped to the union of every window aperture. Windows are
+ *  disjoint rects on one shared global-coordinate picture, so this is
+ *  pixel-identical to the old per-window copy but with a single set of
+ *  animated walker nodes instead of one per window (n× fewer compositor
+ *  animations for the same picture). */
+function WallVista({ width, walkers }: { width: number; walkers: WallWalkerCfg[] }) {
   return (
-    <g>
-      <clipPath id={id}><rect x={x} y={y} width={w} height={h} rx="7" /></clipPath>
-      <g clipPath={`url(#${id})`}>
-        {/* Hand-painted outside scene — one continuous 2100×144 picture shared
-            by every window (see #wallSceneArt below), each aperture clipping
-            its own x-slice so it reads as one vista behind the whole building.
-            Night dimming is done by the single #0a1526 overlay further down
-            (opacity-driven) rather than a per-layer brightness filter, which
-            silently failed at night — see --dn-scene-dark-op in Atmosphere. */}
+    <g clipPath="url(#winApertures)">
+        {/* Hand-painted outside scene — one continuous 2100×144 picture (see
+            #wallSceneArt below); each aperture shows its own x-slice so it
+            reads as one vista behind the whole building. Night dimming is done
+            by the single #0a1526 overlay further down (opacity-driven) rather
+            than a per-layer brightness filter, which silently failed at night
+            — see --dn-scene-dark-op in Atmosphere. */}
         <use href="#wallSceneArt" />
         {/* Distant adventurers crossing the road — behind the near-scenery, in
-            front of the hills. Same config rendered once per window (each
-            independently clipped) so it reads as one figure walking past. The
-            night overlay below dims them together with the rest of the scene. */}
+            front of the hills. The night overlay below dims them together with
+            the rest of the scene. */}
         {walkers.map((wk) => (
           <g
             key={wk.id}
@@ -1983,15 +2022,17 @@ function WallWindow({ cx, walkers }: { cx: number; walkers: WallWalkerCfg[] }) {
             art has trees/rooftops at those same coordinates, so the stars read
             as glowing dots stuck in the foliage. Removed rather than re-placed;
             the hand-painted background can carry its own stars if wanted.) */}
-        <rect x={x} y={y} width={w} height={h} fill="#0a1526"
+        <rect x={0} y={WIN_Y} width={width} height={WIN_H} fill="#0a1526"
           style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
-      </g>
-      {/* Frame + glass texture on top — hand-authored pixel art, same 48×64
-          canvas as the clip above so it lines up exactly; its glass pixels
-          are semi-transparent so the day/night colour + hills tint through. */}
-      <image href="/sprites/window.png" x={x} y={y} width={w} height={h} style={{ imageRendering: "pixelated" }} />
     </g>
   );
+}
+
+function WallWindowFrame({ cx }: { cx: number }) {
+  // Frame + glass texture on top — hand-authored pixel art, same 48×64
+  // canvas as the aperture clip so it lines up exactly; its glass pixels
+  // are semi-transparent so the day/night colour + hills tint through.
+  return <image href="/sprites/window.png" x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} style={{ imageRendering: "pixelated" }} />;
 }
 function WallLamp({ cx }: { cx: number }) {
   return (
@@ -2011,7 +2052,7 @@ function WallLamp({ cx }: { cx: number }) {
 // ── Sign name — hanging plaque, centred above the door. Read-only (renaming
 // moved to the Settings modal); the plaque background lives here (not in
 // WorkshopWall's SVG) so it grows with the text instead of clipping it.
-function WorkshopSign({ x }: { x: number }) {
+const WorkshopSign = React.memo(function WorkshopSign({ x }: { x: number }) {
   const name = useGameStore((s) => s.workshopName);
   return (
     <div
@@ -2021,9 +2062,12 @@ function WorkshopSign({ x }: { x: number }) {
       <span className="text-[9px] font-normal uppercase tracking-[0.2em] text-[#c8a050]">{name}</span>
     </div>
   );
-}
+});
 
-function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }) {
+// Memoised: the wall is the biggest static subtree in the scene and none of
+// its inputs change on a tick — with a stable onClick it only re-renders when
+// the walker population or the graphics preset changes.
+const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }) {
   const SPACING = 150;
   const center = width / 2;
   const n = Math.max(2, Math.round(width / SPACING));
@@ -2077,14 +2121,22 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
           {/* Near-scenery layer, painted in front of the walkers so they read
               as passing behind it — same sharing/slicing trick as the background. */}
           <image id="wallSceneFg" href="/sprites/foreground.png" x="0" y="0" width={width} height="144" style={{ imageRendering: "pixelated" }} />
+          {/* Union of every window aperture — the vista/walkers layer is
+              clipped by this once instead of being duplicated per window. */}
+          <clipPath id="winApertures">
+            {windows.map((cx) => (
+              <rect key={cx} x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} rx="7" />
+            ))}
+          </clipPath>
         </defs>
         <rect width={width} height="144" fill="url(#wallBricks)" />
         {/* Light halo rendered before window frames so glow sits behind the woodwork */}
         {windows.map((x) => (
           <WallWindowLight key={x} cx={x} />
         ))}
+        <WallVista width={width} walkers={walkers} />
         {windows.map((x) => (
-          <WallWindow key={x} cx={x} walkers={walkers} />
+          <WallWindowFrame key={x} cx={x} />
         ))}
         {lamps.map((x) => (
           <WallLamp key={x} cx={x} />
@@ -2098,7 +2150,7 @@ function WorkshopWall({ onClick, width }: { onClick: () => void; width: number }
       </svg>
     </button>
   );
-}
+});
 
 // ── Flying brew particles ─────────────────────────────────────────────────────
 // Same sprite/liquid-shape/blend/filter treatment as PotionPileArt's Bottle,

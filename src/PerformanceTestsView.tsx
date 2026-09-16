@@ -16,6 +16,7 @@
 import { useRef, useState } from "react";
 import Workshop from "./components/Workshop";
 import { useGameStore, newWorker, newMachine } from "./store/gameStore";
+import { discardPendingPersist } from "./store/persistStorage";
 import { PERF_TIERS, WARMUP_SECONDS, type PerfTier } from "./data/performanceTestScenarios";
 import historyJson from "./data/performance_history.json";
 
@@ -43,6 +44,7 @@ export function recoverFromInterruptedPerfTest(): boolean {
   hasCheckedRecovery = true;
   const backup = localStorage.getItem(PERF_RECOVERY_KEY);
   if (backup === null) return false;
+  discardPendingPersist(PERF_STORAGE_KEY);
   if (backup === NONE_SENTINEL) localStorage.removeItem(PERF_STORAGE_KEY);
   else localStorage.setItem(PERF_STORAGE_KEY, backup);
   localStorage.removeItem(PERF_RECOVERY_KEY);
@@ -190,6 +192,7 @@ export default function PerformanceTestsView() {
     } finally {
       const recovery = localStorage.getItem(PERF_RECOVERY_KEY);
       if (recovery !== null) {
+        discardPendingPersist(PERF_STORAGE_KEY);
         if (recovery === NONE_SENTINEL) localStorage.removeItem(PERF_STORAGE_KEY);
         else localStorage.setItem(PERF_STORAGE_KEY, recovery);
         localStorage.removeItem(PERF_RECOVERY_KEY);

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { createThrottledStorage } from "./persistStorage";
 import type {
   ActiveTrade,
   BrewingMachine,
@@ -584,7 +585,11 @@ export interface GameState {
   renameWorkshop: (name: string) => void;
   buyClickSpeed: (workerIndex: number) => void;
   buyClickPower: (workerIndex: number) => void;
-  autoClickTick: (dtSeconds: number) => void;
+  /** Commit auto-click progress accumulated by the game loop (see
+   *  useGameLoop.ts): brew-timer reductions per machine id and XP per worker
+   *  id. The loop batches ~1s of ticks into one call so the store — and the
+   *  persisted save — is touched once a second instead of once per tick. */
+  applyAutoClick: (reductionMsByMachineId: Record<number, number>, xpByWorkerId: Record<number, number>) => void;
 
   // machines
   buyMachine: () => void;
@@ -705,6 +710,9 @@ function applyAchievementUnlocks(s: GameState, list: typeof ACHIEVEMENTS): Parti
   }
   return { unlocked_achievements: Array.from(unlocked) };
 }
+
+// Last (machines, ingredientInv) pair updateBrewReadiness evaluated — see there.
+let readinessSeen: { machines: unknown; inv: unknown } = { machines: null, inv: null };
 
 export const useGameStore = create<GameState>()(
   persist(
@@ -989,24 +997,20 @@ export const useGameStore = create<GameState>()(
           };
         }),
 
-      autoClickTick: (dt) => {
+      applyAutoClick: (reductionMsByMachineId, xpByWorkerId) => {
         const s = get();
-        // Fast exit: only do work when at least one worker is clicking a machine
-        // that is actively brewing. Otherwise this ran at ~12fps producing fresh
-        // worker/machine arrays every tick, re-rendering every subscriber for nothing.
-        const activeMachineIds = new Set(
-          s.machines.filter((m) => m.running && !m.brew_stalled && m.brew_started_at).map((m) => m.id)
-        );
-        if (activeMachineIds.size === 0) return;
-        if (!s.workers.some((w) => w.assigned_machine_id != null && activeMachineIds.has(w.assigned_machine_id))) return;
-
         const cfg = useConfigStore.getState();
 
-        // Grant XP to workers assigned to actively-brewing machines
+        // Workers: XP was accrued (by the loop) only while their machine was
+        // actively brewing, so it is simply banked here. applyLevels rolls
+        // over as many levels as the batched gain covers, so committing 1s of
+        // XP at once is exactly equivalent to committing it tick by tick.
+        let workersChanged = false;
         const workers = s.workers.map((w) => {
-          if (w.assigned_machine_id == null || !activeMachineIds.has(w.assigned_machine_id)) return w;
-          const xpGain = autoClickXpPerSec(w.auto_click_speed) * dt;
-          const leveled = applyLevels(w.level, w.xp + xpGain, cfg.formulas);
+          const gain = xpByWorkerId[w.id];
+          if (!gain) return w;
+          workersChanged = true;
+          const leveled = applyLevels(w.level, w.xp + gain, cfg.formulas);
           const levelsGained = leveled.level - w.level;
           return {
             ...w,
@@ -1017,18 +1021,23 @@ export const useGameStore = create<GameState>()(
           };
         });
 
-        // Per-machine: advance brew timer by workers' click reduction
-        const machines = s.machines.map((machine) => {
-          if (!activeMachineIds.has(machine.id)) return machine;
-          const assigned = s.workers.filter((w) => w.assigned_machine_id === machine.id);
-          if (assigned.length === 0) return machine;
-          const reductionMs = assigned.reduce(
-            (a, w) => a + autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0) * dt * 1000, 0
-          );
-          return { ...machine, brew_started_at: machine.brew_started_at! - reductionMs };
+        // Machines: pull brew_started_at earlier by the banked reduction. A
+        // machine that stopped / stalled / restarted since the loop accrued
+        // this (its brew_started_at was reset to now) is skipped — the
+        // reduction belonged to a brew that no longer exists.
+        let machinesChanged = false;
+        const machines = s.machines.map((m) => {
+          const ms = reductionMsByMachineId[m.id];
+          if (!ms || !m.running || m.brew_stalled || !m.brew_started_at) return m;
+          machinesChanged = true;
+          return { ...m, brew_started_at: m.brew_started_at - ms };
         });
 
-        set({ workers, machines });
+        if (!workersChanged && !machinesChanged) return;
+        set({
+          ...(workersChanged ? { workers } : {}),
+          ...(machinesChanged ? { machines } : {}),
+        });
       },
 
       setTripPhase: (workerIndex, phase) =>
@@ -1613,6 +1622,13 @@ export const useGameStore = create<GameState>()(
         // Read-first, set-only-on-change: this runs every loop tick, and calling
         // set() with an empty patch still notifies every store subscriber.
         const s = get();
+        // The verdict depends only on the machines' recipes/flags and the
+        // ingredient stock, both immutable snapshots — if neither reference
+        // has changed since the last check the answer can't have changed
+        // either, so the per-machine scan below is skipped (O(1) per tick
+        // instead of O(machines × slots)).
+        if (readinessSeen.machines === s.machines && readinessSeen.inv === s.ingredientInv) return;
+        readinessSeen = { machines: s.machines, inv: s.ingredientInv };
         let changed = false;
         let anyBecameStalled = false;
         const machines = s.machines.map((m) => {
@@ -2730,6 +2746,10 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: "idle-potion-brewer",
+      // Coalesces + defers the localStorage write (see persistStorage.ts):
+      // the middleware's default backend serialises the whole save
+      // synchronously on every set().
+      storage: createThrottledStorage(),
       partialize: (s) => ({
         coins: s.coins,
         workshopName: s.workshopName,

@@ -6,6 +6,7 @@ import { validateNickname } from "./nickname";
 import * as api from "./api";
 import type { PlayerSummary } from "./api";
 import { useGameStore } from "../store/gameStore";
+import { discardPendingPersist, flushPersist } from "../store/persistStorage";
 
 // localStorage key the game's zustand persist middleware writes to — this is
 // the blob we mirror to the cloud for cross-device restore.
@@ -169,6 +170,7 @@ export const useOnlineStore = create<OnlineState>()((set, get) => ({
       if (error) throw new Error(error.message);
       // Mirror the full save for cross-device restore. Parse-validate before
       // upload so a corrupt localStorage blob never clobbers a good cloud save.
+      flushPersist(); // the save is written on a throttle — make it current first
       const rawSave = localStorage.getItem(SAVE_KEY);
       if (rawSave) {
         const data = JSON.parse(rawSave);
@@ -189,6 +191,9 @@ export const useOnlineStore = create<OnlineState>()((set, get) => ({
     const { data, error } = await supabase.from("saves").select("data").maybeSingle();
     if (error) return error.message;
     if (!data?.data) return "No cloud save found.";
+    // Drop any queued write of the CURRENT in-memory game, otherwise the
+    // pagehide flush during reload() would overwrite the save we just restored.
+    discardPendingPersist(SAVE_KEY);
     localStorage.setItem(SAVE_KEY, JSON.stringify(data.data));
     window.location.reload();
     return null;

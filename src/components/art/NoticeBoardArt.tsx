@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search, X } from "lucide-react";
 import WorkerArt, { workerHue } from "./WorkerArt";
@@ -158,7 +158,9 @@ function BoardFace({ data, dayNight }: { data: BoardData; dayNight: boolean }) {
   );
 }
 
-export default function NoticeBoardArt({ centerX }: { centerX: number }) {
+// Memoised: rendered inside Workshop, whose own renders (roster/inventory
+// changes) have nothing to do with the board — it subscribes to what it needs.
+export default memo(function NoticeBoardArt({ centerX }: { centerX: number }) {
   const cfg = useNoticeBoardTuningStore();
   const activeQuests = useGameStore((s) => s.activeQuests);
   const discoveryBounty = useGameStore((s) => s.discoveryBounty);
@@ -292,4 +294,4 @@ export default function NoticeBoardArt({ centerX }: { centerX: number }) {
       )}
     </>
   );
-}
+});
