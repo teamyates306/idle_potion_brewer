@@ -1530,8 +1530,19 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         const mid = evt.machineId;
         const level = evt.meta?.level;
         if (mid != null && level != null) {
-          const idx = machines.findIndex((m) => m.id === mid);
-          const m = machines[idx];
+          // Live read, like the worker branch above — NOT the `machines`
+          // render variable. This effect subscribes once with an empty
+          // dependency array (see below), so its closure over `machines`
+          // was frozen to whatever machines existed at Workshop's FIRST
+          // mount; any cauldron bought afterwards had a real id but no entry
+          // in that stale snapshot, so `findIndex` returned -1 and its
+          // level-up reveal was silently dropped forever — the starter
+          // cauldron's own level-ups still worked (same id, still findable),
+          // which is exactly the kind of intermittent-looking failure that's
+          // easy to miss while testing.
+          const liveMachines = useGameStore.getState().machines;
+          const idx = liveMachines.findIndex((m) => m.id === mid);
+          const m = liveMachines[idx];
           if (m) {
             enqueueReveal({
               id: evt.id, kind: "levelup", level,
