@@ -1084,7 +1084,7 @@ const MachineColumn = React.memo(function MachineColumn({
             ].filter(Boolean).join(" ") || undefined,
           }}
         >
-          <MachineArt size={108} brewing={false} progress={brewProgress} uid={String(machine.id)} hue={hue} />
+          <MachineArt size={108} brewing={false} progress={brewProgress} uid={String(machine.id)} hue={hue} unlockedSlots={machine.unlocked_slots} />
         </div>
 
         {/* Steam — replaces the bubble loops; tinted from the liquid */}

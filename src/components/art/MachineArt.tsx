@@ -10,7 +10,25 @@ interface Props {
    *  same CSS matrix — equivalent to `filter: hue-rotate()` on the wrapper,
    *  without a per-frame GPU filter pass. Must be one of Workshop.MACHINE_HUE. */
   hue?: number;
+  /** machine.unlocked_slots (2–5). Slots 3–5 each bolt a small physical
+   *  attachment onto the rig — see SLOT_UPGRADE_SPRITES below. Defaults to 2
+   *  (a fresh machine's starting slot count), which shows none of them. */
+  unlockedSlots?: number;
 }
+
+// Recipe-slot upgrade attachments (public/sprites/machine_upgrades/slot_N.svg,
+// one authored per slot 3/4/5, drawn at slot N being unlocked and every slot
+// above it). Hand-painted at fixed positions already aligned to machine.png's
+// own 110×110 canvas, so they're drawn at the same x/y/size with no per-hue
+// tinting: unlike the cauldron body these are deliberately NOT recoloured by
+// MACHINE_HUE — they read as a fixed brass/iron fitting regardless of which
+// colour cauldron they're bolted to, so don't route them through
+// hueRotateColor/tintedSpriteName the way the base sprite is.
+const SLOT_UPGRADE_SPRITES: ReadonlyArray<{ slot: number; href: string }> = [
+  { slot: 3, href: "/sprites/machine_upgrades/slot_3.svg" },
+  { slot: 4, href: "/sprites/machine_upgrades/slot_4.svg" },
+  { slot: 5, href: "/sprites/machine_upgrades/slot_5.svg" },
+];
 
 /** Interpolate between two RGB values by t (0→1). */
 function lerpRGB(r1: number, g1: number, b1: number, r2: number, g2: number, b2: number, t: number) {
@@ -29,10 +47,11 @@ export function liquidColorFor(progress: number, hue: number): string {
  *  Layer order (bottom → top):
  *    1. liquid rect  — fully opaque, desaturated→saturated as brew progresses
  *    2. machine.svg  — sprite with transparent cutout over the liquid area
- *    3. needle       — spins at clock-face centre (54.5, 13.5)
- *    4. bubbles      — rise through the cauldron opening
+ *    3. slot upgrades — fixed attachments for unlocked recipe slots 3–5, unhued
+ *    4. needle       — spins at clock-face centre (54.5, 13.5)
+ *    5. bubbles      — rise through the cauldron opening
  */
-export default function MachineArt({ size = 110, brewing = false, progress = 0, hue = 0 }: Props) {
+export default function MachineArt({ size = 110, brewing = false, progress = 0, hue = 0, unlockedSlots = 2 }: Props) {
   const t = Math.max(0, Math.min(1, progress));
 
   // Pale watery teal → rich saturated potion green as brew completes.
@@ -56,7 +75,12 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
       {/* 2 — machine sprite (transparent cutout exposes liquid above) */}
       <image href={sprite} x="0" y="0" width="110" height="110" style={{ imageRendering: "pixelated" }} />
 
-      {/* 3 — clock needle */}
+      {/* 3 — slot upgrades: fixed attachments, never hue-rotated */}
+      {SLOT_UPGRADE_SPRITES.filter((s) => unlockedSlots >= s.slot).map((s) => (
+        <image key={s.slot} href={s.href} x="0" y="0" width="110" height="110" style={{ imageRendering: "pixelated" }} />
+      ))}
+
+      {/* 4 — clock needle */}
       <line
         x1="54.5" y1="13.5"
         x2={nx} y2={ny}
@@ -65,7 +89,7 @@ export default function MachineArt({ size = 110, brewing = false, progress = 0, 
         strokeLinecap="round"
       />
 
-      {/* 4 — bubbles (y shifted -8 to follow the liquid ellipse's new cy) */}
+      {/* 5 — bubbles (y shifted -8 to follow the liquid ellipse's new cy) */}
       {brewing && (
         <g>
           <circle cx="44" cy="43" r="2.4" fill={bubbleColor} className="animate-bubble" />
