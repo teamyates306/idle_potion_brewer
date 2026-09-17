@@ -1550,6 +1550,17 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
         }
         return;
       }
+      if (evt.channel === "discovery" && evt.meta?.potionName) {
+        // Same big centre-screen reveal as the other three moment types —
+        // handled here, unconditionally, for the same reason: this used to
+        // sit below the `toastsEnabled` guard meant for small in-scene FAT
+        // toasts (trough/pile), which silently ate every discovery reveal
+        // whenever a player had Toasts off in Settings, even though the
+        // reveal has nothing to do with that setting.
+        const pv = parsePotionVisuals(evt.meta.potionName);
+        enqueueReveal({ id: evt.id, kind: "discovery", name: evt.meta.potionName, visuals: { liquidColor: pv.liquidColor, prefixTier: pv.prefixTier, blendColors: pv.blendColors, ...getPotionTypeData(pv.potionType) } });
+        return;
+      }
       if (evt.channel === "tier-up" || evt.channel === "milestone") return;
       if (!useSettingsStore.getState().toastsEnabled) return;
       if (evt.channel === "cauldron") return;
@@ -1560,14 +1571,11 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
       const cx   = rect.left + rect.width  / 2;
       const cy   = rect.top  + rect.height / 3;
 
+      // Discovery events without a potion name (defensive — shouldn't happen
+      // from the store, see pushGameEvent("discovery", ...)) fall back to a
+      // plain toast, which DOES respect the toast setting.
       if (evt.channel === "discovery") {
-        const name = evt.meta?.potionName;
-        if (name) {
-          const pv = parsePotionVisuals(name);
-          enqueueReveal({ id: evt.id, kind: "discovery", name, visuals: { liquidColor: pv.liquidColor, prefixTier: pv.prefixTier, blendColors: pv.blendColors, ...getPotionTypeData(pv.potionType) } });
-        } else {
-          spawnFAT({ x: window.innerWidth / 2, y: window.innerHeight * 0.42, text: evt.text, color: "#fde68a", arcX: 0, size: "lg", duration: 7000, glow: true });
-        }
+        spawnFAT({ x: window.innerWidth / 2, y: window.innerHeight * 0.42, text: evt.text, color: "#fde68a", arcX: 0, size: "lg", duration: 7000, glow: true });
         return;
       }
 
