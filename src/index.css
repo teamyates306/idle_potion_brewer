@@ -282,15 +282,11 @@ body {
   to   { transform: translateX(var(--walk-to)); }
 }
 
-/* Walker wiggle — a goofy little bounce+tilt on top of the crossing motion
-   above. Runs on a separate nested <g> (fill-box, bottom-center origin) so it
-   pivots on the sprite's own feet instead of orbiting the window's origin. */
-@keyframes walker-wiggle {
-  0%,  100% { transform: translateY(0)     rotate(0deg);   }
-  25%        { transform: translateY(-1.4px) rotate(-6deg); }
-  50%        { transform: translateY(0)     rotate(0deg);   }
-  75%        { transform: translateY(-1.4px) rotate(6deg);  }
-}
+/* (The walker wiggle used to live here. The real wall now evaluates both the
+   crossing and the bounce in engine/walkerPose.ts on the shared ambient clock
+   — a CSS animation on an SVG child repaints the whole wall every vsync. The
+   `wall-walk` keyframe above is kept only for the dev walker preview, which
+   renders one sprite in isolation.) */
 
 /* No backdrop blur anywhere: it is the most expensive effect CSS has — the
    GPU reads back and blurs everything behind the element every frame anything

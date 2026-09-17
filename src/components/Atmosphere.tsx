@@ -35,6 +35,27 @@ const MOTES = Array.from({ length: MOTE_COUNT }, () => ({
 // Exported so App.tsx can run this once, synchronously, before the workshop
 // scene ever paints — otherwise the first frame renders with fallback colours
 // until this component's own effect fires, a brief but visible "recalibration" pop.
+// Every day/night var carries a 3–3.5 s CSS transition, and this runs every
+// 3 s — so writing a value that has drifted by a thousandth restarts a
+// full-length transition that never finishes, and the scene was *always*
+// mid-transition (measured: ~15 style recalcs/s at idle, forever). Values are
+// therefore quantised: a var is only written when it has moved by more than a
+// step that is below the eye's threshold for that property, so the transitions
+// run in short bursts and then settle. Worst-case error is one step.
+const lastVar = new Map<string, number>();
+function setVarNum(root: CSSStyleDeclaration, name: string, value: number, step: number, fmt: (v: number) => string) {
+  const prev = lastVar.get(name);
+  if (prev !== undefined && Math.abs(value - prev) < step) return;
+  lastVar.set(name, value);
+  root.setProperty(name, fmt(value));
+}
+const px  = (v: number) => `${v.toFixed(1)}px`;
+const deg = (v: number) => `${v.toFixed(1)}deg`;
+const op  = (v: number) => v.toFixed(3);
+
+/** Test/HMR hook: forget the quantised values so the next call writes them all. */
+export function resetDayNightVarCache() { lastVar.clear(); }
+
 export function applyDayNightVars() {
   const dn   = computeDayNight(getDayPhase());
   const root = document.documentElement.style;
@@ -50,7 +71,7 @@ export function applyDayNightVars() {
   // Vignette opacity: a warm edge-darkening that is present by day and most
   // visible at night. Driving element opacity (vs. recolouring the gradient)
   // keeps it on the compositor and lets it transition smoothly.
-  root.setProperty("--dn-vig-op", (0.55 + (1 - dy) * 0.45).toFixed(3));
+  setVarNum(root, "--dn-vig-op", 0.55 + (1 - dy) * 0.45, 0.012, op);
 
   // Warm tint: golden amber that fades in at dawn / dusk, max alpha 0.10
   const warmAlpha = Math.max(sr, ss) * 0.10;
@@ -62,34 +83,39 @@ export function applyDayNightVars() {
   // translucent layer costs a whole screen of blended pixels per frame on a
   // phone.
   const a = warmAlpha + coolAlpha - warmAlpha * coolAlpha;
+  // The tint is the one main-thread transition left (`background` can't
+  // composite), so it gets the coarsest step: at alpha ≤ 0.14 a 0.004 change
+  // is well under a display's 8-bit quantisation of the blended result.
   if (a > 0) {
     const wk = (warmAlpha * (1 - coolAlpha)) / a, ck = coolAlpha / a;
     const r = Math.round(215 * wk + 46 * ck), g = Math.round(145 * wk + 38 * ck), b = Math.round(55 * wk + 62 * ck);
-    root.setProperty("--dn-tint", `rgba(${r},${g},${b},${a.toFixed(3)})`);
+    setVarNum(root, "--dn-tint", a, 0.004, (v) => `rgba(${r},${g},${b},${v.toFixed(3)})`);
   } else {
-    root.setProperty("--dn-tint", "rgba(215,145,55,0)");
+    setVarNum(root, "--dn-tint", 0, 0.004, () => "rgba(215,145,55,0)");
   }
 
   // Mote brightness: dawn/dusk ≈ 1.0, full day ≈ 0.6, night ≈ 0.8
-  root.setProperty("--dn-mote-op",  String(Math.min(1, dn.moteOpacity).toFixed(2)));
+  setVarNum(root, "--dn-mote-op", Math.min(1, dn.moteOpacity), 0.02, (v) => v.toFixed(2));
 
   // Ground shadow under machines + trough: pronounced at dawn/dusk, dim at noon + midnight
   const shadowStrength = Math.max(dn.sunriseness, dn.sunsetness);
-  root.setProperty("--dn-shadow-op",    (0.18 + shadowStrength * 0.72).toFixed(3));
-  root.setProperty("--dn-shadow-scale", (0.65 + shadowStrength * 0.55).toFixed(3));
+  setVarNum(root, "--dn-shadow-op",    0.18 + shadowStrength * 0.72, 0.012, op);
+  setVarNum(root, "--dn-shadow-scale", 0.65 + shadowStrength * 0.55, 0.012, op);
 
   // Window light shafts: bright during the day, angled by sun position
-  root.setProperty("--dn-daylight-op", (dn.dayness * (1 - rainy * 0.3 - snowy * 0.15)).toFixed(3));
+  setVarNum(root, "--dn-daylight-op", dn.dayness * (1 - rainy * 0.3 - snowy * 0.15), 0.012, op);
   const dayFrac = Math.max(-1, Math.min(1, (dn.phase - 0.5) / 0.4)); // −1 dawn → 0 noon → +1 dusk
-  root.setProperty("--dn-sun-skew", `${(dayFrac * 32).toFixed(1)}deg`);
+  // Beams sweep 64° across a 3-min day ≈ 0.45°/s; a 1° step is invisible on a
+  // soft-edged beam but cuts the retarget rate to roughly once every 2 s.
+  setVarNum(root, "--dn-sun-skew", dayFrac * 32, 1, deg);
   // Beam opacity: same at dawn/dusk, 0.8× at noon (vertical beams are slightly
   // dimmer); overcast weather softens them.
   const beamOp = dn.dayness * (0.8 + 0.2 * shadowStrength) * (1 - rainy * 0.65 - snowy * 0.4);
-  root.setProperty("--dn-beam-op", beamOp.toFixed(3));
+  setVarNum(root, "--dn-beam-op", beamOp, 0.012, op);
   // Object shadows (cauldrons, trough) lean away from the sun like the beams
   // do — only by day; at night the lamps sit overhead so they fall straight.
-  root.setProperty("--dn-shadow-dx",   `${(-dayFrac * 9 * dn.dayness).toFixed(1)}px`);
-  root.setProperty("--dn-shadow-skew", `${(-dayFrac * 18 * dn.dayness).toFixed(1)}deg`);
+  setVarNum(root, "--dn-shadow-dx",   -dayFrac * 9 * dn.dayness, 0.4, px);
+  setVarNum(root, "--dn-shadow-skew", -dayFrac * 18 * dn.dayness, 0.8, deg);
 
   // Workshop wall: lamps, outside-scene night dimming.
   //
@@ -98,12 +124,12 @@ export function applyDayNightVars() {
   // var(…) …))`, which silently fails: nesting a var() inside calc() inside a
   // filter function resolves to the fallback on every engine tested (the scene
   // stayed at full daytime brightness even at 1am).
-  root.setProperty("--dn-scene-dark-op", ((1 - dn.dayness) * 0.62 * (1 - snowy * 0.2)).toFixed(3));
+  setVarNum(root, "--dn-scene-dark-op", (1 - dn.dayness) * 0.62 * (1 - snowy * 0.2), 0.008, op);
   // Lantern glow pools: lit or not (see lampsLit), rather than a slow fade —
   // the 3 s CSS transition on the pools gives the "lights coming on" beat
   // while the flicker overlays ignite one by one from the door outwards.
   const lampGlow = lampsLit(dn.phase) ? 0.85 + dn.sunsetness * 0.2 : 0;
-  root.setProperty("--dn-lamp-glow-op",  lampGlow.toFixed(3));
+  setVarNum(root, "--dn-lamp-glow-op", lampGlow, 0.012, op);
 }
 
 // Motes: static descriptors above, positions written to inline styles at

@@ -9,6 +9,7 @@ import { subscribeGameEvent } from "../util/gameEvents";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
 import { subscribeAmbient, lampFlickerOpacity } from "../engine/ambientClock";
+import { apertureClipPath, walkerPose } from "../engine/walkerPose";
 import { autoClickPower } from "../engine/autoclick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import MachineArt, { liquidColorFor } from "./art/MachineArt";
@@ -28,7 +29,6 @@ import { lampsLit } from "./Atmosphere";
 import { getDayPhase } from "../hooks/useDayNight";
 import PotionPileArt from "./art/PotionPileArt";
 import IngredientSvg from "./art/IngredientSvg";
-import AdventurerSpriteSvg from "./art/AdventurerSpriteSvg";
 import NoticeBoardArt from "./art/NoticeBoardArt";
 import { IconStarToken, IconSleep } from "./ui/icons";
 import { parsePotionVisuals, getPotionTypeData, DEFAULT_LIQUID_COLOR, TIER_LIQUID_STYLE, TIER_FX } from "../util/potionVisuals";
@@ -784,6 +784,8 @@ const MachineColumn = React.memo(function MachineColumn({
   // Overheat: once the cauldron has run hot, cooling back down "clanks".
   const wasHotRef  = useRef(false);
   const [clank, setClank] = useState(0);
+  const clankTimerRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(clankTimerRef.current), []);
   // Tier-up flash (this cauldron beat its best-ever tier).
   const [tierFlash, setTierFlash] = useState<{ id: number; label: string } | null>(null);
   useEffect(() => {
@@ -796,7 +798,9 @@ const MachineColumn = React.memo(function MachineColumn({
       // it doesn't read as the cauldron itself levelling up.
       setTierFlash({ id: evt.id, label: `New best potion: ${evt.text}` });
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setTierFlash(null), 1400);
+      // 1550, not 1400: the last steam puff starts at +420 ms and runs 1100 ms,
+      // so a 1400 ms teardown clipped its tail off mid-rise.
+      timer = window.setTimeout(() => setTierFlash(null), 1550);
       if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
         const rect = cauldronRef.current.getBoundingClientRect();
         spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.1, text: `New best: ${evt.text}!`, color: "#fde68a", size: "lg", arcX: 0, glow: true, duration: 2600 });
@@ -842,6 +846,11 @@ const MachineColumn = React.memo(function MachineColumn({
         // Pressure release: one clank + a puff of steam as it cools.
         wasHotRef.current = false;
         setClank((n) => n + 1);
+        // Unmount the puffs once they've played — otherwise the finished
+        // steam-rise animations (fill-mode: both) stay attached to live
+        // elements for the rest of the session, one set per overheat.
+        window.clearTimeout(clankTimerRef.current);
+        clankTimerRef.current = window.setTimeout(() => setClank(0), 1400);
         setBumping(false);
         requestAnimationFrame(() => setBumping(true));
         setTimeout(() => setBumping(false), 320);
@@ -1965,7 +1974,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 }
 
 // ── Workshop wall — repeating windows around a single central door ─────────────
-function WallDoor({ cx }: { cx: number }) {
+function WallDoor({ cx, wallWidth }: { cx: number; wallWidth: number }) {
   const fx = cx - 38; // frame left (76 wide), workers emerge from here
   // The oval pane in door.svg is already translucent art (grey, ~20% opacity)
   // rather than opaque — but that only means it TINTS whatever sits behind it,
@@ -1979,15 +1988,20 @@ function WallDoor({ cx }: { cx: number }) {
       {/* door.svg has a curved/arched silhouette with real transparent margins
           along its left/right edges. Back it with the same brick texture as the
           rest of the wall so nothing behind it bleeds through those gaps. */}
-      <rect x={fx} y={64} width={76} height={80} fill="url(#wallBricks)" />
+      <defs>
+        <pattern id="doorBricks" width="96" height="48" patternUnits="userSpaceOnUse">
+          <image href="/sprites/wall-tile.png" x="0" y="0" width="96" height="48" />
+        </pattern>
+      </defs>
+      <rect x={fx} y={64} width={76} height={80} fill="url(#doorBricks)" />
       {/* Punch a matching gap through that brick backing and show the same
           shared scene art (+ night dimming) every wall window uses, clipped to
           the pane's oval — door.png then draws on top, so its translucent
           glass pixels tint the real outside view instead of flat brick. */}
       <clipPath id="doorWinClip"><ellipse cx={winCx} cy={winCy} rx={winRx} ry={winRy} /></clipPath>
       <g clipPath="url(#doorWinClip)">
-        <use href="#wallSceneArt" />
-        <use href="#wallSceneFg" />
+        <image href="/sprites/background.png" x="0" y="0" width={wallWidth} height="144" style={{ imageRendering: "pixelated" }} />
+        <image href="/sprites/foreground.png" x="0" y="0" width={wallWidth} height="144" style={{ imageRendering: "pixelated" }} />
         <rect x={winCx - winRx} y={winCy - winRy} width={winRx * 2} height={winRy * 2} fill="#0a1526"
           style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
       </g>
@@ -1998,10 +2012,12 @@ function WallDoor({ cx }: { cx: number }) {
     </g>
   );
 }
-// ── Window walkers — an occasional distant adventurer crossing behind the
-// windows (see art/AdventurerSpriteSvg + data/questSprites). Rendered once per
-// window, each clipped to that window's own pane, so the same synchronised
-// CSS translateX animation reads as a single figure walking behind them all.
+// ── Window walkers — distant adventurers crossing the road behind the windows
+// (see data/questSprites for the adventurer generator). Each is an independent
+// crossing over one shared global-coordinate scene, so a walker passes out of
+// one aperture and into the next as one continuous journey behind the wall.
+// They are drawn on a single canvas (see WallWalkers) rather than as animated
+// SVG or per-walker layers — both were measured and cost more.
 interface WallWalkerCfg {
   id: string;
   adventurer: Adventurer;
@@ -2013,6 +2029,7 @@ interface WallWalkerCfg {
   y: number; // feet baseline, in wall-SVG user units
   bobDuration: number; // seconds per up/down wiggle step — independent of crossing duration
   bobDelay: number;    // negative animation-delay so concurrent walkers don't bob in lockstep
+  bornAt: number;      // performance.now() ms at which this walker was at the start of its route
   elapsed: number;     // seconds already "walked" when spawned — 0 for normal mid-session
                         // spawns (start at the edge), >0 only for the initial on-mount seed
                         // so a reload doesn't empty the wall and slowly repopulate over ~2min.
@@ -2040,7 +2057,8 @@ function makeWalker(width: number, t: WalkerTuning, elapsed = 0): WallWalkerCfg 
   // to actually animate).
   const bobDuration = rand(0.32, 0.42);
   const bobDelay = -rand(0, bobDuration); // random phase so walkers don't bounce in sync
-  return { id, adventurer, direction, duration, size, fromX, toX, y, bobDuration, bobDelay, elapsed: Math.min(elapsed, duration) };
+  const walked = Math.min(elapsed, duration);
+  return { id, adventurer, direction, duration, size, fromX, toX, y, bobDuration, bobDelay, elapsed: walked, bornAt: performance.now() - walked * 1000 };
 }
 
 // Multiple adventurers can be crossing at once now (capped by
@@ -2110,6 +2128,7 @@ function useWindowWalkers(width: number, enabled: boolean, tuning: WalkerTuning,
       const cfg = makeWalker(width, t0);
       if (!cfg) continue;
       cfg.elapsed = Math.random() * cfg.duration;
+      cfg.bornAt = performance.now() - cfg.elapsed * 1000;
       seeded.push(cfg);
     }
     if (seeded.length > 0) {
@@ -2188,73 +2207,153 @@ function computeNoticeBoardPosition(width: number): number | null {
   return Math.round((right[0] + right[1]) / 2);
 }
 
+/** Subtle warm halo around a window frame — fades at night. The former SVG
+ *  ellipse (cx, 102, rx 36, ry 40, radial #ffe8a0 .50 → .14 @60% → 0 at
+ *  cy 40%) as an HTML element: its opacity transition used to repaint the
+ *  whole wall SVG for 3.5 s of every 3 s; here it composites. */
 function WallWindowLight({ cx }: { cx: number }) {
   return (
-    <g>
-      {/* Subtle warm halo around window frame — fades at night */}
-      <ellipse
-        cx={cx} cy={102}
-        rx={36} ry={40}
-        fill="url(#winGlow)"
-        style={{ opacity: "var(--dn-daylight-op, 0)", transition: "opacity 3.5s ease-in-out" }}
-      />
-    </g>
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left: cx - 36, top: 62, width: 72, height: 80,
+        background: "radial-gradient(ellipse 50% 50% at 50% 40%, rgba(255,232,160,0.5) 0%, rgba(255,232,160,0.14) 60%, rgba(255,232,160,0) 100%)",
+        opacity: "var(--dn-daylight-op, 0)",
+        transition: "opacity 3.5s ease-in-out",
+      }}
+    />
   );
 }
 // Window aperture geometry (wall-SVG user units) — shared by the union clip
 // and the frame art so they always line up exactly.
 const WIN_W = 48, WIN_H = 64, WIN_Y = 70;
 
-/** The outside vista, walkers, near-scenery and night wash — drawn ONCE for the
- *  whole wall, clipped to the union of every window aperture. Windows are
- *  disjoint rects on one shared global-coordinate picture, so this is
- *  pixel-identical to the old per-window copy but with a single set of
- *  animated walker nodes instead of one per window (n× fewer compositor
- *  animations for the same picture). */
-function WallVista({ width, walkers }: { width: number; walkers: WallWalkerCfg[] }) {
+// Walker sprites are baked ONCE per (adventurer, size, facing) into a little
+// offscreen canvas — three stacked layer images, flipped if walking left —
+// so a frame costs one drawImage per walker instead of rasterising three SVGs
+// each. Keyed rather than per-walker so the constant churn of spawns reuses
+// what it can; the map is bounded because a long session would otherwise
+// accumulate one entry per adventurer ever generated.
+const spriteImgs = new Map<string, HTMLImageElement>();
+const spriteBakes = new Map<string, HTMLCanvasElement>();
+const SPRITE_BAKE_CAP = 64;
+function spriteImg(url: string): HTMLImageElement {
+  let img = spriteImgs.get(url);
+  if (!img) { img = new Image(); img.decoding = "sync"; img.src = url; spriteImgs.set(url, img); }
+  return img;
+}
+function bakedWalker(wk: WallWalkerCfg): HTMLCanvasElement | null {
+  const size = Math.max(1, Math.round(wk.size));
+  const key = `${wk.adventurer.faceUrl}|${wk.adventurer.hairUrl}|${wk.adventurer.bodyUrl}|${size}|${wk.direction}`;
+  const hit = spriteBakes.get(key);
+  if (hit) return hit;
+  const layers = [wk.adventurer.faceUrl, wk.adventurer.hairUrl, wk.adventurer.bodyUrl].map(spriteImg);
+  // Not decoded yet — skip this walker for this frame and try again next one.
+  if (!layers.every((i) => i.complete && i.naturalWidth > 0)) return null;
+  const cv = document.createElement("canvas");
+  cv.width = size; cv.height = size;
+  const cx = cv.getContext("2d");
+  if (!cx) return null;
+  cx.imageSmoothingEnabled = false;
+  if (wk.direction === "rtl") { cx.translate(size, 0); cx.scale(-1, 1); } // source art always faces right
+  for (const img of layers) cx.drawImage(img, 0, 0, size, size);
+  if (spriteBakes.size >= SPRITE_BAKE_CAP) spriteBakes.clear();
+  spriteBakes.set(key, cv);
+  return cv;
+}
+
+/** Every walker on ONE canvas, drawn by the shared 30 Hz ambient clock
+ *  (pose maths in engine/walkerPose).
+ *
+ *  Two earlier shapes of this were measured and rejected. As `wall-walk` /
+ *  `walker-wiggle` CSS animations on <g>s inside the wall SVG it forced a
+ *  layout + full repaint of the 2100px wall every vsync (~60 layouts/s at
+ *  idle). As one composited HTML div per walker the layout cost went away but
+ *  ~20 promoted layers moving inside a clipped container cost the GPU process
+ *  MORE than the repaint had (+8pp) — and the GPU is what heats a phone. A
+ *  canvas is a single layer whose damage is limited to the tiles the sprites
+ *  actually touch, at 30 Hz rather than the display refresh rate. */
+const WallWalkers = React.memo(function WallWalkers({ width, windows, walkers }: { width: number; windows: number[]; walkers: WallWalkerCfg[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const list = useRef(walkers);
+  list.current = walkers;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.imageSmoothingEnabled = false; // keep the pixel art nearest-neighbour under the wiggle's tilt
+    let painted = false;
+    return subscribeAmbient(() => {
+      const now = performance.now();
+      // Nothing on the wall: clear once, then stay off the GPU entirely.
+      // Only the aperture band is ever drawn (the clip below guarantees it),
+      // so the damaged region — and the texture the compositor re-uploads each
+      // frame — is width×64 rather than the full width×144.
+      if (list.current.length === 0) {
+        if (painted) { ctx.clearRect(0, WIN_Y, width, WIN_H); painted = false; }
+        return;
+      }
+      ctx.clearRect(0, WIN_Y, width, WIN_H);
+      painted = true;
+      ctx.save();
+      // Walkers are only ever seen through the apertures; the aperture band is
+      // enough of a clip here because the vista container clips the rest.
+      ctx.beginPath();
+      for (const cx of windows) ctx.rect(cx - WIN_W / 2, WIN_Y, WIN_W, WIN_H);
+      ctx.clip();
+      for (const wk of list.current) {
+        const sprite = bakedWalker(wk);
+        if (!sprite) continue;
+        const p = walkerPose(wk, now);
+        const size = sprite.width;
+        const left = p.x, top = wk.y - size + p.dy;
+        if (left + size < 0 || left > width) continue;
+        // Pivot on the sprite's own feet, like the old fill-box origin did.
+        ctx.save();
+        ctx.translate(left + size / 2, top + size);
+        ctx.rotate((p.rot * Math.PI) / 180);
+        ctx.drawImage(sprite, -size / 2, -size);
+        ctx.restore();
+      }
+      ctx.restore();
+    });
+  }, [width, windows]);
   return (
-    <g clipPath="url(#winApertures)">
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={144}
+      className="pointer-events-none absolute left-0 top-0"
+      style={{ width, height: 144, imageRendering: "pixelated" }}
+    />
+  );
+});
+
+/** The outside vista, walkers, near-scenery and night wash — drawn ONCE for the
+ *  whole wall as HTML layers inside a single container clipped to the union
+ *  of every window aperture. Nothing in here animates on the main thread:
+ *  the images are static, walkers are compositor transforms, and the night
+ *  wash is an opacity transition. */
+function WallVista({ width, windows, walkers }: { width: number; windows: number[]; walkers: WallWalkerCfg[] }) {
+  const clip = useMemo(() => apertureClipPath(windows, WIN_W, WIN_H, WIN_Y, 7), [windows]);
+  const scene = { width, height: 144, objectFit: "contain", imageRendering: "pixelated" } as const;
+  return (
+    <div className="pointer-events-none absolute left-0 top-0" style={{ width, height: 144, clipPath: clip }}>
         {/* Hand-painted outside scene — one continuous 2100×144 picture (see
             #wallSceneArt below); each aperture shows its own x-slice so it
             reads as one vista behind the whole building. Night dimming is done
             by the single #0a1526 overlay further down (opacity-driven) rather
             than a per-layer brightness filter, which silently failed at night
             — see --dn-scene-dark-op in Atmosphere. */}
-        <use href="#wallSceneArt" />
+        <img src="/sprites/background.png" alt="" draggable={false} className="absolute left-0 top-0" style={scene} />
         {/* Distant adventurers crossing the road — behind the near-scenery, in
             front of the hills. The night overlay below dims them together with
             the rest of the scene. */}
-        {walkers.map((wk) => (
-          <g
-            key={wk.id}
-            style={{
-              ["--walk-from" as string]: `${wk.fromX}px`,
-              ["--walk-to" as string]: `${wk.toX}px`,
-              // Negative delay starts the crossing already partway through —
-              // used for the initial on-mount seed so walkers appear mid-route
-              // immediately instead of all starting from the screen edge.
-              animation: `wall-walk ${wk.duration}s linear ${wk.elapsed > 0 ? `-${wk.elapsed}s` : "0s"} 1 forwards`,
-            }}
-          >
-            {/* Wiggle wrapper — separate <g> from the crossing translateX above
-                (a single element can only run one `transform` animation at a
-                time) so the bounce/tilt composites independently of the walk.
-                fill-box + bottom-center origin pivots on the sprite's own feet
-                rather than the window's coordinate origin, so it reads as a
-                bounce in place instead of an orbit. */}
-            <g style={{
-              animation: `walker-wiggle ${wk.bobDuration}s ease-in-out ${wk.bobDelay}s infinite`,
-              transformBox: "fill-box",
-              transformOrigin: "50% 100%",
-            } as React.CSSProperties}>
-              <AdventurerSpriteSvg adventurer={wk.adventurer} x={0} y={wk.y} size={wk.size} flip={wk.direction === "rtl"} />
-            </g>
-          </g>
-        ))}
+        <WallWalkers width={width} windows={windows} walkers={walkers} />
         {/* Near-scenery overlay — same shared 2100×144 picture as the
             background (see #wallSceneFg below), painted in front of the
             walkers so they read as passing behind it. */}
-        <use href="#wallSceneFg" />
+        <img src="/sprites/foreground.png" alt="" draggable={false} className="absolute left-0 top-0" style={scene} />
         {/* Night dimmer — a single night-blue wash whose opacity tracks the day
             phase (0 by day, ~0.62 at deep night). Covers the sky, hills, walkers
             and near-scenery uniformly. (Fixed star positions used to sit on top
@@ -2262,9 +2361,8 @@ function WallVista({ width, walkers }: { width: number; walkers: WallWalkerCfg[]
             art has trees/rooftops at those same coordinates, so the stars read
             as glowing dots stuck in the foliage. Removed rather than re-placed;
             the hand-painted background can carry its own stars if wanted.) */}
-        <rect x={0} y={WIN_Y} width={width} height={WIN_H} fill="#0a1526"
-          style={{ opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
-    </g>
+        <div className="absolute left-0" style={{ top: WIN_Y, width, height: WIN_H, background: "#0a1526", opacity: "var(--dn-scene-dark-op, 0)", transition: "opacity 3s ease-in-out" }} />
+    </div>
   );
 }
 
@@ -2402,45 +2500,35 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
             {/* wall-tile.svg: 96×48 pixel-art tile — swap path when file is updated */}
             <image href="/sprites/wall-tile.png" x="0" y="0" width="96" height="48" />
           </pattern>
+        </defs>
+        {/* STATIC ONLY in this SVG: anything that animates or transitions
+            inside an SVG repaints the whole 2100px wall with it. Everything
+            that changes over time is an HTML layer below, in paint order. */}
+        <rect width={width} height="144" fill="url(#wallBricks)" />
+        {lamps.map((x) => (
+          <WallLamp key={x} cx={x} />
+        ))}
+      </svg>
+      {/* Light halo before the vista so the glow sits behind the woodwork */}
+      {windows.map((x) => (
+        <WallWindowLight key={x} cx={x} />
+      ))}
+      <WallVista width={width} windows={windows} walkers={walkers} />
+      {/* Single central door — workers emerge here. Its own small SVG (above
+          the halos, which can overlap its edges) so the pane's night
+          transition only repaints 76×80 px. */}
+      <svg className="pointer-events-none absolute" style={{ left: center - 38, top: 64 }} width="76" height="80" viewBox={`${center - 38} 64 76 80`} fill="none">
+        <WallDoor cx={center} wallWidth={width} />
+      </svg>
+      {/* Hanging sign plaque + text is an HTML overlay on top of the wall,
+          see <WorkshopSign> in the parent. */}
+      <svg className="pointer-events-none absolute left-0 top-0" width={width} height="144" fill="none">
+        <defs>
           <linearGradient id="wallFade" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0.74" stopColor="transparent" />
             <stop offset="1" stopColor="#6b665e" stopOpacity="0.28" />
           </linearGradient>
-          {/* Window light glow gradient */}
-          <radialGradient id="winGlow" cx="50%" cy="40%" r="50%">
-            <stop offset="0%"   stopColor="#ffe8a0" stopOpacity="0.50" />
-            <stop offset="60%"  stopColor="#ffe8a0" stopOpacity="0.14" />
-            <stop offset="100%" stopColor="#ffe8a0" stopOpacity="0" />
-          </radialGradient>
-          {/* Hand-painted outside scene (sky + hills), one 2100×144 picture
-              shared by every window and the door's own little pane — each
-              just clips a different x-slice of this same image via <use>. */}
-          <image id="wallSceneArt" href="/sprites/background.png" x="0" y="0" width={width} height="144" style={{ imageRendering: "pixelated" }} />
-          {/* Near-scenery layer, painted in front of the walkers so they read
-              as passing behind it — same sharing/slicing trick as the background. */}
-          <image id="wallSceneFg" href="/sprites/foreground.png" x="0" y="0" width={width} height="144" style={{ imageRendering: "pixelated" }} />
-          {/* Union of every window aperture — the vista/walkers layer is
-              clipped by this once instead of being duplicated per window. */}
-          <clipPath id="winApertures">
-            {windows.map((cx) => (
-              <rect key={cx} x={cx - WIN_W / 2} y={WIN_Y} width={WIN_W} height={WIN_H} rx="7" />
-            ))}
-          </clipPath>
         </defs>
-        <rect width={width} height="144" fill="url(#wallBricks)" />
-        {/* Light halo rendered before window frames so glow sits behind the woodwork */}
-        {windows.map((x) => (
-          <WallWindowLight key={x} cx={x} />
-        ))}
-        <WallVista width={width} walkers={walkers} />
-        {lamps.map((x) => (
-          <WallLamp key={x} cx={x} />
-        ))}
-        {/* Single central door — workers emerge here */}
-        <WallDoor cx={center} />
-        {/* Hanging sign plaque + text is an HTML overlay on top of the wall,
-            see <WorkshopSign> in the parent — it needs a real <input> to edit
-            and needs to grow with the text, neither of which SVG does well. */}
         <rect width={width} height="144" fill="url(#wallFade)" />
       </svg>
       {/* Weather seen through the windows — an HTML canvas above the vista,

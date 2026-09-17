@@ -41,6 +41,9 @@ export default function CoinCounter() {
   // celebrates something already earned.
   const lastMagRef = useRef(magnitude(lifetime));
   const [milestone, setMilestone] = useState(0);
+  const [glowing, setGlowing] = useState(false);
+  const glowTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(glowTimer.current), []);
   const [rain, setRain] = useState<Rain[]>([]);
   useEffect(() => {
     const mag = magnitude(lifetime);
@@ -48,6 +51,11 @@ export default function CoinCounter() {
     lastMagRef.current = mag;
     const threshold = Math.pow(10, mag);
     setMilestone((n) => n + 1);
+    // The glow is a 1400 ms one-shot; drop the class when it ends so the
+    // finished animation doesn't stay attached to the (permanent) pill.
+    setGlowing(true);
+    window.clearTimeout(glowTimer.current);
+    glowTimer.current = window.setTimeout(() => setGlowing(false), 1400);
     const drops: Rain[] = Array.from({ length: 16 }, () => ({
       id: particleId.current++,
       dx: (Math.random() - 0.5) * 120,
@@ -114,7 +122,7 @@ export default function CoinCounter() {
   return (
     <div
       key={`m${milestone}`}
-      className={`relative flex items-center gap-1.5 rounded-full bg-amber-950/70 px-3 py-1.5 text-sm font-semibold text-amber-300 lg:px-4 lg:py-2 lg:text-base ${milestone ? "coin-milestone-glow" : ""}`}
+      className={`relative flex items-center gap-1.5 rounded-full bg-amber-950/70 px-3 py-1.5 text-sm font-semibold text-amber-300 lg:px-4 lg:py-2 lg:text-base ${glowing ? "coin-milestone-glow" : ""}`}
     >
       <span key={`i${iconPop}`} className={iconPop ? "coin-pop" : ""} style={{ display: "inline-flex" }}>
         <Coins size={16} />
