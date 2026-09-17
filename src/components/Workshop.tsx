@@ -1091,7 +1091,7 @@ const MachineColumn = React.memo(function MachineColumn({
         {/* Burner flame — earned once brew speed has been upgraded at least
             once; sits in front of the cauldron sprite, not affected by the
             transient click-heat filter above (it's its own layer). */}
-        <FireOverlay active={machine.speed_upgrades >= 1} seed={machine.id} size={108} />
+        <FireOverlay active={machine.speed_upgrades >= 1} seed={machine.id} level={machine.speed_upgrades} size={108} />
 
         {/* Steam — replaces the bubble loops; tinted from the liquid */}
         <SteamPuffs active={brewActive && !loopsPaused} color={liquidColor} x={MOUTH_X} y={MOUTH_Y} />
