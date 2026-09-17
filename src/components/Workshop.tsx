@@ -1814,7 +1814,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={openMap} width={contentWidth} />
-          <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} />
+          <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} width={contentWidth} />
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -2380,58 +2380,73 @@ function WallLamp({ cx }: { cx: number }) {
   );
 }
 
-// Lantern glow pool: a 28×10 ellipse at (cx, 100) with a radial gradient
-// (#ffb040 90% → #ff6010 40% at 55% → transparent), one tiny HTML element per
-// lamp on its own compositor layer, opacity written by the shared ambient
-// clock. The GPU only re-composites 30×/s for the flicker and never repaints
-// the wall for it.
+// Lantern glow pools, all on ONE canvas rather than one composited HTML
+// layer per lamp. A wide wall can carry ~8 lamps, each previously its own
+// promoted layer (radial-gradient background + opacity/transform written every
+// ambient tick) — cheap individually, but every extra promoted layer is
+// texture upload + blend work the GPU repeats 30×/s regardless of size, and
+// that overhead is what a canvas collapses back to one draw call. Same
+// technique as WallWalkers.
 // Lanterns are LIT at dusk and put OUT in the morning (see lampsLit), one by
 // one from the door outwards, each with a little flare as it catches — rather
 // than all fading together with the daylight.
-const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps }: { lamps: number[] }) {
-  const refs = useRef<(HTMLDivElement | null)[]>([]);
+const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps, width }: { lamps: number[]; width: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
     const center = lamps.reduce((a, b) => a + b, 0) / Math.max(1, lamps.length);
     const rank: number[] = new Array(lamps.length).fill(0);
     lamps.map((cx, i) => ({ i, d: Math.abs(cx - center) })).sort((a, b) => a.d - b.d).forEach((o, r) => { rank[o.i] = r; });
     let wasLit: boolean | null = null;
     let changedAt = 0;
+    let painted = false;
     return subscribeAmbient((t) => {
       const lit = lampsLit(getDayPhase());
       if (wasLit === null) { wasLit = lit; changedAt = -100; }      // first tick: no sequence, just the state
       else if (lit !== wasLit) { wasLit = lit; changedAt = t; }
       const flicker = lampFlickerOpacity(t);
-      for (let i = 0; i < refs.current.length; i++) {
-        const el = refs.current[i];
-        if (!el) continue;
+      if (lamps.length === 0) {
+        if (painted) { ctx.clearRect(0, 90, width, 20); painted = false; }
+        return;
+      }
+      ctx.clearRect(0, 90, width, 20);
+      painted = true;
+      for (let i = 0; i < lamps.length; i++) {
+        const cx = lamps[i];
         const since = t - changedAt - rank[i] * (lit ? 0.22 : 0.12);
         const on = lit ? (since >= 0 ? 1 : 0) : (since >= 0 ? 0 : 1);
         const flare = lit && since >= 0 && since < 0.35 ? 1 + 0.45 * (1 - since / 0.35) : 1;
-        el.style.opacity = (on * flicker).toFixed(3);
-        el.style.transform = `scale(${flare.toFixed(3)})`;
+        const op = on * flicker;
+        if (op <= 0.003) continue;
+        const rx = 14 * flare, ry = 5 * flare, cy = 100;
+        ctx.save();
+        ctx.globalAlpha = op;
+        ctx.translate(cx, cy);
+        ctx.scale(rx, ry);
+        // Radial gradient in unit-circle space, offset up like the old
+        // "at 50% 30%" CSS focal point (30% down from the top of the box).
+        const grad = ctx.createRadialGradient(0, -0.4, 0, 0, -0.4, 1.35);
+        grad.addColorStop(0, "rgba(255,176,64,0.9)");
+        grad.addColorStop(0.55, "rgba(255,96,16,0.4)");
+        grad.addColorStop(1, "rgba(255,48,0,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 1, 1, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
     });
-  }, [lamps]);
+  }, [lamps, width]);
   return (
-    <>
-      {lamps.map((cx, i) => (
-        <div
-          key={cx}
-          className="pointer-events-none absolute z-[1]"
-          style={{ left: cx - 14, top: 95, width: 28, height: 10 }}
-        >
-          <div
-            ref={(el) => { refs.current[i] = el; }}
-            style={{
-              width: 28, height: 10, borderRadius: "50%",
-              background: "radial-gradient(ellipse 70% 70% at 50% 30%, rgba(255,176,64,0.9) 0%, rgba(255,96,16,0.4) 55%, rgba(255,48,0,0) 100%)",
-              opacity: 0,
-              willChange: "opacity, transform",
-            }}
-          />
-        </div>
-      ))}
-    </>
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={144}
+      className="pointer-events-none absolute left-0 top-0 z-[1]"
+      style={{ width, height: 144 }}
+    />
   );
 });
 

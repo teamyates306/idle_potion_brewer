@@ -51,7 +51,11 @@ async function sample(label, url) {
   while (Date.now() < t0 + SECS * 1000) { const s = await sampleChromeProcesses(dir); if (s.matched) proc.push(s); await sleep(1500); }
   const z = await metrics(); const wall = (Date.now() - t0) / 1000;
   const d = (k) => z[k] - a[k];
-  const avg = (k) => (proc.length ? proc.reduce((s, g) => s + g[k], 0) / proc.length : NaN);
+  // Median, not mean: Win32_PerfFormattedData_PerfProc_Process's
+  // PercentProcessorTime counter occasionally returns a wild single-sample
+  // spike (scheduling jitter between the two raw counter reads it derives
+  // from) that a mean lets drag the whole window around.
+  const avg = (k) => { const v = proc.map((g) => g[k]).sort((a, c) => a - c); return v.length ? v[Math.floor(v.length / 2)] : NaN; };
   const anims = await p.evaluate(() => document.getAnimations().filter((x) => x.playState === "running").length);
   const row = { label, main: d("TaskDuration") / wall * 100, style: d("RecalcStyleCount") / wall, styleMs: d("RecalcStyleDuration") / wall * 100,
     layout: d("LayoutCount") / wall, layoutMs: d("LayoutDuration") / wall * 100, gpu: avg("gpuProcessCpuPct"), renderer: avg("rendererCpuPct"), anims };
