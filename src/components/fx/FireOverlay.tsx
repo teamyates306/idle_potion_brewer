@@ -74,9 +74,17 @@ export default function FireOverlay({ active, seed, level, size = 108 }: { activ
       if (f === lastFrame) return; // same frame as last tick — nothing to redraw
       lastFrame = f;
       const drawSize = size * fireSizeProgress(level) * sizeJitter;
-      const offset = (size - drawSize) / 2; // grow from centre, not the top-left corner
+      // Anchor at bottom-centre, not the box centre: the flame sits on the
+      // cauldron's burner at the BASE of its frame (checked against the
+      // sheet's own pixels — every frame's alpha bbox bottoms out at the
+      // same y regardless of how tall the flame licks that frame, while its
+      // top varies a lot). Scaling from the true centre dragged the whole
+      // flame upward as it shrank, floating it off the burner instead of
+      // shrinking down onto it.
+      const offsetX = (size - drawSize) / 2;
+      const offsetY = size - drawSize;
       ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(img, f * FRAME_W, 0, FRAME_W, FRAME_H, offset, offset, drawSize, drawSize);
+      ctx.drawImage(img, f * FRAME_W, 0, FRAME_W, FRAME_H, offsetX, offsetY, drawSize, drawSize);
     });
   }, [active, seed, level, size]);
 
