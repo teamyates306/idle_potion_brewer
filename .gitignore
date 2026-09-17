@@ -15,3 +15,7 @@ vite.config.d.ts
 
 # Economy Lab CLI output (scripts/runLab.ts) — scratch analysis artifacts
 sim-reports/
+
+# Profiling rig: browser profiles (~1GB/run) and raw sample output
+tools/profile-rig/profile/
+tools/profile-rig/runs/
