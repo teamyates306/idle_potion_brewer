@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Coins } from "lucide-react";
 import { useGameStore } from "../../store/gameStore";
+import { useWorkshopRate } from "../../hooks/useThroughput";
+import { fmtRatePerSec } from "../../util/format";
 import { pushGameEvent } from "../../util/gameEvents";
 
 interface Particle { id: number; dx: number; dy: number; }
@@ -24,7 +26,10 @@ function magnitude(lifetime: number): number {
  *    The everyday pop happens on every gain and stops being noticed; this one
  *    is reserved so it still lands.
  */
-export default function CoinCounter() {
+export default function CoinCounter({ onOpenSupply }: { onOpenSupply?: () => void } = {}) {
+  // The rate is the number the whole game is about — it sits under the total so
+  // every upgrade the player buys visibly moves something (see engine/throughput).
+  const rate = useWorkshopRate();
   const coins = useGameStore((s) => Math.floor(s.coins));
   const lifetime = useGameStore((s) => Math.floor(s.lifetime_coins_earned ?? 0));
   const [display, setDisplay] = useState(coins);
@@ -127,8 +132,29 @@ export default function CoinCounter() {
       <span key={`i${iconPop}`} className={iconPop ? "coin-pop" : ""} style={{ display: "inline-flex" }}>
         <Coins size={16} />
       </span>
-      <span key={`d${digitPop}`} className={digitPop ? "coin-digit-pop" : ""} style={{ display: "inline-block" }}>
-        {display.toLocaleString()}
+      <span className="flex flex-col items-start leading-none">
+        <span key={`d${digitPop}`} className={digitPop ? "coin-digit-pop" : ""} style={{ display: "inline-block" }}>
+          {display.toLocaleString()}
+        </span>
+        {/* Banked income beats unbanked: a player with auto-sell off is producing
+            value but earning nothing, and saying so is how they learn to fix it. */}
+        {rate.coinsPerSec > 0 || rate.unbankedPerSec > 0 ? (
+          <button
+            type="button"
+            onClick={onOpenSupply}
+            disabled={!onOpenSupply}
+            title="Where does this come from?"
+            className={`mt-1 text-[10px] tabular-nums lg:text-[11px] ${
+              rate.coinsPerSec > 0
+                ? "font-semibold text-emerald-300"
+                : "font-medium text-amber-200/60"
+            } ${onOpenSupply ? "hover:underline" : "cursor-default"}`}
+          >
+            {rate.coinsPerSec > 0
+              ? `+${fmtRatePerSec(rate.coinsPerSec)}`
+              : `${fmtRatePerSec(rate.unbankedPerSec)} unsold`}
+          </button>
+        ) : null}
       </span>
 
       {/* Particles */}

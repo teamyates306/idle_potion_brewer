@@ -245,7 +245,20 @@ export const VALUE_PREFIXES = [
   "Diluted", "Lesser", "Common", "Refined", "Greater",
   "Superior", "Potent", "Exalted", "Mythic", "Transcendent",
 ];
-export const VALUE_THRESHOLDS = [15, 40, 100, 250, 700, 2000, 6000, 45000, 650000];
+// The top threshold was 650,000, which no recipe in the world could reach:
+// `npx tsx scripts/valueCeiling.ts` brute-forces the best possible 5-slot
+// recipe at 483,897, so Transcendent was dead content nobody had ever brewed.
+// Lowered to 400,000 — reachable only by a best-in-world 5-slot recipe, while a
+// strong 4-slot one (161,849) still tops out at Mythic. Moving a threshold DOWN
+// can only promote potions, so no existing save loses a tier.
+// Re-run scripts/valueCeiling.ts before changing this again: new tiers above
+// the top need new ingredients or a 6th slot, not just a bigger number.
+export const VALUE_THRESHOLDS = [15, 40, 100, 250, 700, 2000, 6000, 45000, 400000];
+
+/** Tier index (0–9, Diluted … Transcendent) for a potion value. */
+export function tierForValue(value: number): number {
+  return VALUE_THRESHOLDS.filter((t) => value >= t).length;
+}
 
 export const CATEGORY_TYPE: Record<string, string> = {
   root: "Tonic",

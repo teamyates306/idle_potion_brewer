@@ -31,7 +31,7 @@ const OUT = path.join(SPRITES, "tinted");
 const WORKER_SHEETS = ["worker.png", "worker-manic.png", "worker-explorer.png", "worker-caravan.png", "worker-pounder.png"];
 const WORKER_HUES = [60, 120, 180, 240, 300];
 const MACHINE_SHEETS = ["machine.png"];
-const MACHINE_HUES = [120, 200, 270, 330];
+const MACHINE_HUES = [120, 200, 270, 330, 60, 160, 235, 300, 20];
 
 interface Job { src: string; deg: number; out: string }
 

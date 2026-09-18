@@ -22,7 +22,10 @@ import {
   brewTime, upgradeCost, rollMultiBrew, effectiveMultiBrew,
   applyLevels, BASE_BREW_XP, gatherRoundTrip,
 } from "../engine/formulas";
-import { describePotion, ATTR_KEYS, type PotionDescriptor } from "../engine/potions";
+import { describePotion, tierForValue, ATTR_KEYS, type PotionDescriptor } from "../engine/potions";
+import {
+  discoveryBonus, entryWeight, insightMultiplier, renownMultiplier,
+} from "../engine/insight";
 import {
   groupHashesByName, generateQuest, questProgress, deductQuest,
   DIFFICULTIES, type Quest, type QuestDifficulty,
@@ -296,6 +299,8 @@ interface SimState {
   discoveredArray: string[];
   discoveredPotions: Set<string>;
   discoveredNames: Set<string>;
+  /** Running Insight points (engine/insight.ts) — one add per new NAME. */
+  insightPoints: number;
   unlockedLocations: Set<string>;
   unlockedRegions: Set<string>;
   regionUnlockTick: Record<string, number>;
@@ -361,6 +366,7 @@ function initialState(): SimState {
     discoveredArray: ["rootmoss"],
     discoveredPotions: new Set(),
     discoveredNames: new Set(),
+    insightPoints: 0,
     unlockedLocations: new Set(["hollow"]),
     unlockedRegions: new Set(["region_home_vale"]),
     regionUnlockTick: { region_home_vale: 0 },
@@ -646,7 +652,11 @@ export function makeSimulation(cfg: SimConfig) {
   function sellHash(s: SimState, hash: string, count: number): number {
     const d = descOf(hash.split("+"));
     const mult = gax.potionPriceMultiplier(s.market, s.marketDay, d.stats);
-    const earned = Math.max(1, Math.round(d.value * mult)) * count;
+    // MUST MATCH gameStore.knowledgeMultiplier(): what the player knows raises
+    // the value of everything they brew.
+    const know =
+      insightMultiplier(s.insightPoints) * renownMultiplier(s.unlockedAchievements.size);
+    const earned = Math.max(1, Math.round(d.value * mult * know)) * count;
     gax.recordSale(s.market, d.stats, count);
     s.saleMultSum += mult * count;
     s.saleMultCount += count;
@@ -884,9 +894,15 @@ export function makeSimulation(cfg: SimConfig) {
         const isNewPotion = !s.discoveredPotions.has(potion.hash);
         if (isNewPotion) {
           s.discoveredPotions.add(potion.hash);
-          s.discoveredNames.add(potion.name);
-          const discoveryIdx = s.discoveredPotions.size;
-          s.coinsFromDiscovery += Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
+          // Insight counts NAMES, not hashes — several recipes can share a name.
+          if (!s.discoveredNames.has(potion.name)) {
+            s.discoveredNames.add(potion.name);
+            s.insightPoints += entryWeight({
+              tier: tierForValue(potion.value),
+              isCombi: potion.isCombi,
+            });
+          }
+          s.coinsFromDiscovery += discoveryBonus(potion.value, potion.isCombi);
         }
         // Bounty fulfilment (claim immediately, then cooldown).
         if (s.bounty && potion.name === s.bounty.targetName) {

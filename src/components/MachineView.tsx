@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Lock, Play, Pause, Zap, Copy, Plus, ChevronDown, ChevronUp, Gauge, ShoppingBag, Sparkles, ChevronLeft, Search, X } from "lucide-react";
 import Modal from "./ui/Modal";
 import EditableName from "./ui/EditableName";
-import { useGameStore, MACHINE_COSTS } from "../store/gameStore";
+import { useGameStore, MACHINE_COSTS, MAX_MACHINES } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { upgradeCost, xpRequired, SLOT_UNLOCK_COSTS, RARITY_WEIGHT } from "../engine/formulas";
 import { autoClickReductionPerSec } from "../engine/autoclick";
@@ -16,7 +16,9 @@ import {
 } from "../data/masteryTrees";
 import { machineBrewSecondsFor } from "../hooks/useGameLoop";
 import { usePotionPreview } from "../hooks/usePotionPreview";
-import { fmt } from "../util/format";
+import { useThroughput } from "../hooks/useThroughput";
+import { withPatch, workshopRate } from "../engine/throughput";
+import { fmt, fmtRatePerSec } from "../util/format";
 import { dominantAttrSentence } from "../util/potionVisuals";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
@@ -24,7 +26,11 @@ import type { BrewingMachine, Ingredient } from "../types";
 import { IconCoin, IconStarToken } from "./ui/icons";
 
 // Per-machine hue-rotate for the cauldron tint in the tab indicator
-const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
+// Must match Workshop.MACHINE_ACCENT.
+const MACHINE_ACCENT = [
+  "#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f",
+  "#8a8a3a", "#3f7a5e", "#4a5c8a", "#7a4a8a", "#a86a3a",
+];
 
 export default function MachineView({ onClose, initialMachineId = 1 }: { onClose: () => void; initialMachineId?: number }) {
   const machines = useGameStore((s) => s.machines);
@@ -39,7 +45,7 @@ export default function MachineView({ onClose, initialMachineId = 1 }: { onClose
   const machineIdx = machines.findIndex((m) => m.id === activeMachineId);
   const accent = MACHINE_ACCENT[machineIdx] ?? "#f59e0b";
 
-  const nextCost = machines.length < 5 ? MACHINE_COSTS[machines.length] : null;
+  const nextCost = machines.length < MAX_MACHINES ? MACHINE_COSTS[machines.length] : null;
   const canAffordNext = nextCost != null && coins >= nextCost;
 
   const tabBar = (
@@ -148,6 +154,25 @@ function MachinePanelBody({
   const tokens = machine.upgrade_tokens ?? 0;
   const xpNeed = xpRequired(machine.level, cfg.formulas);
   const xpPct = Math.min(100, (machine.xp / xpNeed) * 100);
+
+  // "What will this upgrade actually earn me?" — the whole point of pricing
+  // upgrades against coins/sec rather than against an abstract stat. Both
+  // sides come from the same engine the HUD reads, so they can never disagree.
+  const tp = useThroughput();
+  const flow = tp.machines.find((f) => f.id === machine.id);
+  const baseCoinsPerSec = tp.rate.coinsPerSec;
+  const deltaLabel = (patch: Parameters<typeof withPatch>[2]): string | null => {
+    if (!flow) return null;
+    const after = workshopRate(withPatch(tp.machines, machine.id, patch)).coinsPerSec;
+    const d = after - baseCoinsPerSec;
+    return d > 0 ? `+${fmtRatePerSec(d)}` : null;
+  };
+  // Brew speed divides the pre-mastery time, and mastery is a multiplier on the
+  // whole thing, so the final seconds scale by the ratio of the two speeds.
+  const speedDelta = deltaLabel({
+    brewSecs: (flow?.brewSecs ?? 0) * (machine.brew_speed / (machine.brew_speed + 0.25)),
+  });
+  const multiDelta = deltaLabel({ multiBrewChance: (flow?.multiBrewChance ?? 0) + 0.1 });
 
   return (
     <>
@@ -349,6 +374,7 @@ function MachinePanelBody({
                 icon: <Zap size={14} />,
                 label: "+0.25 Brew Speed",
                 detail: `${machine.brew_speed.toFixed(2)}× → ${(machine.brew_speed + 0.25).toFixed(2)}×`,
+                delta: speedDelta,
                 cost: speedCost,
                 affordable: coins >= speedCost,
                 onBuy: () => buyBrewSpeed(machine.id),
@@ -358,6 +384,7 @@ function MachinePanelBody({
                 icon: <Copy size={14} />,
                 label: "+10% Multi-Brew",
                 detail: `${Math.round(machine.multi_brew_chance * 100)}% → ${Math.round((machine.multi_brew_chance + 0.1) * 100)}%`,
+                delta: multiDelta,
                 cost: multiCost,
                 affordable: coins >= multiCost,
                 onBuy: () => buyMultiBrew(machine.id),
@@ -632,6 +659,8 @@ interface UpgradeOption {
   icon: React.ReactNode;
   label: string;
   detail: string;
+  /** What this purchase does to income, e.g. "+4.20/s". Null when it moves nothing. */
+  delta?: string | null;
   cost: number;
   affordable: boolean;
   onBuy: () => void;
@@ -669,6 +698,9 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
+                {opt.delta && (
+                  <span className="mt-0.5 block text-[11px] font-semibold text-emerald-700">{opt.delta}</span>
+                )}
               </span>
               <span className={`flex shrink-0 items-center gap-1 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
                 <IconCoin /> {fmt(opt.cost)}

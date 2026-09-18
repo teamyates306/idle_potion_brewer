@@ -129,7 +129,6 @@ const UNLOCKS: { id: string; cost: number; effect: string }[] = [
   { id: "alchemist_spectacles", cost: 10_000, effect: "Reveals exact numeric stats in ingredient & potion details." },
   { id: "gloves_of_engineering", cost: 100_000, effect: "Reveals the brew-rate formula on each cauldron." },
   { id: "cartographers_compass", cost: 100_000, effect: "Reveals drop % on map nodes and a 'Sourced From' list." },
-  { id: "merchants_abacus", cost: 1_000_000, effect: "Unlocks the supply-chain dashboard (income/consumption/net)." },
 ];
 
 const TUT_STEPS: { step: string; phases: { key: string; purpose: string }[] }[] = [

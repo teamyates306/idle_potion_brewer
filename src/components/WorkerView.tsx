@@ -17,7 +17,9 @@ import {
   autoClickSpeedLevel,
   autoClickReductionPerSec,
 } from "../engine/autoclick";
-import { fmt, fmtDuration } from "../util/format";
+import { fmt, fmtDuration, fmtItemRate, fmtRatePerSec } from "../util/format";
+import { useThroughput } from "../hooks/useThroughput";
+import { withPatch, workshopRate } from "../engine/throughput";
 import { useRenderTick } from "../hooks/useRenderTick";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Worker, WorkerSpecialization } from "../types";
@@ -536,6 +538,7 @@ function WorkerDetailModal({
   const buyClickPower = useGameStore((s) => s.buyClickPower);
   const specializeWorker = useGameStore((s) => s.specializeWorker);
   const cancelTrade = useGameStore((s) => s.cancelTrade);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
   const cfg = useConfigStore();
   const [pickBrewer, setPickBrewer] = useState(false);
   const [pickSettlement, setPickSettlement] = useState(false);
@@ -570,6 +573,37 @@ function WorkerDetailModal({
   const clickSpeedCost = upgradeCost(speedLevel, cfg.formulas);
   const clickPowerCost = upgradeCost(worker.click_power_level, cfg.formulas);
   const reductionPerSec = autoClickReductionPerSec(worker.auto_click_speed, worker.click_power_level, worker.click_power_mult ?? 1.0);
+
+  // Upgrade deltas, priced against the same throughput engine the HUD reads.
+  // Clicker upgrades move coins/sec (via the cauldron they're stationed at);
+  // gather upgrades move ingredient SUPPLY, so they're quoted in items/min —
+  // showing "+0.00/s" for a carry upgrade would be technically true and useless.
+  const tp = useThroughput();
+  const clickDelta = (nextSpeed: number, nextPowerLevel: number): string | null => {
+    const mid = worker.assigned_machine_id;
+    if (mid == null) return null;
+    const flow = tp.machines.find((f) => f.id === mid);
+    if (!flow) return null;
+    const after = autoClickReductionPerSec(nextSpeed, nextPowerLevel, worker.click_power_mult ?? 1.0);
+    const patched = workshopRate(
+      withPatch(tp.machines, mid, {
+        autoClickPerSec: flow.autoClickPerSec - reductionPerSec + after,
+      }),
+    ).coinsPerSec;
+    const d = patched - tp.rate.coinsPerSec;
+    return d > 0 ? `+${fmtRatePerSec(d)}` : null;
+  };
+  const gatherDelta = (nextSpeed: number, nextSize: number): string | null => {
+    if (!loc) return null;
+    const fx = computeMasteryEffects(masteryUnlocks);
+    const isGatherer = spec === "explorer" || spec === "caravan" || spec === "none";
+    const speedMult = (1 + fx.worker_speed_pct / 100) * (isGatherer ? 1 + fx.gatherer_speed_pct / 100 : 1);
+    const carryMult = 1 + fx.caravan_size_pct / 100;
+    const now = (worker.retrieval_size * carryMult) / gatherRoundTrip(loc.distance, worker.gather_speed * speedMult);
+    const next = (nextSize * carryMult) / gatherRoundTrip(loc.distance, nextSpeed * speedMult);
+    const d = next - now;
+    return d > 0 ? `+${fmtItemRate(d)} gathered` : null;
+  };
 
   return (
     <div
@@ -692,9 +726,11 @@ function WorkerDetailModal({
                   return [
                     { key: "gspeed", icon: <Gauge size={14} />, label: `+${speedGain} Gather Speed`,
                       detail: `${worker.gather_speed.toFixed(2)} → ${(worker.gather_speed + speedGain).toFixed(2)}`,
+                      delta: gatherDelta(worker.gather_speed + speedGain, worker.retrieval_size),
                       cost: speedCost, affordable: coins >= speedCost, onBuy: () => buySpeed(workerIndex) },
                     { key: "gsize", icon: <Package size={14} />, label: `+${sizeGain} Carry Size`,
                       detail: `${worker.retrieval_size.toFixed(1)} → ${(worker.retrieval_size + sizeGain).toFixed(1)} · ${carryHint(worker.retrieval_size + sizeGain)}`,
+                      delta: gatherDelta(worker.gather_speed, worker.retrieval_size + sizeGain),
                       cost: sizeCost, affordable: coins >= sizeCost, onBuy: () => buySize(workerIndex) },
                   ];
                 })() : []),
@@ -704,9 +740,11 @@ function WorkerDetailModal({
                   return [
                     { key: "cspeed", icon: <Timer size={14} />, label: `+${csGain}× Click Speed`,
                       detail: `${worker.auto_click_speed.toFixed(1)}× → ${(worker.auto_click_speed + csGain).toFixed(1)}×`,
+                      delta: clickDelta(worker.auto_click_speed + csGain, worker.click_power_level),
                       cost: clickSpeedCost, affordable: coins >= clickSpeedCost, onBuy: () => buyClickSpeed(workerIndex) },
                     { key: "cpower", icon: <Zap size={14} />, label: "Click Power",
                       detail: `−${power.toFixed(2)}s → −${nextPower.toFixed(2)}s per hit`,
+                      delta: clickDelta(worker.auto_click_speed, worker.click_power_level + 1),
                       cost: clickPowerCost, affordable: coins >= clickPowerCost, onBuy: () => buyClickPower(workerIndex) },
                   ];
                 })() : []),
@@ -930,6 +968,8 @@ interface UpgradeOption {
   icon: React.ReactNode;
   label: string;
   detail: string;
+  /** What this purchase does to income or supply. Null when it moves nothing. */
+  delta?: string | null;
   cost: number;
   affordable: boolean;
   onBuy: () => void;
@@ -972,6 +1012,9 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-slate-100">{opt.label}</span>
                 <span className="block text-[11px] text-slate-400">{opt.detail}</span>
+                {opt.delta && (
+                  <span className="mt-0.5 block text-[11px] font-semibold text-emerald-700">{opt.delta}</span>
+                )}
               </span>
               <span className={`flex shrink-0 items-center gap-1 text-sm font-semibold ${opt.affordable ? "text-amber-800" : "text-slate-500"}`}>
                 <IconCoin /> {fmt(opt.cost)}

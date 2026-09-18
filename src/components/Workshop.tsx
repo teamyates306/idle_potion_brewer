@@ -86,8 +86,16 @@ const HEAT_DECAY     = 0.22;
 const POTION_FLY_MS  = 2000; // must match fly-potion animation duration
 const POTION_LAND_MS = Math.round(POTION_FLY_MS * 0.82); // ~82% = when bottle arrives at pile
 
-export const MACHINE_HUE = [0, 120, 200, 270, 330];
-const MACHINE_ACCENT = ["#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f"];
+// Cauldrons 6–10 slot into the GAPS between the original five rather than
+// respacing the circle, so machines 1–5 keep the exact hue (and therefore the
+// exact pre-tinted sheet) they have always had. Adding a hue here means
+// re-running `npx tsx scripts/pretintSprites.ts` — its MACHINE_HUES table must
+// stay in lockstep with this one.
+export const MACHINE_HUE = [0, 120, 200, 270, 330, 60, 160, 235, 300, 20];
+const MACHINE_ACCENT = [
+  "#b08a33", "#5e7a45", "#3f7a78", "#8a4f6b", "#a8472f",
+  "#8a8a3a", "#3f7a5e", "#4a5c8a", "#7a4a8a", "#a86a3a",
+];
 // Muted, warm "ember" spark palettes (one per machine) — cozy, not neon.
 const MACHINE_SPARK_COLORS = [
   ["#d9a441","#e8c45e","#c2802f","#f0dd9a","#d9b266"], // antique gold
@@ -95,6 +103,11 @@ const MACHINE_SPARK_COLORS = [
   ["#6fa39a","#8ab8ad","#5b8a80","#bcd6cf","#9ac0b6"], // muted teal
   ["#b07a72","#c89a8e","#8c5a52","#e0c4ba","#bf9a8e"], // rose ember
   ["#c2703a","#d9924e","#a8542f","#e8c09a","#cf8a5e"], // brick ember
+  ["#a3a052","#bcb86e","#85823c","#d8d4a0","#b3b070"], // olive brass
+  ["#5f9c7e","#7cb89a","#4a8065","#b4d6c4","#8ec0a8"], // sea green
+  ["#6a7aa8","#8a98c0","#54628a","#c0c8e0","#9aa4c8"], // slate blue
+  ["#9a6faa","#b48ec0","#7a548a","#d8c0e0","#bc9ac8"], // dusk plum
+  ["#b88450","#d0a06a","#9a6a3c","#e4c8a4","#c89a70"], // aged copper
 ];
 
 // Sparks turn to embers once the cauldron is running hot (see handleCauldronClick).

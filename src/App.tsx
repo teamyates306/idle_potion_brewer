@@ -198,6 +198,8 @@ export default function App() {
   // it lands there instead of the default board/join tab.
   const [leaderboardInitialTab, setLeaderboardInitialTab] = useState<"board" | "account" | undefined>(undefined);
   const [machineTabId, setMachineTabId] = useState(1);
+  // Tapping the HUD's coins/sec opens the Supply ledger it comes from.
+  const [potionTab, setPotionTab] = useState<"sell" | "discovered" | "supply" | undefined>(undefined);
   const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
   // When the map is opened via "Assign to Location" from a worker, lock it to
   // that single worker; opening the map from the home screen shows all workers.
@@ -288,7 +290,7 @@ export default function App() {
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] flex items-center justify-between px-3 py-2">
           <GameClock />
           <div className="pointer-events-auto flex items-center gap-2">
-            <CoinCounter />
+            <CoinCounter onOpenSupply={() => { setPotionTab("supply"); setPanel("potion"); }} />
             <button
               onClick={() => setPanel("help")}
               className="rounded-full p-1.5 text-amber-300/60 hover:bg-amber-950/50 hover:text-amber-200 transition lg:p-2 lg:[&_svg]:h-5 lg:[&_svg]:w-5"
@@ -379,7 +381,7 @@ export default function App() {
       {panel === "map"    && <MapView    onClose={() => setPanel(null)} workerIndex={workerIndexForMap} lockedWorkerIndex={mapLockedWorker} />}
       {panel === "worker" && <WorkerView onClose={() => setPanel(null)} onOpenMap={(idx = 0) => { setWorkerIndexForMap(idx); setMapLockedWorker(idx); setPanel("map"); }} />}
       {panel === "machine"&& <MachineView onClose={() => setPanel(null)} initialMachineId={machineTabId} />}
-      {panel === "potion" && <PotionView  onClose={() => setPanel(null)} />}
+      {panel === "potion" && <PotionView  onClose={() => { setPanel(null); setPotionTab(undefined); }} initialTab={potionTab} />}
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "guild"    && <GuildPanel   onClose={() => setPanel(null)} />}
       {panel === "progress" && <ProgressPanel onClose={() => setPanel(null)} />}

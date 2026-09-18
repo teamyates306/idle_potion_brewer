@@ -7,13 +7,16 @@ import PotionIcon from "./art/PotionIcon";
 import { masteryLevel, masteryXpProgress } from "../data/masteryTrees";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
-import { useGameStore } from "../store/gameStore";
+import { useGameStore, insightPointsFor } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
-import { fmt } from "../util/format";
-import { gatherRoundTrip, brewTime, effectiveMultiBrew } from "../engine/formulas";
-import { autoClickReductionPerSec } from "../engine/autoclick";
+import { fmt, fmtDuration, fmtItemRate, fmtRatePerSec } from "../util/format";
+import { useThroughput } from "../hooks/useThroughput";
+import { bottleneck } from "../engine/throughput";
+import {
+  COMBI_INSIGHT_WEIGHT, insightMultiplier, renownMultiplier,
+} from "../engine/insight";
 import { gaxDayIndex, potionPriceMultiplier } from "../engine/gax";
 import type { Attributes } from "../types";
 import { IconCoin, IconSparkle, IconWarning, IconChartUp, IconAbacus } from "./ui/icons";
@@ -35,8 +38,6 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const potionMastery = useGameStore((s) => s.potionMastery);
   const clearAutoSell = useGameStore((s) => s.clearAutoSell);
   const removeAutoSell = useGameStore((s) => s.removeAutoSell);
-  const unlocked_globals = useGameStore((s) => s.unlocked_globals);
-  const hasAbacus = unlocked_globals.includes("merchants_abacus");
   const cfg = useConfigStore();
 
   const [tab, setTab] = useState<Tab>(initialTab ?? "sell");
@@ -121,16 +122,18 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
           >
             Discovered {nameGroups.length > 0 && `(${nameGroups.length})`}
           </button>
-          {hasAbacus && (
-            <button
-              onClick={() => setTab("supply")}
-              className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
-                tab === "supply" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <IconAbacus className="mr-1 inline" /> Supply
-            </button>
-          )}
+          {/* Supply used to sit behind the 1M-coin Merchant's Abacus. The flow
+              rate is the core feedback signal of the whole game — a player who
+              can't see it can't reason about a single upgrade — so it ships
+              unlocked and the Abacus was retired (refunded in the store merge). */}
+          <button
+            onClick={() => setTab("supply")}
+            className={`flex-1 rounded-md py-1.5 text-sm font-medium transition ${
+              tab === "supply" ? "bg-purple-600 text-white" : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <IconAbacus className="mr-1 inline" /> Supply
+          </button>
         </div>
 
         {tab === "sell" ? (
@@ -255,6 +258,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
             <p className="py-6 text-center text-sm text-slate-500">No potions brewed yet.</p>
           ) : (
             <>
+              <InsightBanner />
               <div className="mb-3 space-y-2">
                 <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5">
                   <Search size={14} className="text-slate-500" />
@@ -351,77 +355,15 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
 
 // ── Merchant's Abacus — supply chain dashboard ──────────────────────────────
 export function SupplyChainDashboard() {
-  const workers = useGameStore((s) => s.workers);
-  const machines = useGameStore((s) => s.machines);
-  const ingredientInv = useGameStore((s) => s.ingredientInv);
+  // Everything here comes from engine/throughput via useThroughput — the same
+  // snapshot the HUD rate and the upgrade deltas read, so the dashboard can
+  // never disagree with them. (It used to recompute brew time with raw
+  // brewTime(), which silently ignored mastery and overstated every cycle.)
+  const { rate, flow } = useThroughput();
   const cfg = useConfigStore();
+  const worst = bottleneck(flow);
 
-  // Worker click reduction per machine
-  const workerReductionByMachine = useMemo(() => {
-    const map: Record<number, number> = {};
-    for (const w of workers) {
-      if (w.assigned_machine_id == null) continue;
-      map[w.assigned_machine_id] = (map[w.assigned_machine_id] ?? 0) +
-        autoClickReductionPerSec(w.auto_click_speed, w.click_power_level, w.click_power_mult ?? 1.0);
-    }
-    return map;
-  }, [workers]);
-
-  // Compute per-ingredient income rate (items/hr from gathering workers)
-  const incomePerHr = useMemo(() => {
-    const rates: Record<string, number> = {};
-    for (const w of workers) {
-      if (!w.assigned_location) continue;
-      const loc = cfg.locations[w.assigned_location];
-      if (!loc) continue;
-      const tripSecs = gatherRoundTrip(loc.distance, w.gather_speed);
-      const tripsPerHr = 3600 / tripSecs;
-      const expectedYield = w.retrieval_size;
-      const totalWeight = loc.drops.reduce((a, d) => a + d.weight, 0);
-      for (const drop of loc.drops) {
-        rates[drop.ingredientId] = (rates[drop.ingredientId] ?? 0) + (drop.weight / totalWeight) * expectedYield * tripsPerHr;
-      }
-    }
-    return rates;
-  }, [workers, cfg.locations]);
-
-  // Compute per-ingredient consumption rate from running brewers (accounting for worker clicks)
-  // and per-machine effective potion output rate (for summary)
-  const { consumePerHr, machineOutputs } = useMemo(() => {
-    const rates: Record<string, number> = {};
-    const outputs: { id: number; name: string; potionsPerHr: number }[] = [];
-    for (const m of machines) {
-      if (!m.running) continue;
-      const activeIds = m.recipe_slots.slice(0, m.unlocked_slots).filter((x): x is string => !!x);
-      if (activeIds.length === 0) continue;
-      const ingredients = activeIds.map((id) => cfg.ingredients[id]).filter(Boolean);
-      const bt = brewTime(m, cfg.formulas, ingredients);
-      // Apply worker click reduction to effective brew time
-      const workerReduction = workerReductionByMachine[m.id] ?? 0;
-      const effectiveBt = Math.max(0.1, bt / (1 + workerReduction));
-      const brewsPerHr = 3600 / effectiveBt;
-      // Ingredient consumption: one of each per brew cycle (unaffected by multi-brew)
-      for (const id of activeIds) {
-        rates[id] = (rates[id] ?? 0) + brewsPerHr;
-      }
-      // Potion output: brews × avg potions per cycle (multi-brew)
-      const multiBrewChance = effectiveMultiBrew(m);
-      const potionsPerHr = brewsPerHr * (1 + multiBrewChance);
-      outputs.push({ id: m.id, name: m.name, potionsPerHr });
-    }
-    return { consumePerHr: rates, machineOutputs: outputs };
-  }, [machines, cfg.ingredients, cfg.formulas, workerReductionByMachine]);
-
-  // All tracked ingredient IDs — sorted deficits first
-  const allIds = useMemo(() => {
-    return [...new Set([...Object.keys(incomePerHr), ...Object.keys(consumePerHr)])].sort((a, b) => {
-      const netA = (incomePerHr[a] ?? 0) - (consumePerHr[a] ?? 0);
-      const netB = (incomePerHr[b] ?? 0) - (consumePerHr[b] ?? 0);
-      return netA - netB;
-    });
-  }, [incomePerHr, consumePerHr]);
-
-  if (allIds.length === 0) {
+  if (flow.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-slate-500">
         Assign workers to locations and set brewers to run to see supply chain analytics.
@@ -431,36 +373,51 @@ export function SupplyChainDashboard() {
 
   return (
     <div className="space-y-3">
-      {/* Potion output summary per brewer */}
-      {machineOutputs.length > 0 && (
-        <div className="rounded-lg border border-violet-700/40 bg-violet-950/20 p-3">
-          <p className="mb-2 text-[10px] uppercase tracking-wider text-violet-700">Effective Potion Output</p>
-          <div className="space-y-1">
-            {machineOutputs.map((o) => (
-              <div key={o.id} className="flex justify-between text-xs">
-                <span className="text-slate-400">{o.name}</span>
-                <span className="text-violet-800 font-semibold">{o.potionsPerHr.toFixed(1)}/hr</span>
-              </div>
-            ))}
-          </div>
+      {/* Headline: the rate the whole game is about, and what is holding it back. */}
+      <div className="rounded-lg border border-violet-700/40 bg-violet-950/20 p-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[10px] uppercase tracking-wider text-violet-700">Workshop output</span>
+          <span className="text-lg font-bold tabular-nums text-emerald-700">
+            {rate.coinsPerSec > 0 ? `+${fmtRatePerSec(rate.coinsPerSec)}` : "—"}
+          </span>
         </div>
-      )}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+          <span>{fmtItemRate(rate.potionsPerSec)} potions</span>
+          <span>{rate.activeMachines} brewing</span>
+          {rate.stalledMachines > 0 && (
+            <span className="font-semibold text-red-600">
+              <IconWarning className="inline" /> {rate.stalledMachines} starved
+            </span>
+          )}
+        </div>
+        {rate.unbankedPerSec > 0 && (
+          <p className="mt-1.5 text-[11px] text-amber-700">
+            {fmtRatePerSec(rate.unbankedPerSec)} is piling up unsold — auto-sell it to bank it.
+          </p>
+        )}
+        {worst && (
+          <p className="mt-2 border-t border-violet-700/30 pt-2 text-[11px] text-red-600">
+            <IconWarning className="inline" /> Bottleneck:{" "}
+            <span className="font-semibold">{cfg.ingredients[worst.id]?.name ?? worst.id}</span>{" "}
+            runs out in {fmtDuration(worst.secsUntilEmpty ?? 0)}
+          </p>
+        )}
+      </div>
 
-      {/* Per-ingredient supply/consumption */}
-      <p className="text-[10px] text-slate-500">Rates include worker click reduction. Consumption excludes multi-brew (same ingredients per cycle). Red = deficit.</p>
-      {allIds.map((id) => {
-        const ing = cfg.ingredients[id];
-        const income = incomePerHr[id] ?? 0;
-        const consume = consumePerHr[id] ?? 0;
-        const net = income - consume;
-        const stock = ingredientInv[id] ?? 0;
-        const timeUntilEmptyHrs = net < 0 ? stock / (-net) : null;
-        const isDeficit = net < -0.5;
-        const isSurplus = net > 0.5;
+      {/* Per-ingredient ledger — worst deficit first. */}
+      <p className="text-[10px] text-slate-500">
+        Consumption excludes multi-brew (extra potions reuse the same inputs). Red = deficit.
+      </p>
+      {flow.map((row) => {
+        const ing = cfg.ingredients[row.id];
+        // Half an item a minute either way is noise, not a trend.
+        const isDeficit = row.netPerSec < -0.5 / 60;
+        const isSurplus = row.netPerSec > 0.5 / 60;
+        const netLabel = `${row.netPerSec < 0 ? "−" : "+"}${fmtItemRate(Math.abs(row.netPerSec))}`;
 
         return (
           <div
-            key={id}
+            key={row.id}
             className={`rounded-lg border p-3 ${
               isDeficit
                 ? "border-red-700/50 bg-red-950/20"
@@ -470,24 +427,75 @@ export function SupplyChainDashboard() {
             }`}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-200">{ing?.name ?? id}</span>
-              <span className={`text-xs font-semibold ${isDeficit ? "text-red-600" : isSurplus ? "text-emerald-700" : "text-slate-400"}`}>
-                {net > 0 ? "+" : ""}{net.toFixed(1)}/hr
+              <span className="text-sm font-medium text-slate-200">{ing?.name ?? row.id}</span>
+              <span
+                className={`text-xs font-semibold tabular-nums ${
+                  isDeficit ? "text-red-600" : isSurplus ? "text-emerald-700" : "text-slate-400"
+                }`}
+              >
+                {netLabel}
               </span>
             </div>
             <div className="mt-1 flex gap-3 text-[11px] text-slate-500">
-              <span>⬆ {income.toFixed(1)}/hr in</span>
-              <span>⬇ {consume.toFixed(1)}/hr out</span>
-              <span className="ml-auto">×{stock} stock</span>
+              <span>&#8593; {fmtItemRate(row.incomePerSec)} in</span>
+              <span>&#8595; {fmtItemRate(row.consumePerSec)} out</span>
+              <span className="ml-auto">&#215;{row.stock} stock</span>
             </div>
-            {isDeficit && timeUntilEmptyHrs !== null && (
+            {isDeficit && row.secsUntilEmpty !== null && (
               <p className="mt-1 text-[10px] text-red-400">
-                <IconWarning className="inline" /> Runs out in {timeUntilEmptyHrs < 1 ? `${Math.round(timeUntilEmptyHrs * 60)}m` : `${timeUntilEmptyHrs.toFixed(1)}h`}
+                <IconWarning className="inline" /> Runs out in {fmtDuration(row.secsUntilEmpty)}
               </p>
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Insight readout for the Discovered tab. The multiplier is the whole reason to
+ * explore, so it is stated plainly, alongside what the NEXT find would be worth
+ * — that "one more" number is the hook, not the total.
+ */
+function InsightBanner() {
+  const discoveredPotions = useGameStore((s) => s.discoveredPotions);
+  const unlocked = useGameStore((s) => s.unlocked_achievements);
+
+  const points = insightPointsFor(discoveredPotions ?? []);
+  const insight = insightMultiplier(points);
+  const renown = renownMultiplier((unlocked ?? []).length);
+
+  // What one more find of the SAME quality as your average would add. Quoted as
+  // a percentage of total output, because that is what the player feels.
+  const avgWeight = points > 0 ? points / Math.max(1, new Set(discoveredPotions ?? []).size) : 1;
+  const nextGain = insightMultiplier(points + avgWeight) / insight - 1;
+
+  return (
+    <div className="mb-3 rounded-lg border border-purple-700/40 bg-purple-950/20 p-3">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-purple-700">Insight</span>
+        <span className="text-lg font-bold tabular-nums text-purple-800">
+          &#215;{insight.toFixed(2)}
+        </span>
+      </div>
+      <p className="mt-0.5 text-[11px] text-slate-400">
+        Every distinct potion you have ever discovered raises the value of everything you brew.
+        Rarer finds count for more, and a curated combination counts {COMBI_INSIGHT_WEIGHT}&#215;.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-purple-700/30 pt-2 text-[11px]">
+        <span className="text-slate-400">
+          Renown <span className="font-semibold text-amber-800">&#215;{renown.toFixed(3)}</span>
+        </span>
+        <span className="text-slate-400">
+          Combined <span className="font-semibold text-emerald-700">&#215;{(insight * renown).toFixed(2)}</span>
+        </span>
+        {nextGain > 0 && (
+          <span className="ml-auto text-emerald-700">
+            next discovery &#8776; +{(nextGain * 100).toFixed(nextGain < 0.01 ? 2 : 1)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 }

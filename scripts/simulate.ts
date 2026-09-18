@@ -25,7 +25,10 @@ import {
   brewTime, upgradeCost, rollMultiBrew, effectiveMultiBrew,
   applyLevels, BASE_BREW_XP, gatherRoundTrip,
 } from "../src/engine/formulas";
-import { describePotion } from "../src/engine/potions";
+import { describePotion, tierForValue } from "../src/engine/potions";
+import {
+  discoveryBonus, entryWeight, insightMultiplier, renownMultiplier,
+} from "../src/engine/insight";
 import {
   groupHashesByName, generateQuest, questProgress, deductQuest,
   DIFFICULTIES, type Quest, type QuestDifficulty,
@@ -178,6 +181,8 @@ interface SimState {
   scratch: Record<string, number>;
   tick: number;
   discoveredNames: Set<string>;
+  /** Running Insight points (engine/insight.ts) — one add per new NAME. */
+  insightPoints: number;
   milestoneTick: Record<string, number>;
   upgrades: Record<string, number>;
   events: RunEvent[];
@@ -223,7 +228,7 @@ function initialState(): SimState {
     questsCompleted: 0, achievementsUnlocked: 0,
     unlockedAchievements: new Set(),
     scratch: {}, tick: 0,
-    discoveredNames: new Set(), milestoneTick: {}, upgrades: {},
+    discoveredNames: new Set(), insightPoints: 0, milestoneTick: {}, upgrades: {},
     events: [],
   };
 }
@@ -357,7 +362,8 @@ function sellAll(s: SimState): void {
   let earned = 0;
   for (const [hash, count] of Object.entries(s.potionInv)) {
     if (count <= 0) continue;
-    earned += descOf(hash.split("+")).value * count;
+    // MUST MATCH gameStore.knowledgeMultiplier().
+    earned += descOf(hash.split("+")).value * insightMultiplier(s.insightPoints) * renownMultiplier(s.unlockedAchievements.size) * count;
   }
   if (earned > 0) {
     s.coins += earned; s.coinsFromSales += earned; s.potionInv = {};
@@ -483,13 +489,19 @@ function tick(s: SimState): void {
       const isNewPotion = !s.discoveredPotions.has(potion.hash);
       if (isNewPotion) {
         s.discoveredPotions.add(potion.hash);
+        // Insight counts NAMES, not hashes — several recipes share a name.
+        if (!s.discoveredNames.has(potion.name)) {
+          s.insightPoints += entryWeight({
+            tier: tierForValue(potion.value),
+            isCombi: potion.isCombi,
+          });
+        }
         s.discoveredNames.add(potion.name);
         // Discovery bonus tracked separately — adding to s.coins causes greedy upgrade cascades
         // (exponential cost curve is extremely sensitive to small coin perturbations).
         // The game correctly adds this to coins (gameStore.completeBrew); here we report it
         // as a distinct income stream so the balance report can show true total income.
-        const discoveryIdx = s.discoveredPotions.size;
-        s.coinsFromDiscovery += Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
+        s.coinsFromDiscovery += discoveryBonus(potion.value, potion.isCombi);
       }
 
       // Achievement checks after each brew (mirrors gameStore completeBrew)
@@ -1039,7 +1051,8 @@ const stratQuestHunter: Strategy = (s, t) => {
     if (count <= 0) continue;
     const nm = potionNameOfHash(hash);
     if (nm && neededNames.has(nm)) continue;
-    const earned = descOf(hash.split("+")).value * count;
+    // MUST MATCH gameStore.knowledgeMultiplier().
+    const earned = descOf(hash.split("+")).value * insightMultiplier(s.insightPoints) * renownMultiplier(s.unlockedAchievements.size) * count;
     s.coins += earned; s.coinsFromSales += earned; delete s.potionInv[hash];
     simCheckAchievements(s, "coins", s.coins);
   }

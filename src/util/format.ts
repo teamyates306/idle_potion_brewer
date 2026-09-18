@@ -1,8 +1,42 @@
+// Short-scale suffix ladder. The old formatter stopped at "B" and kept dividing
+// by 1e9 past that, so 4.5 trillion rendered as "4500.00B" and 3 quintillion as
+// "3000000000.00B" — the number stopped reading as a milestone and became a wall
+// of digits. Each new suffix is a free milestone; there are eleven of them here.
+const SUFFIXES = ["", "k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+/** Past the ladder (1e36), scientific notation beats piling digits onto "Dc". */
+const SCIENTIFIC_AT = 1e36;
+
+/**
+ * Compact number for the UI. Deliberately a pure EXTENSION of the old four-rung
+ * version: every value the game can currently produce formats identically
+ * (`1.50k`, `25.0k`, `2.50M`, `4.00B`), so no existing call site changes.
+ */
 export function fmt(n: number): string {
-  if (n < 1000) return Math.floor(n).toString();
-  if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 2 : 1) + "k";
-  if (n < 1e9) return (n / 1e6).toFixed(2) + "M";
-  return (n / 1e9).toFixed(2) + "B";
+  if (!Number.isFinite(n)) return n > 0 ? "∞" : "0";
+  const abs = Math.abs(n);
+  if (abs < 1000) return Math.floor(n).toString();
+  if (abs >= SCIENTIFIC_AT) return n.toExponential(2);
+  const tier = Math.min(Math.floor(Math.log10(abs) / 3), SUFFIXES.length - 1);
+  const scaled = n / Math.pow(1000, tier);
+  // Two decimals under 10, one above — matches the old k/M/B precision exactly.
+  return scaled.toFixed(Math.abs(scaled) < 10 ? 2 : 1) + SUFFIXES[tier];
+}
+
+/** Coins-per-second for the HUD and upgrade deltas. Falls back to /min so a
+ *  trickle reads as a real number instead of rounding to "0.00/s". */
+export function fmtRatePerSec(perSec: number): string {
+  if (!(perSec > 0)) return "0/s";
+  if (perSec >= 1000) return `${fmt(perSec)}/s`;
+  if (perSec >= 10) return `${perSec.toFixed(1)}/s`;
+  if (perSec >= 0.1) return `${perSec.toFixed(2)}/s`;
+  return `${(perSec * 60).toFixed(1)}/min`;
+}
+
+/** Item throughput (ingredients, potions) — per-minute, dropping to per-hour
+ *  for slow trickles. Matches the units the supply dashboard has always used. */
+export function fmtItemRate(perSec: number): string {
+  if (perSec >= 1 / 60) return `${(perSec * 60).toFixed(2)}/min`;
+  return `${(perSec * 3600).toFixed(1)}/hr`;
 }
 
 export function fmtDuration(seconds: number): string {

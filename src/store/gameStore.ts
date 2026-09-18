@@ -57,7 +57,7 @@ import {
   upgradeCost,
   SLOT_UNLOCK_COSTS,
 } from "../engine/formulas";
-import { describePotion } from "../engine/potions";
+import { describeFromHash, describePotion, tierForValue } from "../engine/potions";
 import {
   CLICK_SPEED_STEP,
   autoClickSpeedLevel,
@@ -73,16 +73,23 @@ import {
   deductQuest,
 } from "../engine/quests";
 import { generateDiscoveryBounty } from "../engine/discovery";
+import {
+  discoveryBonus,
+  insightMultiplier,
+  insightPoints,
+  renownMultiplier,
+  type InsightEntry,
+} from "../engine/insight";
 import { pushGameEvent } from "../util/gameEvents";
 import { pushToast } from "../util/toast";
 import { emitHint } from "../util/hintBus";
 import type { HintId } from "../data/hints";
-import { MACHINE_COSTS, HIRE_COST_BASE } from "../engine/economyConstants";
+import { MACHINE_COSTS, MAX_MACHINES, HIRE_COST_BASE } from "../engine/economyConstants";
 import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type AchievementTrigger } from "../data/achievements";
 import { pushAchievementToast } from "../util/achievementToast";
 
 // Re-exported for existing UI importers (MachineView, WorkerView).
-export { MACHINE_COSTS };
+export { MACHINE_COSTS, MAX_MACHINES };
 
 // ---- The Grand Alchemical Exchange -----------------------------------------
 export const GAX_UNLOCK_COST = 25_000;
@@ -128,7 +135,10 @@ export const QUEST_COOLDOWNS_MS: Record<QuestDifficulty, number> = {
 };
 
 // ---- Machine configuration ------------------------------------------------
-const MACHINE_NAMES = ["The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler"];
+const MACHINE_NAMES = [
+  "The Bubbler", "The Roiler", "The Fizzer", "The Scorcher", "The Rumbler",
+  "The Simmerer", "The Churner", "The Seether", "The Bellower", "The Distiller",
+];
 
 // ---- Global player upgrade helpers ----------------------------------------
 export function playerClickPower(level: number): number {
@@ -180,14 +190,14 @@ export const GLOBAL_UNLOCKS = [
     cost: 100_000,
     icon: "compass",
   },
-  {
-    id: "merchants_abacus",
-    name: "Merchant's Abacus",
-    description: "Unlocks a supply chain dashboard: live income rate, consumption rate, net flow, and bottleneck warnings per ingredient.",
-    cost: 1_000_000,
-    icon: "abacus",
-  },
 ] as const;
+
+/** Retired unlock: the supply dashboard it gated is now free (it is the game's
+ *  core feedback signal — see engine/throughput.ts). Saves that bought it are
+ *  refunded in `merge` below; the id is kept here only for that migration. */
+export const RETIRED_GLOBAL_UNLOCKS: Record<string, number> = {
+  merchants_abacus: 1_000_000,
+};
 
 // ---- Worker flavor statuses -----------------------------------------------
 const STATUS_IDLE = [
@@ -701,6 +711,44 @@ function uniqueNameGroups(
   cfg: ReturnType<typeof useConfigStore.getState>
 ) {
   return groupHashesByName(discoveredPotions ?? [], cfg.ingredients, cfg.formulas);
+}
+
+// ---- Insight: the breadth multiplier (see engine/insight.ts) ---------------
+// O(discovered), so it is memoized on the discoveredPotions ARRAY IDENTITY.
+// That is a valid key because addDiscovered() returns the SAME array when the
+// hash was already known, so the points are recomputed only when a genuinely
+// new recipe lands -- never per brew and never per render. The config is part
+// of the key so a live ingredient edit in the Dev Dashboard invalidates it.
+const insightCache = new WeakMap<string[], { cfg: unknown; points: number }>();
+
+export function insightPointsFor(discoveredPotions: string[]): number {
+  const cfg = useConfigStore.getState();
+  const hit = insightCache.get(discoveredPotions);
+  if (hit && hit.cfg === cfg) return hit.points;
+
+  const seenNames = new Set<string>();
+  const entries: InsightEntry[] = [];
+  for (const hash of discoveredPotions) {
+    const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
+    if (!d || seenNames.has(d.name)) continue; // names, not hashes
+    seenNames.add(d.name);
+    entries.push({ tier: tierForValue(d.value), isCombi: d.isCombi });
+  }
+  const points = insightPoints(entries);
+  insightCache.set(discoveredPotions, { cfg, points });
+  return points;
+}
+
+/** Everything the player KNOWS, as one multiplier on potion value: what they
+ *  have discovered (Insight) times what they have achieved (Renown). */
+export function knowledgeMultiplier(
+  discoveredPotions: string[] | undefined,
+  unlockedAchievements: string[] | undefined,
+): number {
+  return (
+    insightMultiplier(insightPointsFor(discoveredPotions ?? [])) *
+    renownMultiplier((unlockedAchievements ?? []).length)
+  );
 }
 
 function unlockAttributes(
@@ -1460,7 +1508,7 @@ export const useGameStore = create<GameState>()(
 
       buyMachine: () => {
         set((s) => {
-          if (s.machines.length >= 5) return {};
+          if (s.machines.length >= MAX_MACHINES) return {};
           const cost = MACHINE_COSTS[s.machines.length];
           if (cost === undefined || s.coins < cost) return {};
           return {
@@ -1589,7 +1637,8 @@ export const useGameStore = create<GameState>()(
         const outputs = rollMultiBrew(effectiveMultiBrew(machine) + multiBonus);
         // Mastery XP = the pre-mastery brew seconds of this recipe (one cycle).
         const preMasteryBrewSecs = brewTime(machine, cfg.formulas, ingredients);
-        const valueMult = 1 + masteryFx.potion_value_pct / 100;
+        const knowMult = knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
+        const valueMult = (1 + masteryFx.potion_value_pct / 100) * knowMult;
         const sellMult = 1 + masteryFx.sell_price_pct / 100;
 
         let coins = s.coins;
@@ -1680,9 +1729,10 @@ export const useGameStore = create<GameState>()(
         }
 
         if (isNewDiscovery) {
-          // Discovery bonus: starts at 10 coins, grows with each new potion found.
-          const discoveryIdx = discoveredPotions.length; // 1-based count after adding this one
-          const bonus = Math.min(Math.round(10 * Math.pow(1.18, discoveryIdx - 1)), 500);
+          // Pays for WHAT was found, not how many you already have: the old
+          // count curve flatlined at 500 coins after ~25 finds, so discovery
+          // stopped being worth anything exactly when the map opened up.
+          const bonus = discoveryBonus(potion.value, potion.isCombi);
           set((cur) => ({ coins: cur.coins + bonus, lifetime_coins_earned: (cur.lifetime_coins_earned ?? 0) + bonus }));
           pushGameEvent("discovery", `${potion.name} discovered!`, machineId, { potionName: potion.name });
           pushGameEvent("pile", `+${bonus.toLocaleString()} discovery bonus`);
@@ -1792,7 +1842,8 @@ export const useGameStore = create<GameState>()(
         const potion = describePotion(ingredients, cfg.formulas);
         const n = Math.min(count, have);
         const fx = computeMasteryEffects(s.masteryUnlocks);
-        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
+        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100)
+          * knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
         const gaxMult = get().gaxPriceAndRecord(potion.stats, n);
         const earned = Math.round(potion.value * sellMult * gaxMult) * n;
         const potionInv = { ...s.potionInv };
@@ -1807,7 +1858,7 @@ export const useGameStore = create<GameState>()(
         pushGameEvent("pile", `+${earned.toLocaleString()}`);
         get().checkAchievements("coins", newCoins);
         if (newCoins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
-        const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
+        const nextMachineCost = s.machines.length < MAX_MACHINES ? MACHINE_COSTS[s.machines.length] : null;
         if (nextMachineCost !== null && newCoins >= nextMachineCost) get().pushHint("can_afford_machine");
         if (s.unlockedRegions.includes("region_whispering_woods") && newCoins >= GAX_UNLOCK_COST) get().pushHint("can_afford_gax");
       },
@@ -1816,7 +1867,8 @@ export const useGameStore = create<GameState>()(
         const s = get();
         const cfg = useConfigStore.getState();
         const fx = computeMasteryEffects(s.masteryUnlocks);
-        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
+        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100)
+          * knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
         let coins = s.coins;
         let totalEarned = 0;
         let totalSold = 0;
@@ -2446,7 +2498,8 @@ export const useGameStore = create<GameState>()(
               // Mastery XP: pre-mastery seconds per completed cycle (not per output).
               offlineMasteryXp[potion.name] = (offlineMasteryXp[potion.name] ?? 0) + preMasterySecs;
               if (isAutoSold) {
-                const valueMult = 1 + masteryFx.potion_value_pct / 100;
+                const valueMult = (1 + masteryFx.potion_value_pct / 100)
+                  * knowledgeMultiplier(discoveredPotions, s.unlocked_achievements);
                 const sellMult  = 1 + masteryFx.sell_price_pct  / 100;
                 coins += Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
                 // Satiation volume accrues whether or not the Exchange is
@@ -3007,9 +3060,21 @@ export const useGameStore = create<GameState>()(
             ? { ...entry, xp: 45000 }
             : entry;
         }
+        // Retired global unlocks: refund what the player paid and drop the id,
+        // so removing a purchasable never quietly confiscates coins. (The
+        // Merchant's Abacus went away when the supply dashboard became free.)
+        const keptGlobals: string[] = [];
+        let refund = 0;
+        for (const id of p.unlocked_globals ?? []) {
+          const paid = RETIRED_GLOBAL_UNLOCKS[id];
+          if (paid == null) keptGlobals.push(id);
+          else refund += paid;
+        }
+
         return {
           ...current,
           ...p,
+          coins: (p.coins ?? current.coins) + refund,
           workers,
           machines,
           discovered_location_drops: p.discovered_location_drops ?? {},
@@ -3047,7 +3112,7 @@ export const useGameStore = create<GameState>()(
           player_click_power_level: p.player_click_power_level ?? 0,
           player_crit_chance_level: p.player_crit_chance_level ?? 0,
           player_crit_mult_level: p.player_crit_mult_level ?? 0,
-          unlocked_globals: p.unlocked_globals ?? [],
+          unlocked_globals: keptGlobals,
           // Region migration: existing saves grandfather in every region that
           // already contains one of their unlocked locations.
           unlockedRegions: p.unlockedRegions ?? Array.from(new Set([
