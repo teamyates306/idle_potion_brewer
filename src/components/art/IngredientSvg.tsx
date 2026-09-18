@@ -8,7 +8,10 @@ interface Props {
   rarity?: Rarity;
 }
 
-const KNOWN = new Set(["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"]);
+// Exported so other callers (the loading screen's random icon pick) can pick
+// a valid category without duplicating this list.
+export const INGREDIENT_CATEGORIES = ["root", "petal", "fungus", "crystal", "essence", "bone", "ore", "chitin", "bestial", "herb"] as const;
+const KNOWN = new Set<string>(INGREDIENT_CATEGORIES);
 
 // Per-rarity flair: glow strength (px @ size 30), particle count, and the
 // top-tier light sweep. Common gets nothing so lists stay calm and rarity

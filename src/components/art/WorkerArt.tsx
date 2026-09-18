@@ -10,7 +10,9 @@ const FRAME_MS = 80;
 
 interface SpriteInfo { src: string; frameCount: number; sheetW: number }
 
-const SPRITE: Record<WorkerSpecialization, SpriteInfo> = {
+// Exported so other callers (the loading screen's random icon pick) can
+// resolve which sheet a specialization needs without duplicating this table.
+export const WORKER_SPRITE_INFO: Record<WorkerSpecialization, SpriteInfo> = {
   none:     { src: "/sprites/worker.png",          frameCount: 4, sheetW: 128 },
   standard: { src: "/sprites/worker.png",          frameCount: 4, sheetW: 128 },
   manic:    { src: "/sprites/worker-manic.png",    frameCount: 4, sheetW: 128 },
@@ -32,7 +34,7 @@ export default function WorkerArt({
   active = true,
   hueShift = 0,
 }: Props) {
-  const { src: baseSrc, frameCount, sheetW } = SPRITE[specialization] ?? SPRITE.none;
+  const { src: baseSrc, frameCount, sheetW } = WORKER_SPRITE_INFO[specialization] ?? WORKER_SPRITE_INFO.none;
   // The hue variants are baked into public/sprites/tinted/
   // (scripts/pretintSprites.ts, pixel-identical to the CSS filter), so no
   // `filter` is needed on the element. A hue outside the baked table falls

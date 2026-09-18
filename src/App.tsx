@@ -8,6 +8,7 @@ import { attrLabel } from "./engine/gax";
 import Workshop, { MACHINE_HUE } from "./components/Workshop";
 import { HUE_SHIFTS } from "./components/art/WorkerArt";
 import { tintedSpriteName } from "./util/hueRotate";
+import { loadingIconImageUrls, pickLoadingIcon } from "./util/loadingIcon";
 import QuestView from "./components/QuestView";
 import TutorialOverlay from "./components/TutorialOverlay";
 import AchievementToasts from "./components/ui/AchievementToasts";
@@ -217,6 +218,10 @@ export default function App() {
   // for a run of probes — bounded by LOADING_MAX_MS so a slow device is
   // never locked out.
   const [loading, setLoading] = useState<"warming" | "fading" | "done">("warming");
+  // Picked once, for the life of this load — see util/loadingIcon.ts for the
+  // 5-way equal split (machine / ingredient / potion / worker / adventurer)
+  // and LoadingScreen.tsx for how each kind renders.
+  const [loadingIcon] = useState(() => pickLoadingIcon());
   useEffect(() => {
     // Defensive reset: a page navigated to us (e.g. "Back to the workshop"
     // from the leaderboard) can arrive with a stray scroll/pan position —
@@ -227,7 +232,12 @@ export default function App() {
     applyDayNightVars();
     let cancelled = false;
     const t0 = performance.now();
-    const assets = Promise.all([...CORE_SPRITES, ...TINTED_SPRITES].map(preloadImage));
+    // The loading screen's OWN icon is the first resource loaded, full stop
+    // — it's the only thing on screen for a moment, so it must never show
+    // blank or pop in after everything else. Only once it (and just it) has
+    // decoded does the rest of the scene's asset pipeline start.
+    const iconLoaded = Promise.all(loadingIconImageUrls(loadingIcon).map(preloadImage));
+    const assets = iconLoaded.then(() => Promise.all([...CORE_SPRITES, ...TINTED_SPRITES].map(preloadImage)));
     const minDelay = new Promise<void>((resolve) => setTimeout(resolve, LOADING_MIN_MS));
     Promise.all([assets, fontsReady(3000), minDelay])
       .then(() => mainThreadQuiet(12, 30, Math.max(0, LOADING_MAX_MS - (performance.now() - t0))))
@@ -269,7 +279,7 @@ export default function App() {
 
   return (
     <>
-    {loading !== "done" && <LoadingScreen fading={loading === "fading"} fadeMs={LOADING_FADE_MS} />}
+    {loading !== "done" && <LoadingScreen icon={loadingIcon} fading={loading === "fading"} fadeMs={LOADING_FADE_MS} />}
     <div className={`relative flex h-full flex-col${throttleAnims ? " anim-throttle" : ""}`}>
       <Atmosphere />
 
