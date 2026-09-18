@@ -6,6 +6,8 @@ import { useConfigStore } from "../store/configStore";
 import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState, FAST_BREW_SECS } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
+import { inCamera } from "../engine/sceneCamera";
+import { useSceneCamera } from "./fx/useSceneCamera";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
 import { subscribeAmbient, lampFlickerOpacity } from "../engine/ambientClock";
@@ -1089,8 +1091,14 @@ const MachineColumn = React.memo(function MachineColumn({
         {/* Burner flame — earned once brew speed has been upgraded at least
             once; sits in front of the cauldron sprite, not affected by the
             transient click-heat filter above (it's its own layer). */}
-        <FireOverlay active={machine.speed_upgrades >= 1} seed={machine.id} level={machine.speed_upgrades} size={108} />
-        <ExhaustSmoke active={machine.multi_upgrades >= EXHAUST_AT_UPGRADES} seed={machine.id} size={108} />
+        {/* Both gated on `!loopsPaused` (the column's IntersectionObserver) for
+            the same reason SteamPuffs below always was: a late-game workshop
+            has dozens of cauldrons strung across a ~2100px scene while a phone
+            shows about four of them, and an off-screen burner flame was still
+            clearing and re-blitting its own 108x108 canvas off the 30Hz ambient
+            clock. The observer already existed — these two just never read it. */}
+        <FireOverlay active={machine.speed_upgrades >= 1 && !loopsPaused} seed={machine.id} level={machine.speed_upgrades} size={108} />
+        <ExhaustSmoke active={machine.multi_upgrades >= EXHAUST_AT_UPGRADES && !loopsPaused} seed={machine.id} size={108} />
 
         {/* Steam — replaces the bubble loops; tinted from the liquid */}
         <SteamPuffs active={brewActive && !loopsPaused} color={liquidColor} x={MOUTH_X} y={MOUTH_Y} />
@@ -2302,29 +2310,50 @@ const WallWalkers = React.memo(function WallWalkers({ width, windows, walkers }:
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const list = useRef(walkers);
   list.current = walkers;
+  const drawRef = useRef<() => void>(() => {});
+  const redraw = useCallback(() => drawRef.current(), []);
+  // Camera-clipped: the wall is ~2100px but a phone shows ~390px of it, and
+  // the walkers were clearing + re-blitting the full width every ambient tick.
+  const cam = useSceneCamera(canvasRef, width, redraw);
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    ctx.imageSmoothingEnabled = false; // keep the pixel art nearest-neighbour under the wiggle's tilt
+    let camWidth = 0;
+    const sizeToCamera = () => {
+      camWidth = cam.current.width;
+      canvas.width = camWidth;
+      canvas.height = 144;
+      canvas.style.width = `${camWidth}px`;
+      // Resizing the backing store resets every context property.
+      ctx.imageSmoothingEnabled = false; // keep the pixel art nearest-neighbour under the wiggle's tilt
+    };
+    sizeToCamera();
     let painted = false;
-    return subscribeAmbient(() => {
+    const draw = () => {
+      const c = cam.current;
+      if (c.width !== camWidth) sizeToCamera();
+      canvas.style.transform = `translateX(${c.x}px)`;
       const now = performance.now();
       // Nothing on the wall: clear once, then stay off the GPU entirely.
       // Only the aperture band is ever drawn (the clip below guarantees it),
       // so the damaged region — and the texture the compositor re-uploads each
-      // frame — is width×64 rather than the full width×144.
+      // frame — is camWidth×64 rather than the full 2100×144.
       if (list.current.length === 0) {
-        if (painted) { ctx.clearRect(0, WIN_Y, width, WIN_H); painted = false; }
+        if (painted) { ctx.clearRect(0, WIN_Y, camWidth, WIN_H); painted = false; }
         return;
       }
-      ctx.clearRect(0, WIN_Y, width, WIN_H);
+      ctx.clearRect(0, WIN_Y, camWidth, WIN_H);
       painted = true;
       ctx.save();
       // Walkers are only ever seen through the apertures; the aperture band is
       // enough of a clip here because the vista container clips the rest.
+      // Only apertures inside the camera band contribute to the clip path.
       ctx.beginPath();
-      for (const cx of windows) ctx.rect(cx - WIN_W / 2, WIN_Y, WIN_W, WIN_H);
+      for (const cx of windows) {
+        if (!inCamera(cx, WIN_W, c)) continue;
+        ctx.rect(cx - WIN_W / 2 - c.x, WIN_Y, WIN_W, WIN_H);
+      }
       ctx.clip();
       for (const wk of list.current) {
         const sprite = bakedWalker(wk);
@@ -2332,24 +2361,26 @@ const WallWalkers = React.memo(function WallWalkers({ width, windows, walkers }:
         const p = walkerPose(wk, now);
         const size = sprite.width;
         const left = p.x, top = wk.y - size + p.dy;
-        if (left + size < 0 || left > width) continue;
+        if (!inCamera(left + size / 2, size, c)) continue;
         // Pivot on the sprite's own feet, like the old fill-box origin did.
         ctx.save();
-        ctx.translate(left + size / 2, top + size);
+        ctx.translate(left + size / 2 - c.x, top + size);
         ctx.rotate((p.rot * Math.PI) / 180);
         ctx.drawImage(sprite, -size / 2, -size);
         ctx.restore();
       }
       ctx.restore();
-    });
-  }, [width, windows]);
+    };
+    drawRef.current = draw;
+    const stop = subscribeAmbient(draw);
+    return () => { stop(); drawRef.current = () => {}; };
+  }, [width, windows, cam]);
   return (
     <canvas
       ref={canvasRef}
-      width={width}
       height={144}
       className="pointer-events-none absolute left-0 top-0"
-      style={{ width, height: 144, imageRendering: "pixelated" }}
+      style={{ height: 144, imageRendering: "pixelated", willChange: "transform" }}
     />
   );
 });
@@ -2417,29 +2448,55 @@ function WallLamp({ cx }: { cx: number }) {
 // than all fading together with the daylight.
 const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps, width }: { lamps: number[]; width: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawRef = useRef<() => void>(() => {});
+  const redraw = useCallback(() => drawRef.current(), []);
+  const cam = useSceneCamera(canvasRef, width, redraw);
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
+    let camWidth = 0;
+    const sizeToCamera = () => {
+      camWidth = cam.current.width;
+      canvas.width = camWidth;
+      canvas.height = 144;
+      canvas.style.width = `${camWidth}px`;
+    };
+    sizeToCamera();
     const center = lamps.reduce((a, b) => a + b, 0) / Math.max(1, lamps.length);
     const rank: number[] = new Array(lamps.length).fill(0);
     lamps.map((cx, i) => ({ i, d: Math.abs(cx - center) })).sort((a, b) => a.d - b.d).forEach((o, r) => { rank[o.i] = r; });
     let wasLit: boolean | null = null;
     let changedAt = 0;
     let painted = false;
-    return subscribeAmbient((t) => {
+    // The glow gradient is built in UNIT-circle space (the ctx.scale below does
+    // the sizing), so its geometry and stops never change — it was being
+    // reallocated per lamp per tick, ~240 gradient objects a second on a wall
+    // with 8 lamps, purely as garbage. Build it once.
+    const glow = ctx.createRadialGradient(0, -0.4, 0, 0, -0.4, 1.35);
+    glow.addColorStop(0, "rgba(255,176,64,0.9)");
+    glow.addColorStop(0.55, "rgba(255,96,16,0.4)");
+    glow.addColorStop(1, "rgba(255,48,0,0)");
+    let lastT = 0;
+    const draw = (t: number) => {
+      lastT = t;
+      const c = cam.current;
+      if (c.width !== camWidth) sizeToCamera();
+      canvas.style.transform = `translateX(${c.x}px)`;
       const lit = lampsLit(getDayPhase());
       if (wasLit === null) { wasLit = lit; changedAt = -100; }      // first tick: no sequence, just the state
       else if (lit !== wasLit) { wasLit = lit; changedAt = t; }
       const flicker = lampFlickerOpacity(t);
       if (lamps.length === 0) {
-        if (painted) { ctx.clearRect(0, 90, width, 20); painted = false; }
+        if (painted) { ctx.clearRect(0, 90, camWidth, 20); painted = false; }
         return;
       }
-      ctx.clearRect(0, 90, width, 20);
+      ctx.clearRect(0, 90, camWidth, 20);
       painted = true;
       for (let i = 0; i < lamps.length; i++) {
         const cx = lamps[i];
+        // A lamp whose whole glow pool is off-camera costs nothing to skip.
+        if (!inCamera(cx, 32, c)) continue;
         const since = t - changedAt - rank[i] * (lit ? 0.22 : 0.12);
         const on = lit ? (since >= 0 ? 1 : 0) : (since >= 0 ? 0 : 1);
         const flare = lit && since >= 0 && since < 0.35 ? 1 + 0.45 * (1 - since / 0.35) : 1;
@@ -2448,29 +2505,28 @@ const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps, width
         const rx = 14 * flare, ry = 5 * flare, cy = 100;
         ctx.save();
         ctx.globalAlpha = op;
-        ctx.translate(cx, cy);
+        ctx.translate(cx - c.x, cy);
         ctx.scale(rx, ry);
         // Radial gradient in unit-circle space, offset up like the old
         // "at 50% 30%" CSS focal point (30% down from the top of the box).
-        const grad = ctx.createRadialGradient(0, -0.4, 0, 0, -0.4, 1.35);
-        grad.addColorStop(0, "rgba(255,176,64,0.9)");
-        grad.addColorStop(0.55, "rgba(255,96,16,0.4)");
-        grad.addColorStop(1, "rgba(255,48,0,0)");
-        ctx.fillStyle = grad;
+        // Hoisted out of the loop — see `glow` above.
+        ctx.fillStyle = glow;
         ctx.beginPath();
         ctx.ellipse(0, 0, 1, 1, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
-    });
-  }, [lamps, width]);
+    };
+    drawRef.current = () => draw(lastT);
+    const stop = subscribeAmbient(draw);
+    return () => { stop(); drawRef.current = () => {}; };
+  }, [lamps, width, cam]);
   return (
     <canvas
       ref={canvasRef}
-      width={width}
       height={144}
       className="pointer-events-none absolute left-0 top-0 z-[1]"
-      style={{ width, height: 144 }}
+      style={{ height: 144, willChange: "transform" }}
     />
   );
 });

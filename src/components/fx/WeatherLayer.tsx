@@ -1,5 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { subscribeAmbient } from "../../engine/ambientClock";
+import { inCamera } from "../../engine/sceneCamera";
+import { useSceneCamera } from "./useSceneCamera";
 import { resolveWeather, type WeatherKind } from "../../engine/weather";
 import { computeDayNight, getDayPhase } from "../../hooks/useDayNight";
 import { useGameStore } from "../../store/gameStore";
@@ -42,6 +44,11 @@ export default function WeatherLayer({ width, windows }: { width: number; window
   // once-a-second spell check below.
   const weatherMode = useSettingsStore((s) => s.weatherMode);
   const enabled = quality >= 1;
+  const drawRef = useRef<() => void>(() => {});
+  const redraw = useCallback(() => drawRef.current(), []);
+  // Camera-clipped: the wall spans the whole scene but a phone shows a sliver
+  // of it, and this cleared + re-clipped the full width on every ambient tick.
+  const cam = useSceneCamera(canvasRef, width, redraw);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -49,11 +56,20 @@ export default function WeatherLayer({ width, windows }: { width: number; window
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    let camWidth = 0;
+    const sizeToCamera = () => {
+      camWidth = cam.current.width;
+      canvas.width = camWidth;
+      canvas.height = WALL_H;
+      canvas.style.width = camWidth + "px";
+    };
+    sizeToCamera();
+
     // Start from a blank canvas every time this effect (re)runs — switching
     // weather in Settings restarts it, and the last frame of the old weather
     // would otherwise stay painted behind the new one (or forever, if the new
     // one is "clear" and so never draws again).
-    ctx.clearRect(0, 0, width, WALL_H);
+    ctx.clearRect(0, 0, camWidth, WALL_H);
 
     // null, not "clear": the first resolve must always rebuild, otherwise
     // selecting Clear matches the initial value and skips the clear entirely.
@@ -103,13 +119,16 @@ export default function WeatherLayer({ width, windows }: { width: number; window
           }
         }
       }
-      if (k === "clear") ctx.clearRect(0, 0, width, WALL_H);
+      if (k === "clear") ctx.clearRect(0, 0, camWidth, WALL_H);
     };
 
-    const clipToWindows = () => {
+    const clipToWindows = (camX: number) => {
+      const c = cam.current;
       ctx.beginPath();
       for (const cx of windows) {
-        const x = cx - WIN_W / 2;
+        // Apertures outside the drawn band contribute nothing to the clip.
+        if (!inCamera(cx, WIN_W, c)) continue;
+        const x = cx - WIN_W / 2 - camX;
         // rounded rect
         ctx.moveTo(x + WIN_R, WIN_Y);
         ctx.lineTo(x + WIN_W - WIN_R, WIN_Y);
@@ -125,7 +144,10 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       ctx.clip();
     };
 
-    return subscribeAmbient((t) => {
+    const draw = (t: number) => {
+      const c = cam.current;
+      if (c.width !== camWidth) sizeToCamera();
+      canvas.style.transform = "translateX(" + c.x + "px)";
       // Re-evaluate the spell once a second (a game day is 3 min).
       const sec = Math.floor(t);
       if (sec !== lastDayCheck) {
@@ -143,21 +165,28 @@ export default function WeatherLayer({ width, windows }: { width: number; window
       const dark = (1 - computeDayNight(getDayPhase()).dayness) * 0.62;
       const dim = 1 - dark * 0.55;
 
-      ctx.clearRect(0, 0, width, WALL_H);
+      // Only the aperture band is ever painted, so that is all that needs
+      // clearing — the rest of this canvas is permanently transparent.
+      ctx.clearRect(0, WIN_Y, camWidth, WIN_H);
       ctx.save();
-      clipToWindows();
+      clipToWindows(c.x);
       if (kind === "rain") {
         ctx.lineWidth = 1.5;
         ctx.lineCap = "round";
         for (const d of drops) {
+          // Integrated for EVERY drop but drawn only for the visible ones:
+          // skip the maths too and off-camera rain would hang mid-fall, then
+          // lurch the moment it was scrolled into view.
           d.y += d.speed * dt;
           if (d.y > WIN_Y + WIN_H + 4) { d.y = WIN_Y - d.len - d.seed * 30; }
+          if (!inCamera(d.x, 4, c)) continue;
+          const dx = d.x - c.x;
           ctx.strokeStyle = `rgba(205,225,245,${(d.alpha * dim).toFixed(3)})`;
           ctx.beginPath();
-          ctx.moveTo(d.x, d.y);
+          ctx.moveTo(dx, d.y);
           // A pronounced lean reads as falling fast; near-vertical at this
           // scale just looks like a static dotted line.
-          ctx.lineTo(d.x - 2.5, d.y + d.len);
+          ctx.lineTo(dx - 2.5, d.y + d.len);
           ctx.stroke();
         }
       } else {
@@ -166,22 +195,25 @@ export default function WeatherLayer({ width, windows }: { width: number; window
           f.y += f.speed * dt;
           if (f.y > WIN_Y + WIN_H + 3) { f.y = WIN_Y - 3; }
           const x = f.x + Math.sin(t * 0.9 + f.phase) * f.sway;
+          if (!inCamera(x, 4, c)) continue;
           const s = Math.max(2, Math.round(f.r)); // never a sub-pixel speck
-          ctx.fillRect(Math.round(x), Math.round(f.y), s, s);
+          ctx.fillRect(Math.round(x - c.x), Math.round(f.y), s, s);
         }
       }
       ctx.restore();
-    });
-  }, [enabled, width, windows, weatherMode]);
+    };
+    drawRef.current = () => draw(lastT);
+    const stop = subscribeAmbient(draw);
+    return () => { stop(); drawRef.current = () => {}; };
+  }, [enabled, width, windows, weatherMode, cam]);
 
   if (!enabled) return null;
   return (
     <canvas
       ref={canvasRef}
-      width={width}
       height={WALL_H}
       className="pointer-events-none absolute left-0 top-0"
-      style={{ width, height: WALL_H, imageRendering: "pixelated" }}
+      style={{ height: WALL_H, imageRendering: "pixelated", willChange: "transform" }}
     />
   );
 }

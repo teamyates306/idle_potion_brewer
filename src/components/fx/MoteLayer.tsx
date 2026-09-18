@@ -1,5 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { subscribeAmbient, cycleProgress, moteSample } from "../../engine/ambientClock";
+import { inCamera } from "../../engine/sceneCamera";
+import { useSceneCamera } from "./useSceneCamera";
 
 /**
  * Dust motes drifting through the workshop, drawn on ONE canvas off the shared
@@ -16,6 +18,14 @@ import { subscribeAmbient, cycleProgress, moteSample } from "../../engine/ambien
  * positioned-div-per-mote it would have been ~70 promoted layers for the GPU
  * process to upload and blend every frame — the same trap LampFlickerOverlay
  * and WallWalkers were rewritten to avoid (see CLAUDE.md's GPU rules).
+ *
+ * The motes still BELONG to the whole scene, but only the slice of it the
+ * viewport can show is ever rasterised — see engine/sceneCamera.ts. The
+ * canvas is viewport-sized and translated to sit under the visible band, and
+ * every mote is still positioned in scene coordinates, so the output is
+ * identical to drawing the full WORLD_W-wide canvas. On a 390px-wide phone
+ * against a ~2100px scene that is ~5x less fill per tick, and the motes that
+ * are off-camera cost no maths at all.
  */
 
 // Density is expressed per 1000px of scene so a wider workshop gets
@@ -41,6 +51,11 @@ const MOTE_POOL = Array.from({ length: MAX_MOTES }, () => ({
 
 export default function MoteLayer({ width, quality }: { width: number; quality: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // The ambient tick and the camera's own scroll callback both draw through
+  // this, so the draw closure is stored rather than duplicated.
+  const drawRef = useRef<() => void>(() => {});
+  const redraw = useCallback(() => drawRef.current(), []);
+  const cam = useSceneCamera(canvasRef, width, redraw);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -65,12 +80,19 @@ export default function MoteLayer({ width, quality }: { width: number; quality: 
     // viewport that happened to be about as tall as the canvas, obvious on a
     // phone). Pinning the height also stops the ResizeObserver feeding back into
     // its own layout.
+    //
+    // Only the WIDTH changed with the camera: the backing store is the visible
+    // band, not the whole scene. Its width is scroll-independent (see
+    // computeCamera) so panning never reallocates the backing store.
     const parent = canvas.parentElement;
     let h = 1;
+    let camWidth = 0;
     const sizeToBox = () => {
       h = (parent?.clientHeight || canvas.clientHeight) || 1;
-      canvas.width = width;
+      camWidth = cam.current.width;
+      canvas.width = camWidth;
       canvas.height = h;
+      canvas.style.width = `${camWidth}px`;
       canvas.style.height = `${h}px`;
       // Resizing the backing store resets every context property, so the
       // colour has to be reapplied here rather than once at setup.
@@ -80,33 +102,61 @@ export default function MoteLayer({ width, quality }: { width: number; quality: 
     const ro = new ResizeObserver(sizeToBox);
     if (parent) ro.observe(parent);
 
-    const stop = subscribeAmbient((t) => {
-      ctx.clearRect(0, 0, width, h);
+    // `t` is held from the last ambient tick so a scroll-driven redraw between
+    // ticks renders the motes at the time they're actually at, rather than
+    // snapping them back to wherever the previous frame left them.
+    let lastT = 0;
+
+    const draw = () => {
+      const c = cam.current;
+      // A pan that outgrew the band (viewport resize) needs the backing store
+      // resized before anything is drawn into it.
+      if (c.width !== camWidth) sizeToBox();
+      // Park the canvas under the visible band. translateX is compositor-only,
+      // where writing `left` would invalidate layout on every scroll event.
+      canvas.style.transform = `translateX(${c.x}px)`;
+
+      ctx.clearRect(0, 0, camWidth, h);
       for (const m of motes) {
-        const s = moteSample(cycleProgress(t, m.dur, m.delay), m.rise, m.mid, m.end);
+        const s = moteSample(cycleProgress(lastT, m.dur, m.delay), m.rise, m.mid, m.end);
         if (s.opacity <= 0.001) continue;
+        const x = m.left * width + s.x;
+        // Scene-space cull: off-camera dust costs nothing but this compare.
+        if (!inCamera(x, m.size, c)) continue;
         ctx.globalAlpha = m.op * s.opacity;
         ctx.beginPath();
-        ctx.arc(m.left * width + s.x, m.top * h + s.y, m.size / 2, 0, Math.PI * 2);
+        // Scene coords -> band coords. Every other number here is unchanged,
+        // which is what makes the output pixel-identical to the old layer.
+        ctx.arc(x - c.x, m.top * h + s.y, m.size / 2, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+    };
+    drawRef.current = draw;
+
+    const stop = subscribeAmbient((t) => {
+      lastT = t;
+      draw();
     });
 
-    return () => { stop(); ro.disconnect(); };
-  }, [width, quality]);
+    return () => {
+      stop();
+      ro.disconnect();
+      drawRef.current = () => {};
+    };
+  }, [width, quality, cam]);
 
   return (
     <canvas
       ref={canvasRef}
       className="pointer-events-none absolute left-0 top-0"
       style={{
-        width,
         // The day/night brightening still rides the same var + transition the
         // old container used, so it costs nothing per frame.
         opacity: "var(--dn-mote-op, 0.8)",
         transition: "opacity 3.5s ease-in-out",
         zIndex: 11, // above the window beams (10) — dust catches the light
+        willChange: "transform",
       }}
     />
   );

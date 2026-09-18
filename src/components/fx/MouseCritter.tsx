@@ -125,6 +125,13 @@ export default function MouseCritter({ width, active, variant = "brown" }: { wid
     const idleImg = getSheet(urls.idle);
     const transImg = getSheet(urls.transition);
 
+    // Where the sprite was last blitted, so the next tick can clear just that
+    // box instead of the whole scene-wide canvas. One full clear here covers
+    // the effect re-running (variant/width change) with a stale sprite left on
+    // the canvas from the previous run.
+    let lastDrawn: { x: number; y: number; w: number; h: number } | null = null;
+    ctx.clearRect(0, 0, width, CANVAS_H);
+
     let phase: Phase = "resting";
     let restX = 0, restY = 0, restUntil = 0;
     let facingRight = true; // held through a rest, only changes when a new relocation starts
@@ -182,7 +189,17 @@ export default function MouseCritter({ width, active, variant = "brown" }: { wid
       // (a 16px sprite measured 17px tall), which reads as a blurry mouse
       // against an otherwise crisp scene.
       const px = Math.round(x), py = Math.round(y);
-      ctx.clearRect(0, 0, width, CANVAS_H);
+      // Damage-rect clear, not a full-canvas one. This canvas spans the whole
+      // scene floor (~2100 x 287 = 600k px) but never holds more than a single
+      // 16px sprite, and it redraws on every ambient tick — clearing all of it
+      // 30 times a second cost ~18 MEGAPIXELS/s per mouse, and the workshop
+      // mounts two of them. Clearing only where the sprite was last drawn is
+      // the same picture for ~1/1000th of the fill.
+      const prev = lastDrawn;
+      if (prev) ctx.clearRect(prev.x, prev.y, prev.w, prev.h);
+      // +1px margin: the pose is a float and the flipped path translates before
+      // drawing, so a blit can just touch the neighbouring row/column.
+      lastDrawn = { x: px - 1, y: py - 1, w: SIZE + 2, h: SIZE + 2 };
       ctx.save();
       if (facingRight) {
         ctx.drawImage(img2, cell * SIZE, 0, SIZE, SIZE, px, py, SIZE, SIZE);
