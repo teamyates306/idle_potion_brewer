@@ -787,28 +787,12 @@ const MachineColumn = React.memo(function MachineColumn({
   const [clank, setClank] = useState(0);
   const clankTimerRef = useRef(0);
   useEffect(() => () => window.clearTimeout(clankTimerRef.current), []);
-  // Tier-up flash (this cauldron beat its best-ever tier).
-  const [tierFlash, setTierFlash] = useState<{ id: number; label: string } | null>(null);
-  useEffect(() => {
-    let timer = 0;
-    const unsub = subscribeGameEvent((evt) => {
-      if (evt.channel !== "tier-up" || evt.machineId !== machine.id) return;
-      // evt.text is the potion TIER name this cauldron just brewed for the
-      // first time — a property of the POTION, not the machine (that's the
-      // separate, existing "machine level" stat from XP). Spell that out so
-      // it doesn't read as the cauldron itself levelling up.
-      setTierFlash({ id: evt.id, label: `New best potion: ${evt.text}` });
-      window.clearTimeout(timer);
-      // 1550, not 1400: the last steam puff starts at +420 ms and runs 1100 ms,
-      // so a 1400 ms teardown clipped its tail off mid-rise.
-      timer = window.setTimeout(() => setTierFlash(null), 1550);
-      if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
-        const rect = cauldronRef.current.getBoundingClientRect();
-        spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.1, text: `New best: ${evt.text}!`, color: "#fde68a", size: "lg", arcX: 0, glow: true, duration: 2600 });
-      }
-    });
-    return () => { unsub(); window.clearTimeout(timer); };
-  }, [machine.id]);
+  // NOTE: cauldron tier-up (best_tier) is still recorded in gameStore and
+  // still pushes a "tier-up" game event — it's useful data (see the gold
+  // progress-bar colour below, `barColor`) — but it no longer gets its own
+  // popup here. A brand-new potion already gets the big discovery reveal;
+  // a repeat brew quietly beating this cauldron's own past best didn't need
+  // a second, separate celebration on top of that.
   const [sparks, setSparks]    = useState<Spark[]>([]);
   const sparkIdRef = useRef(0);
   const [bumping, setBumping]  = useState(false);
@@ -1096,16 +1080,6 @@ const MachineColumn = React.memo(function MachineColumn({
         {/* Steam — replaces the bubble loops; tinted from the liquid */}
         <SteamPuffs active={brewActive && !loopsPaused} color={liquidColor} x={MOUTH_X} y={MOUTH_Y} />
 
-        {/* Tier-up: white flash over the liquid + a column of steam */}
-        {tierFlash && (
-          <div key={tierFlash.id} className="pointer-events-none absolute inset-0">
-            <div className="tier-flash absolute rounded-full" style={{ left: MOUTH_X - 40, top: MOUTH_Y - 12, width: 80, height: 24, background: "radial-gradient(ellipse, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 70%)" }} />
-            <SteamBurst count={7} color="rgba(255,255,255,0.8)" spread={24} />
-            <div className="tier-callout absolute whitespace-nowrap text-center text-[9px] font-bold text-amber-100" style={{ left: MOUTH_X, top: MOUTH_Y - 34, transform: "translateX(-50%)", textShadow: "0 0 8px #fde68a, 0 1px 3px rgba(0,0,0,0.9)" }}>
-              {tierFlash.label}
-            </div>
-          </div>
-        )}
         {/* Overheat release */}
         {clank > 0 && (
           <div key={clank} className="pointer-events-none absolute inset-0">

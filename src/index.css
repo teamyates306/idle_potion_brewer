@@ -339,9 +339,7 @@ body {
 @keyframes reveal-skip-hint { from { opacity: 0 } to { opacity: 0.55 } }
 .reveal-skip-hint        { animation: reveal-skip-hint 500ms ease-out 900ms both; }
 
-/* Cauldron tier-up flash + steam columns */
-@keyframes tier-flash    { 0% { opacity: 0 } 15% { opacity: 0.95 } 100% { opacity: 0 } }
-.tier-flash              { animation: tier-flash 900ms ease-out both; }
+/* Cauldron steam columns (overheat release — see SteamBurst) */
 @keyframes steam-rise    { 0% { transform: translate(0,0) scale(0.5); opacity: 0 } 15% { opacity: 0.7 } 100% { transform: translate(var(--sx,0px), var(--sy,-60px)) scale(1.6); opacity: 0 } }
 .steam-rise              { animation: steam-rise 1100ms ease-out both; }
 
@@ -356,10 +354,6 @@ body {
 .coin-milestone-glow     { animation: coin-milestone-glow 1400ms ease-out both; }
 @keyframes sign-glint    { 0% { transform: translateX(-140%) skewX(-20deg); opacity: 0 } 15% { opacity: 1 } 100% { transform: translateX(340%) skewX(-20deg); opacity: 0 } }
 .sign-glint              { animation: sign-glint 900ms ease-in-out both; }
-
-/* Tier-up callout label above the cauldron */
-@keyframes tier-callout-in { 0% { opacity: 0; transform: translate(-50%, 6px) } 20% { opacity: 1; transform: translate(-50%, 0) } 80% { opacity: 1 } 100% { opacity: 0 } }
-.tier-callout              { animation: tier-callout-in 1400ms ease-out both; }
 
 /* Notice board: quest stamped DONE, paper lifts off */
 @keyframes stamp-in      { 0% { transform: translate(-50%,-50%) rotate(-14deg) scale(2.4); opacity: 0 } 60% { transform: translate(-50%,-50%) rotate(-14deg) scale(0.92); opacity: 1 } 100% { transform: translate(-50%,-50%) rotate(-14deg) scale(1); opacity: 1 } }
