@@ -18,6 +18,27 @@ body {
   overflow: hidden;
 }
 
+/* Rapid tapping (cauldron click-to-speed-up) must never read as a
+   double-tap-zoom or a long-press/double-tap text selection. iOS Safari
+   ignores viewport user-scalable=no, so: `manipulation` disables double-tap
+   zoom, `user-select: none` stops select-all/copy handles, and
+   `-webkit-touch-callout` kills the long-press callout. Form fields stay
+   selectable so typing/paste still works. */
+html,
+body,
+#root {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* iOS Safari force-zooms in on any text input/select with font-size < 16px,
    ignoring the viewport's user-scalable=no — and if you navigate away (e.g.
    tapping "Back to the workshop") before it un-zooms, that pan/zoom carries
