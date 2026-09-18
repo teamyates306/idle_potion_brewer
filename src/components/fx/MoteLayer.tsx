@@ -54,19 +54,31 @@ export default function MoteLayer({ width, quality }: { width: number; quality: 
     const motes = MOTE_POOL.slice(0, count);
 
     // The scene's height isn't known up front (the content box stretches to at
-    // least the viewport), so track the real box rather than guessing.
-    let h = canvas.clientHeight || 1;
+    // least the viewport), so measure the PARENT and size ourselves to it.
+    //
+    // Both CSS dimensions are written explicitly and deliberately. A <canvas>
+    // has an intrinsic aspect ratio from its width/height attributes, and for
+    // an absolutely positioned replaced element with `height: auto` that ratio
+    // wins over `bottom: 0` — so letting inset-0 stretch it silently produced a
+    // canvas TALLER than the scene, which inflated the scroll content's height
+    // and left a band of dead space under the workshop (invisible on a desktop
+    // viewport that happened to be about as tall as the canvas, obvious on a
+    // phone). Pinning the height also stops the ResizeObserver feeding back into
+    // its own layout.
+    const parent = canvas.parentElement;
+    let h = 1;
     const sizeToBox = () => {
-      h = canvas.clientHeight || 1;
+      h = (parent?.clientHeight || canvas.clientHeight) || 1;
       canvas.width = width;
       canvas.height = h;
+      canvas.style.height = `${h}px`;
       // Resizing the backing store resets every context property, so the
       // colour has to be reapplied here rather than once at setup.
       ctx.fillStyle = "rgb(255, 230, 160)";
     };
     sizeToBox();
     const ro = new ResizeObserver(sizeToBox);
-    ro.observe(canvas);
+    if (parent) ro.observe(parent);
 
     const stop = subscribeAmbient((t) => {
       ctx.clearRect(0, 0, width, h);
@@ -87,7 +99,7 @@ export default function MoteLayer({ width, quality }: { width: number; quality: 
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none absolute inset-0"
+      className="pointer-events-none absolute left-0 top-0"
       style={{
         width,
         // The day/night brightening still rides the same var + transition the
