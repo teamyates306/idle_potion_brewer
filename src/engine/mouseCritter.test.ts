@@ -63,7 +63,7 @@ describe("buildSkitterPath", () => {
     for (let i = 0; i < 20; i++) {
       const legs = buildSkitterPath(0, 200, 200, 145, 255, Math.random);
       for (const leg of legs) {
-        expect(leg.duration).toBeLessThanOrEqual(0.3);
+        expect(leg.duration).toBeLessThanOrEqual(0.6);
       }
     }
   });

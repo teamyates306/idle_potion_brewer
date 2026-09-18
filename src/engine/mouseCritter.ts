@@ -74,7 +74,7 @@ export function buildSkitterPath(
     legs.push({
       fromX: x, toX: nextX,
       fromY: y, toY: nextY,
-      duration: 0.12 + rng() * 0.16,    // 120–280ms — a dart, not a stroll
+      duration: 0.28 + rng() * 0.32,    // 280–600ms — a scurry, not a stroll (was 120–280ms, too fast to read)
       pauseAfter: i === legCount - 1 ? 0 : 0.18 + rng() * 0.42, // 180–600ms hesitation
     });
     x = nextX;
