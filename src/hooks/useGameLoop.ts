@@ -13,12 +13,10 @@ import {
   displayBrewProgress,
   visualWalkState,
   isFastTrip,
-  FAST_BREW_SECS,
   type WorkerPhase,
 } from "../engine/tripChoreography";
-// Re-exported so consumers keep importing the loop's public surface from one
-// place (Workshop reads FAST_BREW_SECS to label a fast brew's true rate).
-export { FAST_BREW_SECS, SHUTTLE_TRIP_SECS, SHUTTLE_PERIOD_SECS } from "../engine/tripChoreography";
+// Re-exported so consumers keep importing the loop's public surface from one place.
+export { SHUTTLE_TRIP_SECS, SHUTTLE_PERIOD_SECS } from "../engine/tripChoreography";
 import type { BrewingMachine, Worker } from "../types";
 
 // =============================================================================
@@ -74,9 +72,6 @@ export interface WorkerLoopState {
 export interface MachineLoopState {
   brewProgress: number;
   brewActive: boolean;
-  /** Final brew time of the current recipe (0 when not brewing). Below
-   *  FAST_BREW_SECS the bar is published full and steady — see there. */
-  brewSecs: number;
 }
 
 // ---- Derived-time caches ----------------------------------------------------
@@ -150,7 +145,7 @@ export function machineBrewSecondsFor(machine: BrewingMachine, fx?: MasteryEffec
 // ---- Published progress store ----------------------------------------------
 
 const IDLE_WORKER: WorkerLoopState = Object.freeze({ workerProgress: 0, workerPhase: "idle" as const });
-const IDLE_MACHINE: MachineLoopState = Object.freeze({ brewProgress: 0, brewActive: false, brewSecs: 0 });
+const IDLE_MACHINE: MachineLoopState = Object.freeze({ brewProgress: 0, brewActive: false });
 
 const workerStates: WorkerLoopState[] = [];
 const machineStates: MachineLoopState[] = [];
@@ -173,12 +168,11 @@ function publishWorker(idx: number, progress: number, phase: WorkerLoopState["wo
   workerStates[idx] = phase === "idle" ? IDLE_WORKER : { workerProgress: progress, workerPhase: phase };
 }
 
-function publishMachine(idx: number, rawProgress: number, active: boolean, brewSecs: number): void {
-  const progress = displayBrewProgress(rawProgress, brewSecs, active);
-  const secs = active ? brewSecs : 0;
+function publishMachine(idx: number, rawProgress: number, active: boolean): void {
+  const progress = displayBrewProgress(rawProgress, active);
   const prev = machineStates[idx];
-  if (prev && prev.brewActive === active && prev.brewProgress === progress && prev.brewSecs === secs) return;
-  machineStates[idx] = !active ? IDLE_MACHINE : { brewProgress: progress, brewActive: active, brewSecs: secs };
+  if (prev && prev.brewActive === active && prev.brewProgress === progress) return;
+  machineStates[idx] = !active ? IDLE_MACHINE : { brewProgress: progress, brewActive: active };
 }
 
 function workerPhaseAt(w: Worker, idx: number, now: number, fx?: MasteryEffects): WorkerLoopState {
@@ -202,13 +196,12 @@ function primeSnapshot(): void {
   g.machines.forEach((m, i) => {
     const active = m.running && !(m.brew_stalled ?? false);
     let progress = 0;
-    let secs = 0;
     if (active && m.brew_started_at) {
-      secs = machineBrewSecondsFor(m, fx);
+      const secs = machineBrewSecondsFor(m, fx);
       const elapsed = (now - m.brew_started_at) / 1000;
       if (secs > 0 && elapsed < secs) progress = elapsed / secs;
     }
-    publishMachine(i, progress, active, secs);
+    publishMachine(i, progress, active);
   });
   machineStates.length = g.machines.length;
 }
@@ -373,10 +366,8 @@ function startDriver(): () => void {
       if (!machine) break;
       const brewActive = machine.running && !(machine.brew_stalled ?? false);
       let brewProgress = 0;
-      let brewSecs = 0;
       if (brewActive && machine.brew_started_at) {
         const total = machineBrewSecondsFor(machine, fx);
-        brewSecs = total;
         // Uncommitted auto-click reduction counts towards the displayed
         // progress so the bar never waits for the next commit.
         const pendingMs = acc.reductionMsByMachineId[machine.id] ?? 0;
@@ -390,7 +381,7 @@ function startDriver(): () => void {
           if (brewProgress > 0) anyBrewTicking = true;
         }
       }
-      publishMachine(i, brewProgress, brewActive, brewSecs);
+      publishMachine(i, brewProgress, brewActive);
     }
     machineStates.length = machineCount;
 

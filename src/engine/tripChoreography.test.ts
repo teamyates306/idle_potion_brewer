@@ -5,7 +5,6 @@ import {
   shuttleElapsed,
   visualWalkState,
   walkState,
-  FAST_BREW_SECS,
   PROGRESS_QUANTUM,
   SHUTTLE_PERIOD_SECS,
   SHUTTLE_TRIP_SECS,
@@ -117,29 +116,17 @@ describe("visualWalkState", () => {
 
 describe("displayBrewProgress", () => {
   it("is 0 whenever the cauldron isn't brewing", () => {
-    expect(displayBrewProgress(0.7, 30, false)).toBe(0);
-    expect(displayBrewProgress(0, 0, false)).toBe(0);
+    expect(displayBrewProgress(0.7, false)).toBe(0);
+    expect(displayBrewProgress(0, false)).toBe(0);
   });
 
-  it("pins a sub-threshold brew's bar full and steady instead of sawtoothing", () => {
-    const secs = 0.42;
-    expect(secs).toBeLessThan(FAST_BREW_SECS);
-    for (const raw of [0, 0.1, 0.5, 0.97]) {
-      expect(displayBrewProgress(raw, secs, true)).toBe(1);
-    }
-  });
-
-  it("tracks real progress for a normal brew, quantised below a visible pixel", () => {
-    expect(displayBrewProgress(0, 30, true)).toBe(0);
-    expect(displayBrewProgress(1, 30, true)).toBe(1);
-    expect(displayBrewProgress(0.5, 30, true)).toBeCloseTo(0.5, 6);
+  it("tracks real progress, quantised below a visible pixel", () => {
+    expect(displayBrewProgress(0, true)).toBe(0);
+    expect(displayBrewProgress(1, true)).toBe(1);
+    expect(displayBrewProgress(0.5, true)).toBeCloseTo(0.5, 6);
     // Quantisation is fine enough to be invisible but coarse enough to skip
     // re-renders: two samples a hair apart collapse to the same value.
-    expect(displayBrewProgress(0.5, 30, true)).toBe(displayBrewProgress(0.5 + PROGRESS_QUANTUM / 4, 30, true));
+    expect(displayBrewProgress(0.5, true)).toBe(displayBrewProgress(0.5 + PROGRESS_QUANTUM / 4, true));
     expect(PROGRESS_QUANTUM).toBeLessThan(1 / 1000);
-  });
-
-  it("treats an unknown brew length as a normal brew rather than pinning it", () => {
-    expect(displayBrewProgress(0.25, 0, true)).toBeCloseTo(0.25, 6);
   });
 });

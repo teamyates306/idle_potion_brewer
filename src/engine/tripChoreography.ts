@@ -29,8 +29,6 @@ export const WALK_SECS = 3;
 export const SHUTTLE_TRIP_SECS = 6;
 /** The cycle length those shortened trips are depicted at. */
 export const SHUTTLE_PERIOD_SECS = 6;
-/** Brews shorter than this show a full, steady bar plus their true rate. */
-export const FAST_BREW_SECS = 2;
 /** Brew progress is quantised to this before publishing — 1/2048 of a bar is
  *  far below a device pixel, so a long brew doesn't re-render its column every
  *  tick for an invisible change. */
@@ -78,12 +76,10 @@ export function visualWalkState(nowMs: number, elapsedSecs: number, totalSecs: n
 }
 
 /**
- * The brew-bar value to publish. A sub-FAST_BREW_SECS brew is pinned full and
- * steady (the column labels its true rate instead) rather than sawtoothing
- * faster than the render cadence can sample it.
+ * The brew-bar value to publish: the real progress, quantised below a visible
+ * pixel. Brews of any length are shown as they are — never pinned full.
  */
-export function displayBrewProgress(rawProgress: number, brewSecs: number, active: boolean): number {
+export function displayBrewProgress(rawProgress: number, active: boolean): number {
   if (!active) return 0;
-  if (brewSecs > 0 && brewSecs < FAST_BREW_SECS) return 1;
   return Math.round(rawProgress / PROGRESS_QUANTUM) * PROGRESS_QUANTUM;
 }
