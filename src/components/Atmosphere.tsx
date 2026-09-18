@@ -12,22 +12,6 @@ export function lampsLit(phase: number): boolean {
   return phase >= 0.72 || phase < 0.30;
 }
 
-// Static mote descriptors — generated once at module load.
-// All animation is driven by CSS @keyframes on the GPU compositor thread.
-// No JS rAF loop, no React state changes — zero render pressure.
-const MOTE_COUNT = 28;
-const MOTES = Array.from({ length: MOTE_COUNT }, () => ({
-  left:  Math.random() * 100,
-  top:   Math.random() * 100,
-  size:  1.5 + Math.random() * 2.5,
-  rise: -(28 + Math.random() * 52),
-  mid:   (Math.random() - 0.5) * 34,
-  end:   (Math.random() - 0.5) * 22,
-  op:    0.18 + Math.random() * 0.28,
-  dur:   7  + Math.random() * 9,
-  delay: -(Math.random() * 16),
-}));
-
 // Updates all day/night CSS vars on <html> every 3 s (sunset spans ~24 s of
 // game-time, so 8 s intervals caused jumpy hue shifts; 3 s keeps it smooth).
 // The warm (amber, alpha from sunrise/sunset strength) and cool (night-blue,
@@ -132,53 +116,9 @@ export function applyDayNightVars() {
   setVarNum(root, "--dn-lamp-glow-op", lampGlow, 0.012, op);
 }
 
-// Motes: static descriptors above, positions written to inline styles at
-// 30 Hz by the shared ambient clock (ambientClock.moteSample) instead of 28
-// independent vsync CSS animations.
-function ClockMotes({ motes }: { motes: typeof MOTES }) {
-  const refs = useRef<(HTMLDivElement | null)[]>([]);
-  useEffect(() => {
-    return subscribeAmbient((t) => {
-      for (let i = 0; i < motes.length; i++) {
-        const el = refs.current[i];
-        if (!el) continue;
-        const m = motes[i];
-        const s = moteSample(cycleProgress(t, m.dur, m.delay), m.rise, m.mid, m.end);
-        el.style.transform = `translate3d(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px, 0)`;
-        el.style.opacity = s.opacity.toFixed(3);
-      }
-    });
-  }, [motes]);
-  return (
-    <>
-      {motes.map((m, i) => (
-        <div
-          key={i}
-          ref={(el) => { refs.current[i] = el; }}
-          className="absolute rounded-full"
-          style={{
-            left:       `${m.left}%`,
-            top:        `${m.top}%`,
-            width:      `${m.size}px`,
-            height:     `${m.size}px`,
-            background: `rgba(255, 230, 160, ${m.op})`,
-            opacity: 0,
-            willChange: "transform, opacity",
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
 export default function Atmosphere() {
-  const motes    = useGameStore((s) => s.graphics.motes);
   const vignette = useGameStore((s) => s.graphics.vignette);
   const dayNight = useGameStore((s) => s.graphics.dayNight);
-  const quality  = useGameStore((s) => s.graphics.quality);
-  // Fewer simultaneous composited layers at quality 2 ("High") than 3 ("Very
-  // High") — motes is already off entirely below quality 2.
-  const activeMotes = quality >= 3 ? MOTES : MOTES.slice(0, Math.ceil(MOTE_COUNT / 2));
 
   useEffect(() => {
     applyDayNightVars();
@@ -213,15 +153,10 @@ export default function Atmosphere() {
         />
       )}
 
-      {/* Dust motes — container opacity brightens at dawn/dusk */}
-      {motes && (
-        <div
-          className="pointer-events-none fixed inset-0 z-[3] overflow-hidden"
-          style={{ opacity: "var(--dn-mote-op, 0.8)", transition: "opacity 3.5s ease-in-out" }}
-        >
-          <ClockMotes motes={activeMotes} />
-        </div>
-      )}
+      {/* Dust motes are NOT here: they live inside the workshop's scroll
+          content (fx/MoteLayer), so they stay put in the room when the scene
+          is panned rather than travelling with the viewport. This component
+          still owns --dn-mote-op, which that layer's opacity rides. */}
     </>
   );
 }

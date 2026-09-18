@@ -1,20 +1,44 @@
 import { useState } from "react";
 import Modal from "./ui/Modal";
-import { useGameStore, playerClickPower, playerClickPowerCost, GLOBAL_UNLOCKS } from "../store/gameStore";
+import {
+  useGameStore,
+  playerClickPower,
+  playerClickPowerCost,
+  playerCritChance,
+  playerCritChanceCost,
+  playerCritMult,
+  playerCritMultCost,
+  GLOBAL_UNLOCKS,
+} from "../store/gameStore";
 import { fmt } from "../util/format";
 import { ICONS, IconCoin, IconCheck, IconSparkle } from "./ui/icons";
 
 export default function UpgradesView({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const coins = useGameStore((s) => s.coins);
   const level = useGameStore((s) => s.player_click_power_level);
+  const critChanceLevel = useGameStore((s) => s.player_crit_chance_level);
+  const critMultLevel = useGameStore((s) => s.player_crit_mult_level);
   const unlocked_globals = useGameStore((s) => s.unlocked_globals);
   const buyPlayerClickPower = useGameStore((s) => s.buyPlayerClickPower);
+  const buyPlayerCritChance = useGameStore((s) => s.buyPlayerCritChance);
+  const buyPlayerCritMult = useGameStore((s) => s.buyPlayerCritMult);
   const buyGlobalUnlock = useGameStore((s) => s.buyGlobalUnlock);
 
   const currentPower = playerClickPower(level);
   const nextPower = playerClickPower(level + 1);
   const cost = playerClickPowerCost(level);
   const affordable = coins >= cost;
+
+  const currentCritChance = playerCritChance(critChanceLevel);
+  const nextCritChance = playerCritChance(critChanceLevel + 1);
+  const critChanceMaxed = currentCritChance >= 1;
+  const critChanceCost = playerCritChanceCost(critChanceLevel);
+  const critChanceAffordable = coins >= critChanceCost;
+
+  const currentCritMult = playerCritMult(critMultLevel);
+  const nextCritMult = playerCritMult(critMultLevel + 1);
+  const critMultCost = playerCritMultCost(critMultLevel);
+  const critMultAffordable = coins >= critMultCost;
 
   const body = (
     <>
@@ -41,7 +65,56 @@ export default function UpgradesView({ onClose, embedded = false }: { onClose: (
         </div>
       </section>
 
-      {/* ── Section 2: Permanent Unlocks ── */}
+      {/* ── Section 2: Critical Clicks ── */}
+      <section className="mb-6">
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Critical Clicks
+        </h3>
+        <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
+          <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold text-slate-200">Crit Chance</p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Chance each click lands a critical hit for bonus click power.
+                </p>
+                <p className="mt-2 text-xs text-slate-300">
+                  Current: <span className="font-bold text-amber-500">{Math.round(currentCritChance * 100)}%</span>
+                  {!critChanceMaxed && (
+                    <> → Next: <span className="font-bold text-green-700">{Math.round(nextCritChance * 100)}%</span></>
+                  )}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-400">Level {critChanceLevel}</p>
+              </div>
+            </div>
+            {critChanceMaxed ? (
+              <div className="flex items-center gap-2 rounded-lg bg-green-900/30 px-3 py-2">
+                <span className="flex items-center gap-1 text-sm text-green-400"><IconCheck /> Maxed (100%)</span>
+              </div>
+            ) : (
+              <ClickPowerBtn cost={critChanceCost} affordable={critChanceAffordable} onBuy={buyPlayerCritChance} />
+            )}
+          </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-4">
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold text-slate-200">Crit Power</p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  How much extra click power a critical hit deals.
+                </p>
+                <p className="mt-2 text-xs text-slate-300">
+                  Current: <span className="font-bold text-amber-500">{currentCritMult.toFixed(2)}x</span>
+                  {" "}→ Next: <span className="font-bold text-green-700">{nextCritMult.toFixed(2)}x</span>
+                </p>
+                <p className="mt-0.5 text-xs text-slate-400">Level {critMultLevel}</p>
+              </div>
+            </div>
+            <ClickPowerBtn cost={critMultCost} affordable={critMultAffordable} onBuy={buyPlayerCritMult} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Section 3: Permanent Unlocks ── */}
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">
           Permanent Unlocks

@@ -339,6 +339,11 @@ body {
 @keyframes reveal-skip-hint { from { opacity: 0 } to { opacity: 0.55 } }
 .reveal-skip-hint        { animation: reveal-skip-hint 500ms ease-out 900ms both; }
 
+/* Mouse critter: a few dust motes kick up where a player taps it, then it's
+   gone (see fx/MouseCritter.tsx's click handler) */
+@keyframes mouse-dust     { 0% { transform: translate(0,0) scale(0.5); opacity: 0.85 } 100% { transform: translate(var(--dx,0px), var(--dy,-8px)) scale(1); opacity: 0 } }
+.mouse-dust               { animation: mouse-dust 480ms ease-out both; }
+
 /* Cauldron steam columns (overheat release — see SteamBurst) */
 @keyframes steam-rise    { 0% { transform: translate(0,0) scale(0.5); opacity: 0 } 15% { opacity: 0.7 } 100% { transform: translate(var(--sx,0px), var(--sy,-60px)) scale(1.6); opacity: 0 } }
 .steam-rise              { animation: steam-rise 1100ms ease-out both; }

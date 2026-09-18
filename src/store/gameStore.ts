@@ -138,6 +138,26 @@ export function playerClickPowerCost(level: number): number {
   return Math.floor(500 * Math.pow(1.8, level));
 }
 
+// A crit multiplies a single click's power by CRIT_MULT_BASE (2x) at level 0,
+// growing with playerCritMult's own upgrade track; chance starts at 5% and is
+// hard-capped at 100% regardless of level.
+const CRIT_CHANCE_BASE = 0.05;
+const CRIT_CHANCE_STEP = 0.05;
+const CRIT_MULT_BASE = 2;
+const CRIT_MULT_STEP = 0.25;
+export function playerCritChance(level: number): number {
+  return Math.min(1, CRIT_CHANCE_BASE + CRIT_CHANCE_STEP * level);
+}
+export function playerCritChanceCost(level: number): number {
+  return Math.floor(600 * Math.pow(1.9, level));
+}
+export function playerCritMult(level: number): number {
+  return CRIT_MULT_BASE + CRIT_MULT_STEP * level;
+}
+export function playerCritMultCost(level: number): number {
+  return Math.floor(800 * Math.pow(1.9, level));
+}
+
 export const GLOBAL_UNLOCKS = [
   {
     id: "alchemist_spectacles",
@@ -610,7 +630,7 @@ export interface GameState {
   sellAll: () => void;
 
   // active-click
-  clickBrew: (machineId: number) => void;
+  clickBrew: (machineId: number) => { power: number; crit: boolean } | null;
 
   // quests
   refreshQuests: () => void;
@@ -645,8 +665,12 @@ export interface GameState {
   dismissWelcome: () => void;
   // global player upgrades
   player_click_power_level: number;
+  player_crit_chance_level: number;
+  player_crit_mult_level: number;
   unlocked_globals: string[];
   buyPlayerClickPower: () => void;
+  buyPlayerCritChance: () => void;
+  buyPlayerCritMult: () => void;
   buyGlobalUnlock: (id: string) => void;
 
   hardReset: () => void;
@@ -758,6 +782,8 @@ export const useGameStore = create<GameState>()(
       gaxMarket: emptyMarket(now()),
       gaxOfflineReport: null,
       player_click_power_level: 0,
+      player_crit_chance_level: 0,
+      player_crit_mult_level: 0,
       unlocked_globals: [],
       graphics: { ...DEFAULT_GRAPHICS },
       potionMastery: {},
@@ -1770,18 +1796,20 @@ export const useGameStore = create<GameState>()(
       clickBrew: (machineId) => {
         const s = get();
         const mi = getMachineIdx(s.machines, machineId);
-        if (mi < 0) return;
+        if (mi < 0) return null;
         const machine = s.machines[mi];
-        if (!machine.running || !machine.brew_started_at || machine.brew_stalled) return;
+        if (!machine.running || !machine.brew_started_at || machine.brew_stalled) return null;
         const cfg = useConfigStore.getState();
         const slotIds = machine.recipe_slots
           .slice(0, machine.unlocked_slots)
           .filter((x): x is string => !!x);
-        if (slotIds.length === 0) return;
+        if (slotIds.length === 0) return null;
         const ingredients = slotIds.map((id) => cfg.ingredients[id]).filter((x): x is Ingredient => !!x);
-        if (ingredients.length === 0) return;
+        if (ingredients.length === 0) return null;
         const brewSecs = brewTime(machine, cfg.formulas, ingredients);
-        const boostMs = playerClickPower(s.player_click_power_level) * 1000;
+        const crit = Math.random() < playerCritChance(s.player_crit_chance_level);
+        const power = playerClickPower(s.player_click_power_level) * (crit ? playerCritMult(s.player_crit_mult_level) : 1);
+        const boostMs = power * 1000;
         const elapsedMs = now() - machine.brew_started_at;
         const newElapsedMs = Math.min(elapsedMs + boostMs, brewSecs * 1000 * 0.999);
         set({
@@ -1789,6 +1817,7 @@ export const useGameStore = create<GameState>()(
             i === mi ? { ...m, brew_started_at: now() - newElapsedMs } : m
           ),
         });
+        return { power, crit };
       },
 
       refreshQuests: () => {
@@ -2669,6 +2698,8 @@ export const useGameStore = create<GameState>()(
           gaxMarket: emptyMarket(now()),
           gaxOfflineReport: null,
           player_click_power_level: 0,
+          player_crit_chance_level: 0,
+          player_crit_mult_level: 0,
           unlocked_globals: [],
           potionMastery: {},
           masteryTokens: 0,
@@ -2681,6 +2712,21 @@ export const useGameStore = create<GameState>()(
           const cost = playerClickPowerCost(s.player_click_power_level);
           if (s.coins < cost) return s;
           return { coins: s.coins - cost, player_click_power_level: s.player_click_power_level + 1 };
+        }),
+
+      buyPlayerCritChance: () =>
+        set((s) => {
+          if (playerCritChance(s.player_crit_chance_level) >= 1) return s; // already at the 100% cap
+          const cost = playerCritChanceCost(s.player_crit_chance_level);
+          if (s.coins < cost) return s;
+          return { coins: s.coins - cost, player_crit_chance_level: s.player_crit_chance_level + 1 };
+        }),
+
+      buyPlayerCritMult: () =>
+        set((s) => {
+          const cost = playerCritMultCost(s.player_crit_mult_level);
+          if (s.coins < cost) return s;
+          return { coins: s.coins - cost, player_crit_mult_level: s.player_crit_mult_level + 1 };
         }),
 
       buyGlobalUnlock: (id: string) =>
@@ -2806,6 +2852,8 @@ export const useGameStore = create<GameState>()(
         gaxUnlocked: s.gaxUnlocked,
         gaxMarket: s.gaxMarket,
         player_click_power_level: s.player_click_power_level,
+        player_crit_chance_level: s.player_crit_chance_level,
+        player_crit_mult_level: s.player_crit_mult_level,
         unlocked_globals: s.unlocked_globals,
         lastSeen: s.lastSeen,
         potionMastery: s.potionMastery,
@@ -2930,6 +2978,8 @@ export const useGameStore = create<GameState>()(
           best_potion_value: p.best_potion_value ?? 0,
           attr_brews: p.attr_brews ?? {},
           player_click_power_level: p.player_click_power_level ?? 0,
+          player_crit_chance_level: p.player_crit_chance_level ?? 0,
+          player_crit_mult_level: p.player_crit_mult_level ?? 0,
           unlocked_globals: p.unlocked_globals ?? [],
           // Region migration: existing saves grandfather in every region that
           // already contains one of their unlocked locations.

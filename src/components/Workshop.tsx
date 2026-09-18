@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
-import { useGameStore, playerClickPower } from "../store/gameStore";
+import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState, FAST_BREW_SECS } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
@@ -25,6 +25,9 @@ type RevealItem =
   | { id: number; kind: "levelup"; level: number; subject: LevelUpSubject };
 import SteamPuffs from "./fx/SteamPuffs";
 import FireOverlay from "./fx/FireOverlay";
+import ExhaustSmoke, { EXHAUST_AT_UPGRADES } from "./fx/ExhaustSmoke";
+import MouseCritter from "./fx/MouseCritter";
+import MoteLayer from "./fx/MoteLayer";
 import WeatherLayer from "./fx/WeatherLayer";
 import { lampsLit } from "./Atmosphere";
 import { getDayPhase } from "../hooks/useDayNight";
@@ -777,6 +780,7 @@ const MachineColumn = React.memo(function MachineColumn({
   const clickBrew = useGameStore((s) => s.clickBrew);
   const player_click_power_level = useGameStore((s) => s.player_click_power_level);
   const quality = useGameStore((s) => s.graphics.quality);
+  const cleanView = useSettingsStore((s) => s.cleanViewEnabled);
   const maxSparks = SPARK_CAP_BY_QUALITY[quality];
   const cfg = useConfigStore();
 
@@ -959,7 +963,7 @@ const MachineColumn = React.memo(function MachineColumn({
     const slotIds = machine.recipe_slots.slice(0, machine.unlocked_slots).filter((id): id is string => !!id);
     if (slotIds.length === 0) return;
 
-    clickBrew(machine.id);
+    const clickResult = clickBrew(machine.id);
 
     const newHeat = Math.min(1, heatRef.current + HEAT_PER_CLICK);
     heatRef.current = newHeat;
@@ -993,10 +997,16 @@ const MachineColumn = React.memo(function MachineColumn({
     requestAnimationFrame(() => setBumping(true));
     setTimeout(() => setBumping(false), 320);
 
-    if (cauldronRef.current && useSettingsStore.getState().toastsEnabled) {
+    if (cauldronRef.current && useSettingsStore.getState().toastsEnabled && clickResult) {
       const rect = cauldronRef.current.getBoundingClientRect();
-      const power = playerClickPower(player_click_power_level);
-      spawnFAT({ x: rect.left + rect.width / 2, y: rect.top + rect.height * 0.25, text: `-${power.toFixed(2)}s`, color: "#ffffff", size: "sm" });
+      const { power, crit } = clickResult;
+      spawnFAT({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height * 0.25,
+        text: `-${power.toFixed(2)}s`,
+        color: crit ? "#fbbf24" : "#ffffff",
+        size: crit ? "md" : "sm",
+      });
     }
   };
 
@@ -1048,15 +1058,19 @@ const MachineColumn = React.memo(function MachineColumn({
         }}
         title={machine.running && !machine.brew_stalled ? "Click to speed up brewing!" : ""}
       >
-        {/* Cog — top-right corner, opens MachineView for this machine */}
-        <button
-          data-tut={machineIdx === 0 ? "brewer" : undefined}
-          onClick={(e) => { e.stopPropagation(); onManage(); }}
-          className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-600/70 bg-slate-900/80 text-slate-400 shadow backdrop-blur-sm transition hover:bg-slate-700 hover:text-slate-100 active:scale-90"
-          title={`Manage ${machine.name}`}
-        >
-          <Settings size={11} />
-        </button>
+        {/* Cog — top-right corner, opens MachineView for this machine. Hidden
+            in Clean View along with the rest of the chrome; the cauldron
+            itself stays clickable, so only the management affordance goes. */}
+        {!cleanView && (
+          <button
+            data-tut={machineIdx === 0 ? "brewer" : undefined}
+            onClick={(e) => { e.stopPropagation(); onManage(); }}
+            className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-600/70 bg-slate-900/80 text-slate-400 shadow backdrop-blur-sm transition hover:bg-slate-700 hover:text-slate-100 active:scale-90"
+            title={`Manage ${machine.name}`}
+          >
+            <Settings size={11} />
+          </button>
+        )}
 
         <div
           style={{
@@ -1069,13 +1083,14 @@ const MachineColumn = React.memo(function MachineColumn({
             ].filter(Boolean).join(" ") || undefined,
           }}
         >
-          <MachineArt size={108} brewing={false} progress={brewProgress} uid={String(machine.id)} hue={hue} unlockedSlots={machine.unlocked_slots} />
+          <MachineArt size={108} brewing={false} progress={brewProgress} uid={String(machine.id)} hue={hue} unlockedSlots={machine.unlocked_slots} multiUpgrades={machine.multi_upgrades} />
         </div>
 
         {/* Burner flame — earned once brew speed has been upgraded at least
             once; sits in front of the cauldron sprite, not affected by the
             transient click-heat filter above (it's its own layer). */}
         <FireOverlay active={machine.speed_upgrades >= 1} seed={machine.id} level={machine.speed_upgrades} size={108} />
+        <ExhaustSmoke active={machine.multi_upgrades >= EXHAUST_AT_UPGRADES} seed={machine.id} size={108} />
 
         {/* Steam — replaces the bubble loops; tinted from the liquid */}
         <SteamPuffs active={brewActive && !loopsPaused} color={liquidColor} x={MOUTH_X} y={MOUTH_Y} />
@@ -1220,6 +1235,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   const workers      = useGameStore((s) => s.workers);
   const machines     = useGameStore((s) => s.machines);
   const potionInv    = useGameStore((s) => s.potionInv);
+  const mouseCritterOn = useGameStore((s) => s.graphics.quality >= 1 && !s.graphics.throttle_animations);
   // Runs the single game loop. Deliberately does NOT re-render Workshop on
   // ticks — sprites/columns subscribe to their own progress entries.
   useGameLoopDriver();
@@ -1806,6 +1822,12 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
             className="pointer-events-none absolute inset-x-0 z-0"
             style={{ top: 140, bottom: 0, background: FLOOR_BG, boxShadow: "inset 0 12px 20px -12px rgba(60,54,46,0.30)" }}
           />
+          {/* The workshop's two mice, one of each coat — always present on the
+              floor, resting and relocating (never despawning). Off at Basic
+              quality or with animations throttled, same gating as the other
+              ambient scene decoration. */}
+          <MouseCritter width={contentWidth} active={mouseCritterOn} variant="brown" />
+          <MouseCritter width={contentWidth} active={mouseCritterOn} variant="white" />
 
           {/* Surplus props — overflowing sacks/barrels for stashes over threshold */}
           <SurplusProps />
@@ -1880,6 +1902,10 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
               }}
             />
           ))}
+
+          {/* Dust motes — part of the scroll content so they stay with the
+              room rather than the camera when the scene is panned. */}
+          {graphics.motes && <MoteLayer width={contentWidth} quality={graphics.quality} />}
 
           {/* Inner scene — brewers centred in the fixed world */}
           <div className="relative z-[1] mx-auto flex w-full flex-col" style={{ maxWidth: totalWidth }}>
