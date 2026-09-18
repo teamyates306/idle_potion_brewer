@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { subscribeAmbient, cycleProgress, moteSample } from "../../engine/ambientClock";
-import { inCamera } from "../../engine/sceneCamera";
+import { inCamera, resizeCanvasIfNeeded } from "../../engine/sceneCamera";
 import { useSceneCamera } from "./useSceneCamera";
 
 /**
@@ -90,13 +90,15 @@ export default function MoteLayer({ width, quality }: { width: number; quality: 
     const sizeToBox = () => {
       h = (parent?.clientHeight || canvas.clientHeight) || 1;
       camWidth = cam.current.width;
-      canvas.width = camWidth;
-      canvas.height = h;
+      // Guarded: assigning width/height clears the canvas even when the value
+      // is unchanged, and this effect re-runs whenever its deps change.
+      if (resizeCanvasIfNeeded(canvas, camWidth, h)) {
+        // Resizing the backing store resets every context property, so the
+        // colour has to be reapplied here rather than once at setup.
+        ctx.fillStyle = "rgb(255, 230, 160)";
+      }
       canvas.style.width = `${camWidth}px`;
       canvas.style.height = `${h}px`;
-      // Resizing the backing store resets every context property, so the
-      // colour has to be reapplied here rather than once at setup.
-      ctx.fillStyle = "rgb(255, 230, 160)";
     };
     sizeToBox();
     const ro = new ResizeObserver(sizeToBox);

@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { User, Package, ShoppingBag, Settings, Settings2 } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState, FAST_BREW_SECS } from "../hooks/useGameLoop";
+import { useGameLoopDriver, useMachineLoopState, useWorkerLoopState } from "../hooks/useGameLoop";
 import RailBadge from "./ui/RailBadge";
 import { subscribeGameEvent } from "../util/gameEvents";
-import { inCamera } from "../engine/sceneCamera";
+import { inCamera, resizeCanvasIfNeeded } from "../engine/sceneCamera";
 import { useSceneCamera } from "./fx/useSceneCamera";
 import { spawnFAT } from "../util/fat";
 import { useSettingsStore } from "../store/settingsStore";
@@ -809,10 +809,7 @@ const MachineColumn = React.memo(function MachineColumn({
   // Own subscription to the loop's published progress: this column
   // re-renders when ITS bar moves and at no other time (an idle brewer never
   // re-renders on a tick at all).
-  const { brewProgress, brewActive, brewSecs } = useMachineLoopState(machineIdx);
-  // Sub-2s brews are published as a full, steady bar (see FAST_BREW_SECS in
-  // useGameLoop.ts) and labelled with their true rate instead.
-  const fastBrew = brewActive && brewSecs > 0 && brewSecs < FAST_BREW_SECS;
+  const { brewProgress, brewActive } = useMachineLoopState(machineIdx);
   // When a brew completes the bar goes 100% → 0%: snap, don't slide back.
   const prevProgressRef = useRef(brewProgress);
   const barSnap = brewProgress < prevProgressRef.current;
@@ -1185,7 +1182,7 @@ const MachineColumn = React.memo(function MachineColumn({
         if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-700">No recipe</span>;
         if (!machine.running) return <span className="mt-1 text-[10px] text-stone-700">Idle</span>;
         if (machine.brew_stalled) return <span className="mt-1 text-[10px] font-semibold text-amber-900/90 animate-pulse">Need ingredients</span>;
-        return <span className="mt-1 text-[10px] text-amber-900/80">{fastBrew ? `Brewing ×${(1 / brewSecs).toFixed(1)}/s` : "Brewing…"}</span>;
+        return <span className="mt-1 text-[10px] text-amber-900/80">Brewing…</span>;
       })()}
       <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent, textShadow: "0 1px 1px rgba(40,30,15,0.35)" }}>{machine.name}</div>
 
@@ -1746,6 +1743,12 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
   // The scene/wall/floor are always the fixed 5-machine world; the brewers sit
   // centred in it and the scroll range (computed above) limits how far you can pan.
   const contentWidth = WORLD_W;
+  // Memoised because LampFlickerOverlay keys its canvas effect on this array
+  // (same reason WorkshopWall memoises `windows`). Rebuilt inline it was a new
+  // array every render, which defeated the React.memo, re-ran the effect and —
+  // once the effect started sizing its own backing store — blanked the glow
+  // canvas on every render of a busy scene.
+  const lampPositions = useMemo(() => computeLampPositions(contentWidth), [contentWidth]);
   const totalWidth = WORLD_W;
 
   return (
@@ -1843,7 +1846,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
 
           {/* Workshop wall — windows around a single central door, fixed 5-machine width */}
           <WorkshopWall onClick={openMap} width={contentWidth} />
-          <LampFlickerOverlay lamps={computeLampPositions(contentWidth)} width={contentWidth} />
+          <LampFlickerOverlay lamps={lampPositions} width={contentWidth} />
           {/* Editable sign name — HTML overlay so it can host a real <input>;
               the wooden plaque behind it is still drawn in the wall SVG. */}
           <WorkshopSign x={Math.round(contentWidth / 2)} />
@@ -1870,7 +1873,7 @@ export default function Workshop({ onOpen }: { onOpen: (p: Panel, machineId?: nu
           )}
 
           {/* Lamp ambient glow — wide radial pool reaching from lantern down to floor */}
-          {graphics.lampGlow && computeLampPositions(contentWidth).map((cx) => (
+          {graphics.lampGlow && lampPositions.map((cx) => (
             <div
               key={cx}
               className="pointer-events-none absolute"
@@ -2322,14 +2325,17 @@ const WallWalkers = React.memo(function WallWalkers({ width, windows, walkers }:
     let camWidth = 0;
     const sizeToCamera = () => {
       camWidth = cam.current.width;
-      canvas.width = camWidth;
-      canvas.height = 144;
+      // Guarded: an unconditional assignment clears the canvas even when the
+      // size is unchanged, and this effect re-runs on every parent render.
+      if (resizeCanvasIfNeeded(canvas, camWidth, 144)) {
+        // Resizing the backing store resets every context property.
+        ctx.imageSmoothingEnabled = false; // keep the pixel art nearest-neighbour under the wiggle's tilt
+        painted = false;
+      }
       canvas.style.width = `${camWidth}px`;
-      // Resizing the backing store resets every context property.
-      ctx.imageSmoothingEnabled = false; // keep the pixel art nearest-neighbour under the wiggle's tilt
     };
-    sizeToCamera();
     let painted = false;
+    sizeToCamera();
     const draw = () => {
       const c = cam.current;
       if (c.width !== camWidth) sizeToCamera();
@@ -2456,10 +2462,13 @@ const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps, width
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     let camWidth = 0;
+    let painted = false;
     const sizeToCamera = () => {
       camWidth = cam.current.width;
-      canvas.width = camWidth;
-      canvas.height = 144;
+      // Guarded — see resizeCanvasIfNeeded. `lamps` is rebuilt by the parent
+      // on every render, so this effect re-runs constantly while the scene is
+      // busy; blanking the canvas each time is what made the lamps strobe.
+      if (resizeCanvasIfNeeded(canvas, camWidth, 144)) painted = false;
       canvas.style.width = `${camWidth}px`;
     };
     sizeToCamera();
@@ -2468,7 +2477,6 @@ const LampFlickerOverlay = React.memo(function LampFlickerOverlay({ lamps, width
     lamps.map((cx, i) => ({ i, d: Math.abs(cx - center) })).sort((a, b) => a.d - b.d).forEach((o, r) => { rank[o.i] = r; });
     let wasLit: boolean | null = null;
     let changedAt = 0;
-    let painted = false;
     // The glow gradient is built in UNIT-circle space (the ctx.scale below does
     // the sizing), so its geometry and stops never change — it was being
     // reallocated per lamp per tick, ~240 gradient objects a second on a wall
@@ -2571,7 +2579,9 @@ const WorkshopWall = React.memo(function WorkshopWall({ onClick, width }: { onCl
   const step = width / n;
   // Memoised: WeatherLayer keys its canvas effect on this array.
   const windows = useMemo(() => computeWindowPositions(width), [width]);
-  const lamps = computeLampPositions(width);
+  // Memoised for the same reason as `windows` just above: LampFlickerOverlay
+  // keys its canvas effect on this array.
+  const lamps = useMemo(() => computeLampPositions(width), [width]);
   const windowWalkersOn = useGameStore((s) => s.graphics.windowWalkers && !s.graphics.throttle_animations);
   const walkerQualityCap = useGameStore((s) => WALKER_CAP_BY_QUALITY[s.graphics.quality]);
   const walkerTuning = useWalkerTuningStore((s) => ({

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { subscribeAmbient } from "../../engine/ambientClock";
-import { inCamera } from "../../engine/sceneCamera";
+import { inCamera, resizeCanvasIfNeeded } from "../../engine/sceneCamera";
 import { useSceneCamera } from "./useSceneCamera";
 import { resolveWeather, type WeatherKind } from "../../engine/weather";
 import { computeDayNight, getDayPhase } from "../../hooks/useDayNight";
@@ -59,8 +59,8 @@ export default function WeatherLayer({ width, windows }: { width: number; window
     let camWidth = 0;
     const sizeToCamera = () => {
       camWidth = cam.current.width;
-      canvas.width = camWidth;
-      canvas.height = WALL_H;
+      // Guarded — see resizeCanvasIfNeeded.
+      resizeCanvasIfNeeded(canvas, camWidth, WALL_H);
       canvas.style.width = camWidth + "px";
     };
     sizeToCamera();

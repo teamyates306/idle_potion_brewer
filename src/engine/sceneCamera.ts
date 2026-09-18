@@ -71,6 +71,33 @@ export function inCamera(x: number, radius: number, cam: Camera): boolean {
 }
 
 /**
+ * Resize a canvas's backing store ONLY when it actually changes, returning
+ * whether it did.
+ *
+ * Assigning `canvas.width`/`height` clears the canvas and resets every context
+ * property — and it does so even when the value assigned is identical to the
+ * current one. A camera layer sizes itself inside its effect, and an effect
+ * re-runs whenever its deps change; a parent that rebuilds an array prop every
+ * render (e.g. `lamps={computeLampPositions(w)}`) makes that every render. The
+ * unguarded version therefore blanked the canvas on each parent render and the
+ * layer stayed dark until its next ambient tick up to 33ms later — which is
+ * exactly what made the lamps strobe once the scene started re-rendering often.
+ *
+ * Callers must re-apply context state (fillStyle, imageSmoothingEnabled, ...)
+ * when this returns true.
+ */
+export function resizeCanvasIfNeeded(
+  canvas: { width: number; height: number },
+  width: number,
+  height: number,
+): boolean {
+  if (canvas.width === width && canvas.height === height) return false;
+  canvas.width = width;
+  canvas.height = height;
+  return true;
+}
+
+/**
  * The scroller reports `scrollLeft` in POST-transform pixels, but the canvas
  * lives inside the content box that carries `transform: scale(s)` (Workshop
  * scales the scene to fit the viewport height). Convert both the offset and

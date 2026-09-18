@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeCamera, inCamera, toSceneSpace, DEFAULT_CAMERA_PAD } from "./sceneCamera";
+import { computeCamera, inCamera, toSceneSpace, resizeCanvasIfNeeded, DEFAULT_CAMERA_PAD } from "./sceneCamera";
 
 const SCENE = 2100; // WORLD_W-ish
 const PHONE = 390;
@@ -76,6 +76,39 @@ describe("toSceneSpace", () => {
     // A 0 or NaN scale would otherwise produce Infinity and size a canvas to a crash.
     expect(toSceneSpace(500, 390, 0)).toEqual({ scrollLeft: 500, viewWidth: 390 });
     expect(toSceneSpace(500, 390, NaN)).toEqual({ scrollLeft: 500, viewWidth: 390 });
+  });
+});
+
+describe("resizeCanvasIfNeeded", () => {
+  // Regression: assigning canvas.width CLEARS the canvas even when the value is
+  // identical. The camera layers size themselves inside their effect, and an
+  // effect re-runs whenever a dep changes — a parent rebuilding an array prop
+  // every render made that every render, so the lamp glow was blanked
+  // constantly and visibly strobed. The guard is what stops that.
+  it("does nothing when the size is unchanged", () => {
+    const c = { width: 518, height: 144 };
+    expect(resizeCanvasIfNeeded(c, 518, 144)).toBe(false);
+  });
+
+  it("resizes and reports it when the width changes", () => {
+    const c = { width: 518, height: 144 };
+    expect(resizeCanvasIfNeeded(c, 640, 144)).toBe(true);
+    expect(c).toEqual({ width: 640, height: 144 });
+  });
+
+  it("resizes when only the height changes", () => {
+    const c = { width: 518, height: 144 };
+    expect(resizeCanvasIfNeeded(c, 518, 200)).toBe(true);
+    expect(c.height).toBe(200);
+  });
+
+  it("stays false across repeated calls with the same camera band", () => {
+    // i.e. an effect that re-runs 100x must clear the canvas zero times.
+    const c = { width: 0, height: 0 };
+    const cam = computeCamera(600, PHONE, SCENE);
+    let cleared = 0;
+    for (let i = 0; i < 100; i++) if (resizeCanvasIfNeeded(c, cam.width, 144)) cleared++;
+    expect(cleared).toBe(1); // only the very first (0x0 -> band) call
   });
 });
 
