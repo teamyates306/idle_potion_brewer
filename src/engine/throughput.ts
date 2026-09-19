@@ -212,13 +212,21 @@ export function ingredientFlow(
   return rows;
 }
 
-/** One ingredient line on a cauldron's card: what IT needs vs what the workshop supplies. */
+/** One ingredient line on a cauldron's card: what IT needs vs what reaches it. */
 export interface MachineSupplyRow {
   id: string;
   /** Items per second THIS cauldron burns (one per slot per cycle). */
   needPerSec: number;
+  /** Items per second THIS cauldron actually receives — its share of workshop
+   *  income once every other cauldron's demand is taken into account, capped at
+   *  what it needs. Compare against needPerSec; the two always agree with
+   *  `starving`. */
+  sharePerSec: number;
   /** Items per second every gatherer brings in, workshop-wide. */
   incomePerSec: number;
+  /** Items per second every cauldron burns, workshop-wide. Larger than
+   *  needPerSec whenever another cauldron uses this ingredient too. */
+  totalDemandPerSec: number;
   /** Workshop-wide net after every cauldron's demand. Negative = draining. */
   netPerSec: number;
   stock: number;
@@ -230,9 +238,14 @@ export interface MachineSupplyRow {
 /**
  * The "needs 4.2/min, supplied 3.1/min" readout for one cauldron.
  *
- * Demand is this cauldron's alone; supply and net are workshop-wide, because
- * that is the number the player can act on — an ingredient two cauldrons share
- * is only in trouble relative to total demand, not this one's slice of it.
+ * `sharePerSec` is what this cauldron actually gets, not the workshop's gross
+ * income. Those differ whenever another cauldron burns the same ingredient, and
+ * quoting the gross was actively misleading: a cauldron needing 6.4/min out of
+ * a workshop pulling in 13.5/min read as comfortable even while flagged red,
+ * because the 16.2/min that every cauldron between them demanded was never
+ * shown. Income is split in proportion to demand — cauldrons draw from one
+ * shared stock, so over time a shortfall is shared rather than falling entirely
+ * on whichever happens to ask first.
  */
 export function machineSupply(
   m: MachineFlow,
@@ -246,14 +259,26 @@ export function machineSupply(
   const out: MachineSupplyRow[] = [];
   for (const [id, slots] of counts) {
     const row = byId.get(id);
+    const needPerSec = cyclesPerSec * slots;
+    const incomePerSec = row?.incomePerSec ?? 0;
+    // Fall back to this cauldron's own need when the ledger has no row (an
+    // ingredient nothing gathers and nothing else burns): it is then the only
+    // claimant, so its share is simply whatever comes in.
+    const totalDemandPerSec = row?.consumePerSec ?? needPerSec;
+    const share = totalDemandPerSec > 0
+      ? incomePerSec * (needPerSec / totalDemandPerSec)
+      : incomePerSec;
+    const sharePerSec = Math.min(needPerSec, share);
     out.push({
       id,
-      needPerSec: cyclesPerSec * slots,
-      incomePerSec: row?.incomePerSec ?? 0,
+      needPerSec,
+      sharePerSec,
+      incomePerSec,
+      totalDemandPerSec,
       netPerSec: row?.netPerSec ?? 0,
       stock: row?.stock ?? 0,
       secsUntilEmpty: row?.secsUntilEmpty ?? null,
-      starving: (row?.netPerSec ?? 0) < 0,
+      starving: sharePerSec < needPerSec - 1e-9,
     });
   }
   // Worst first, so the line to fix is the line on top.

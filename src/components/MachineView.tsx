@@ -760,19 +760,29 @@ function CauldronSupply({
       <div className="space-y-1.5">
         {supply.map((r) => {
           const ing = cfg.ingredients[r.id];
+          // Only worth explaining the split when another cauldron is competing
+          // for the same ingredient.
+          const shared = r.totalDemandPerSec > r.needPerSec + 1e-9;
           return (
-            <div key={r.id} className="flex items-baseline justify-between gap-2 text-[11px]">
-              <span className="min-w-0 flex-1 truncate text-slate-300">{ing?.name ?? r.id}</span>
-              <span className="shrink-0 tabular-nums text-slate-400">
-                needs {fmtItemRate(r.needPerSec)}
-              </span>
-              <span
-                className={`shrink-0 tabular-nums font-semibold ${
-                  r.starving ? "text-red-600" : "text-emerald-700"
-                }`}
-              >
-                supplied {fmtItemRate(r.incomePerSec)}
-              </span>
+            <div key={r.id}>
+              <div className="flex items-baseline justify-between gap-2 text-[11px]">
+                <span className="min-w-0 flex-1 truncate text-slate-300">{ing?.name ?? r.id}</span>
+                <span className="shrink-0 tabular-nums text-slate-400">
+                  needs {fmtItemRate(r.needPerSec)}
+                </span>
+                <span
+                  className={`shrink-0 tabular-nums font-semibold ${
+                    r.starving ? "text-red-600" : "text-emerald-700"
+                  }`}
+                >
+                  supplied {fmtItemRate(r.sharePerSec)}
+                </span>
+              </div>
+              {shared && (
+                <div className="mt-0.5 text-[10px] text-slate-500">
+                  shared: {fmtItemRate(r.incomePerSec)} gathered, {fmtItemRate(r.totalDemandPerSec)} used workshop-wide
+                </div>
+              )}
             </div>
           );
         })}

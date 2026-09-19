@@ -262,6 +262,78 @@ describe("machineSupply", () => {
   it("is empty for an unprogrammed cauldron", () => {
     expect(machineSupply(machine({ recipeIds: [] }), [])).toEqual([]);
   });
+
+  // The readout used to quote the workshop's GROSS income as "supplied", which
+  // ignored every other cauldron drinking from the same stock — so two
+  // cauldrons sharing an ingredient each showed the same comfortable supply
+  // figure while both were flagged red and the stock drained.
+  describe("splits a shared ingredient between the cauldrons using it", () => {
+    it("halves the supply when an identical cauldron competes for it", () => {
+      const a = machine({ brewSecs: 10, recipeIds: ["shared"] });
+      const b = machine({ brewSecs: 10, recipeIds: ["shared"] });
+      const gatherers = [gatherer({ tripSecs: 10, yieldPerTrip: 1, drops: [{ ingredientId: "shared", weight: 1 }] })];
+
+      const alone = machineSupply(a, ingredientFlow(gatherers, [a], {}))[0];
+      const contested = machineSupply(a, ingredientFlow(gatherers, [a, b], {}))[0];
+
+      expect(alone.needPerSec).toBeCloseTo(contested.needPerSec);
+      expect(alone.starving).toBe(false);
+      // Same need, same gross income — but half of it now reaches this cauldron.
+      expect(contested.sharePerSec).toBeCloseTo(alone.sharePerSec / 2);
+      expect(contested.starving).toBe(true);
+    });
+
+    it("reports the workshop totals behind the split", () => {
+      const a = machine({ brewSecs: 10, recipeIds: ["shared"] });
+      const b = machine({ brewSecs: 10, recipeIds: ["shared"] });
+      const row = machineSupply(a, ingredientFlow(
+        [gatherer({ tripSecs: 10, yieldPerTrip: 1, drops: [{ ingredientId: "shared", weight: 1 }] })],
+        [a, b],
+        {},
+      ))[0];
+      expect(row.incomePerSec).toBeCloseTo(0.1);
+      expect(row.totalDemandPerSec).toBeCloseTo(row.needPerSec * 2);
+    });
+
+    it("splits in proportion to demand, not evenly per cauldron", () => {
+      const slow = machine({ brewSecs: 20, recipeIds: ["shared"] });
+      const fast = machine({ brewSecs: 5, recipeIds: ["shared"] });
+      const rows = ingredientFlow(
+        [gatherer({ tripSecs: 10, yieldPerTrip: 1, drops: [{ ingredientId: "shared", weight: 1 }] })],
+        [slow, fast],
+        {},
+      );
+      const slowRow = machineSupply(slow, rows)[0];
+      const fastRow = machineSupply(fast, rows)[0];
+      // fast burns 4x what slow does, so it draws 4x the supply.
+      expect(fastRow.sharePerSec / slowRow.sharePerSec).toBeCloseTo(4);
+    });
+
+    it("never claims to supply a cauldron more than it needs", () => {
+      const m = machine({ brewSecs: 10, recipeIds: ["plenty"] });
+      const row = machineSupply(m, ingredientFlow(
+        [gatherer({ tripSecs: 1, yieldPerTrip: 50, drops: [{ ingredientId: "plenty", weight: 1 }] })],
+        [m],
+        {},
+      ))[0];
+      expect(row.sharePerSec).toBeCloseTo(row.needPerSec);
+      expect(row.starving).toBe(false);
+    });
+
+    it("keeps supplied and needs consistent with the red flag on every line", () => {
+      const a = machine({ brewSecs: 3, recipeIds: ["x", "y"] });
+      const b = machine({ brewSecs: 7, recipeIds: ["x"] });
+      const rows = ingredientFlow(
+        [gatherer({ tripSecs: 4, yieldPerTrip: 2, drops: [{ ingredientId: "x", weight: 1 }, { ingredientId: "y", weight: 3 }] })],
+        [a, b],
+        {},
+      );
+      for (const r of machineSupply(a, rows)) {
+        // Whatever the colour says, the two numbers on the row must agree with it.
+        expect(r.starving).toBe(r.sharePerSec < r.needPerSec - 1e-9);
+      }
+    });
+  });
 });
 
 describe("bottleneck", () => {
