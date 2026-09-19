@@ -136,6 +136,79 @@ describe("PotionDetailsModal — GAX market breakdown (lazy, per-card)", () => {
     // The badge quotes the combined MULTIPLIER, not a rounded coin ratio — a
     // cheap potion's real bonus can round back to its base value.
     expect(screen.getByText(/×[\d.]+ of base/)).toBeInTheDocument();
-    if (topAttr) expect(screen.getByText(/Saturated/)).toBeInTheDocument();
+    // The attribute's own contribution is a percentage, and it is NOT labelled
+    // "Saturated"/"Local shortage" any more: a player with the Exchange already
+    // reads that off the dashboard, and the row needs the space for the number.
+    if (topAttr) {
+      expect(screen.getByText(/^[+-]\d+%$/)).toBeInTheDocument();
+      expect(screen.queryByText(/Saturated|Local shortage/)).not.toBeInTheDocument();
+    }
+  });
+
+  it("shows each multiplier as a coin delta that sums to the sale price", () => {
+    // The column used to hold running totals, which left a multiplier whose
+    // gain rounded to nothing with nothing to print — it said "under a coin",
+    // a note about a delta sitting in a column of totals. Deltas are uniform,
+    // and the player can add them up to check the total themselves.
+    const topAttr = (Object.entries(potion.stats) as [string, number][])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    const market = emptyMarket(Date.now());
+    market.lastSettledDay = gaxDayIndex(Date.now());
+    if (topAttr) {
+      market.board = [topAttr];
+      market.satiation[topAttr] = -SAT_CAP; // shortage, so the rate is above par
+    }
+    patchGameStore({ gaxUnlocked: true, gaxMarket: market, discoveredPotions: [hash] });
+    const { container } = render(<PotionDetailsModal recipeHash={hash} onClose={() => {}} />);
+
+    expect(screen.queryByText(/under a coin/)).not.toBeInTheDocument();
+
+    // fmt() abbreviates ("3.67k"), so compare at the precision actually shown.
+    // That is still decisive: were these running totals rather than deltas the
+    // sum would overshoot by multiples, not by a rounding step.
+    const SUFFIX: Record<string, number> = { k: 1e3, M: 1e6, B: 1e9, T: 1e12 };
+    const num = (s: string) => {
+      const m = /(-?[\d.,]+)\s*([kMBT])?/.exec(s.replace(/−/g, "-"));
+      if (!m) return NaN;
+      return Number(m[1].replace(/,/g, "")) * (m[2] ? SUFFIX[m[2]] : 1);
+    };
+    const base = num(screen.getByText("Base value").parentElement!.textContent!);
+    const sells = num(screen.getByText("Sells for").parentElement!.textContent!);
+    // Every delta on a multiplier row, signed.
+    const deltas = [...container.querySelectorAll("span")]
+      .map((el) => el.textContent ?? "")
+      .filter((t) => /^[+−][\d.,]+[kMBT]?$/.test(t))
+      .map((t) => (t.startsWith("−") ? -num(t) : num(t)));
+
+    expect(deltas.length).toBeGreaterThan(0);
+    const summed = base + deltas.reduce((a, b) => a + b, 0);
+    expect(Math.abs(summed - sells) / sells).toBeLessThan(0.02);
+  });
+
+  it("keeps an attribute's percentage out of the running-total column", () => {
+    // The right-hand column is the waterfall: base → after each multiplier. A
+    // percentage parked there reads as one more step stacking on the figure
+    // above it, when it is really a breakdown of the market rate already
+    // applied on the row above. So it belongs in the left cell, beside the
+    // attribute's name.
+    const topAttr = (Object.entries(potion.stats) as [string, number][])
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (!topAttr) return;
+    const market = emptyMarket(Date.now());
+    market.lastSettledDay = gaxDayIndex(Date.now());
+    market.board = [topAttr];
+    market.satiation[topAttr] = SAT_CAP;
+    patchGameStore({ gaxUnlocked: true, gaxMarket: market });
+    render(<PotionDetailsModal recipeHash={hash} onClose={() => {}} />);
+
+    const pct = screen.getByText(/^[+-]\d+%$/);
+    const row = pct.parentElement!;
+    // The percentage shares its row with the attribute label, and that row
+    // carries no second, right-aligned cell for it to be mistaken for a total.
+    expect(row.className).not.toMatch(/justify-between/);
+    expect(row.textContent).toMatch(/^[^\d]*[+-]?\d*%?/);
+    expect(row.querySelector("img,svg")).not.toBeNull(); // the attribute's icon
   });
 });

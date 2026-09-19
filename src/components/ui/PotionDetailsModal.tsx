@@ -48,15 +48,23 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
   const combined = parts.mastery * parts.insight * parts.renown * parts.market;
   // Only surface attributes actually moving the price; the rest trade at par.
   const movers = quote ? quote.rows.filter((r) => Math.abs(r.rate - 1) >= 0.01).slice(0, 6) : [];
+  // Only a market EVENT earns a label here. Saturation and shortage are the
+  // player's own doing and are already on the Exchange dashboard, so naming
+  // them on every row was noise — and the row needs the space for the
+  // percentage, which has to sit on the left (see the waterfall note below).
   const REASON_LABEL: Record<string, string> = {
-    event: "Market event",
-    flooded: "Saturated",
-    starved: "Local shortage",
+    event: "market event",
+    flooded: "",
+    starved: "",
     dormant: "",
   };
 
-  // A waterfall reads better than deltas: every line is the running total after
-  // that multiplier, so a player can check the arithmetic themselves.
+  // Base value, then what each multiplier is WORTH in coins — a receipt, not a
+  // waterfall. Running totals were worse: a multiplier whose gain rounded to
+  // nothing had no total of its own to show, so it printed "under a coin" and
+  // broke the column's meaning (every other row was cumulative, that one was a
+  // note about a delta). Deltas state the same thing as "+0" without changing
+  // what the column means, and they still add up to the "Sells for" line.
   const steps = [
     { key: "mastery", label: "Mastery", mult: parts.mastery },
     { key: "insight", label: "Insight", mult: parts.insight },
@@ -89,9 +97,13 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
         </div>
 
         {steps.map((step) => {
+          // Coins this multiplier is worth, taken between the ROUNDED running
+          // totals either side of it, so the deltas add up to exactly the
+          // "Sells for" figure with no drift.
           const before = Math.round(running);
           running = running * step.mult;
           const after = Math.round(running);
+          const delta = after - before;
           const up = step.mult > 1;
           return (
             <div key={step.key}>
@@ -102,28 +114,31 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
                     {step.mult.toFixed(step.mult < 1.1 && step.mult > 0.9 ? 3 : 2)}
                   </span>
                 </span>
-                {after !== before ? (
-                  <span className="flex items-center gap-1 tabular-nums text-slate-400">
-                    <IconCoin /> {fmt(after)}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-slate-600">under a coin</span>
-                )}
+                <span
+                  className={`tabular-nums font-semibold ${
+                    delta > 0 ? "text-emerald-700" : delta < 0 ? "text-rose-600" : "text-slate-500"
+                  }`}
+                >
+                  {delta < 0 ? "−" : "+"}{fmt(Math.abs(delta))}
+                </span>
               </div>
-              {/* Why the market rate is what it is. */}
+              {/* Why the market rate is what it is. These percentages sit on the
+                  LEFT, with the multipliers — never in the right-hand coin
+                  column. That column is the running total (316 → 508 → 531 →
+                  534), so a "+3%" parked in it reads as a further step stacking
+                  on the figure above, when it is really a decomposition of the
+                  market rate already applied on the row above it. */}
               {step.key === "market" && movers.length > 0 && (
                 <div className="mt-0.5 space-y-0.5 border-l border-amber-800/30 pl-2">
                   {movers.map((r) => {
                     const d = Math.round((r.rate - 1) * 100);
                     return (
-                      <div key={r.attr} className="flex justify-between">
-                        <span className="flex items-center gap-1 text-[10px] text-slate-500">
-                          {(() => { const Icon = ICONS[ATTR_EMOJI[r.attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(r.attr)}
-                          <span className="ml-1">({REASON_LABEL[r.reason]})</span>
-                        </span>
-                        <span className={`text-[10px] font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                      <div key={r.attr} className="flex items-center gap-1 text-[10px] text-slate-500">
+                        {(() => { const Icon = ICONS[ATTR_EMOJI[r.attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(r.attr)}
+                        <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
                           {d > 0 ? "+" : ""}{d}%
                         </span>
+                        {REASON_LABEL[r.reason] && <span className="text-slate-600">({REASON_LABEL[r.reason]})</span>}
                       </div>
                     );
                   })}
