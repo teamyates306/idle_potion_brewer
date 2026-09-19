@@ -11,7 +11,7 @@
 // this must not add per-tick renders either (see CLAUDE.md "Core game loop").
 // =============================================================================
 import { useEffect, useRef, useState } from "react";
-import { locationTripSecs, regionalCarry, useGameStore } from "../store/gameStore";
+import { locationTripSecs, potionPriceParts, regionalCarry, useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { machineBrewSecondsFor, machineUptime, workshopUptime } from "./useGameLoop";
 import { computeMasteryEffects } from "../data/masteryTrees";
@@ -46,8 +46,6 @@ export function snapshotThroughput(): ThroughputSnapshot {
   const cfg = useConfigStore.getState();
   const fx = computeMasteryEffects(s.masteryUnlocks);
 
-  const valueMult = 1 + fx.potion_value_pct / 100;
-  const sellMult = 1 + fx.sell_price_pct / 100;
   const multiBonus = fx.multi_brew_pct / 100;
   const marketDay = gaxDayIndex(Date.now());
   const autoSell = new Set(s.autoSellHashes ?? []);
@@ -72,12 +70,12 @@ export function snapshotThroughput(): ThroughputSnapshot {
     let autoSold = false;
     if (ingredients.length > 0) {
       const potion = describePotion(ingredients, cfg.formulas);
-      // Exactly the expression completeBrew() banks per potion, so the HUD can
-      // never drift from what the player actually receives.
+      // The SAME composition the sale uses (mastery x insight x renown x market),
+      // so the HUD rate can never drift from what actually lands in the purse.
       const gaxMult = s.gaxUnlocked
         ? potionPriceMultiplier(s.gaxMarket, marketDay, potion.stats)
         : 1;
-      coinsPerPotion = Math.round(potion.value * valueMult * sellMult * gaxMult);
+      coinsPerPotion = potionPriceParts(potion.value, potion.stats, gaxMult).total;
       autoSold = autoSell.has(potion.hash);
     }
 

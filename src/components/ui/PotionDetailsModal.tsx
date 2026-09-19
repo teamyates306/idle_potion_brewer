@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fmt } from "../../util/format";
-import { useGameStore } from "../../store/gameStore";
+import { useGameStore, potionPriceParts } from "../../store/gameStore";
 import { useConfigStore } from "../../store/configStore";
 import { describeFromHash } from "../../engine/potions";
 import { masteryLevel, masteryXpProgress, potionMasteryReductionPct } from "../../data/masteryTrees";
@@ -20,6 +20,10 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
   const gaxUnlocked = useGameStore((s) => s.gaxUnlocked);
   const gaxMarket = useGameStore((s) => s.gaxMarket);
   const settleGax = useGameStore((s) => s.settleGax);
+  // Re-read when anything that moves price moves, so the panel can't go stale.
+  const discovered = useGameStore((s) => s.discoveredPotions);
+  const achievements = useGameStore((s) => s.unlocked_achievements);
+  const masteryUnlocks = useGameStore((s) => s.masteryUnlocks);
 
   // Opening a detail view is a lazy settle trigger.
   useEffect(() => { if (gaxUnlocked) settleGax(); }, [gaxUnlocked, settleGax]);
@@ -28,13 +32,20 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
     () => (gaxUnlocked ? gaxPotionQuote(gaxMarket, gaxDayIndex(Date.now()), stats) : null),
     [gaxUnlocked, gaxMarket, stats]
   );
-  // Nothing to show unless the GAX is moving the price.
-  if (!quote) return null;
 
-  const gaxMult = quote.mult;
-  const finalMult = gaxMult;
-  const sellNow = Math.round(baseValue * finalMult);
-  const pct = Math.round(finalMult * 100);
+  // The SAME composition the sale itself uses, so this panel and the coins that
+  // land in the purse can never disagree (they did: this used to show only the
+  // market rate, quoting less than the player actually received).
+  const parts = useMemo(
+    () => potionPriceParts(baseValue, stats),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseValue, stats, gaxMarket, discovered, achievements, masteryUnlocks]
+  );
+
+  // The combined multiplier itself, not the rounded coin ratio: on a 4-coin
+  // potion a real x1.09 rounds back to 4, and quoting "100% of base" beside
+  // "x Insight 1.064" reads as a contradiction rather than as rounding.
+  const combined = parts.mastery * parts.insight * parts.renown * parts.market;
   // Only surface attributes actually moving the price; the rest trade at par.
   const movers = quote ? quote.rows.filter((r) => Math.abs(r.rate - 1) >= 0.01).slice(0, 6) : [];
   const REASON_LABEL: Record<string, string> = {
@@ -44,62 +55,94 @@ function MarketBreakdown({ baseValue, stats }: { baseValue: number; stats: Attri
     dormant: "",
   };
 
+  // A waterfall reads better than deltas: every line is the running total after
+  // that multiplier, so a player can check the arithmetic themselves.
+  const steps = [
+    { key: "mastery", label: "Mastery", mult: parts.mastery },
+    { key: "insight", label: "Insight", mult: parts.insight },
+    { key: "renown", label: "Renown", mult: parts.renown },
+    { key: "market", label: "Market rate", mult: parts.market },
+  ].filter((step) => Math.abs(step.mult - 1) >= 0.005);
+
+  // Nothing the player has earned moves this potion's price yet, so there is no
+  // panel worth showing. Deliberately NOT gated on the Exchange any more:
+  // Mastery, Insight and Renown all multiply a sale whether or not the GAX is
+  // chartered, and hiding them was why the quoted price disagreed with the sale.
+  if (steps.length === 0) return null;
+
+  let running = parts.base;
+
   return (
     <div className="mb-4 rounded-lg border border-amber-700/40 bg-amber-950/15 p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-amber-600"><IconColumns /> Market value</p>
         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-          pct > 100 ? "bg-emerald-900/60 text-emerald-300" : pct < 100 ? "bg-rose-900/60 text-rose-300" : "bg-slate-800 text-slate-400"
+          combined > 1.005 ? "bg-emerald-900/60 text-emerald-300" : combined < 0.995 ? "bg-rose-900/60 text-rose-300" : "bg-slate-800 text-slate-400"
         }`}>
-          {pct}% of base
+          &#215;{combined.toFixed(2)} of base
         </span>
       </div>
       <div className="space-y-1 text-[11px]">
         <div className="flex justify-between text-slate-400">
           <span>Base value</span>
-          <span className="flex items-center gap-1 font-semibold text-slate-300"><IconCoin /> {fmt(baseValue)}</span>
+          <span className="flex items-center gap-1 font-semibold text-slate-300"><IconCoin /> {fmt(parts.base)}</span>
         </div>
-        {quote && (() => {
-          // Each attribute contributes weight/totalWeight of the blended rate,
-          // so its coin impact on THIS potion is base × share × (rate − 1).
-          // Deltas are rounded cumulatively (not independently) so the displayed
-          // rows always sum to the actual sellNow − baseValue total.
-          const totalWeight = quote.rows.reduce((a, r) => a + r.weight, 0) || 1;
-          const coinDeltaByAttr: Record<string, number> = {};
-          let cumUnrounded = 0;
-          let cumRounded = 0;
-          for (const r of quote.rows) {
-            cumUnrounded += baseValue * (r.weight / totalWeight) * (r.rate - 1);
-            const newCumRounded = Math.round(cumUnrounded);
-            coinDeltaByAttr[r.attr] = newCumRounded - cumRounded;
-            cumRounded = newCumRounded;
-          }
-          return movers.map((r) => {
-            const d = Math.round((r.rate - 1) * 100);
-            const coinDelta = coinDeltaByAttr[r.attr];
-            return (
-              <div key={r.attr} className="flex justify-between">
-                <span className="flex items-center gap-1 text-slate-400">
-                  {(() => { const Icon = ICONS[ATTR_EMOJI[r.attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(r.attr)}
-                  <span className="ml-1 text-[10px] text-slate-500">({REASON_LABEL[r.reason]})</span>
-                </span>
-                <span className={`font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
-                  {d > 0 ? "+" : ""}{d}%
-                  <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] opacity-80">
-                    ({coinDelta > 0 ? "+" : ""}{fmt(coinDelta)}<IconCoin />)
+
+        {steps.map((step) => {
+          const before = Math.round(running);
+          running = running * step.mult;
+          const after = Math.round(running);
+          const up = step.mult > 1;
+          return (
+            <div key={step.key}>
+              <div className="flex justify-between">
+                <span className="text-slate-400">
+                  &#215; {step.label}{" "}
+                  <span className={`font-semibold ${up ? "text-emerald-700" : "text-rose-600"}`}>
+                    {step.mult.toFixed(step.mult < 1.1 && step.mult > 0.9 ? 3 : 2)}
                   </span>
                 </span>
+                {after !== before ? (
+                  <span className="flex items-center gap-1 tabular-nums text-slate-400">
+                    <IconCoin /> {fmt(after)}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-600">under a coin</span>
+                )}
               </div>
-            );
-          });
-        })()}
-        {quote && movers.length === 0 && (
-          <div className="text-slate-500">All of this potion's markets are trading at par.</div>
-        )}
+              {/* Why the market rate is what it is. */}
+              {step.key === "market" && movers.length > 0 && (
+                <div className="mt-0.5 space-y-0.5 border-l border-amber-800/30 pl-2">
+                  {movers.map((r) => {
+                    const d = Math.round((r.rate - 1) * 100);
+                    return (
+                      <div key={r.attr} className="flex justify-between">
+                        <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                          {(() => { const Icon = ICONS[ATTR_EMOJI[r.attr]]; return Icon ? <Icon /> : null; })()} {attrLabel(r.attr)}
+                          <span className="ml-1">({REASON_LABEL[r.reason]})</span>
+                        </span>
+                        <span className={`text-[10px] font-semibold ${d > 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                          {d > 0 ? "+" : ""}{d}%
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
         <div className="mt-1.5 flex justify-between border-t border-amber-800/30 pt-1.5 font-semibold text-amber-800">
-          <span>×{finalMult.toFixed(2)} — selling for</span>
-          <span className="flex items-center gap-1"><IconCoin /> {fmt(sellNow)} each</span>
+          <span>Sells for</span>
+          <span className="flex items-center gap-1"><IconCoin /> {fmt(parts.total)} each</span>
         </div>
+        {parts.total === parts.base && combined > 1.005 && (
+          <p className="text-[10px] leading-snug text-slate-500">
+            Your bonuses are worth less than a coin on a potion this cheap — they
+            pay properly once you are brewing something more valuable.
+          </p>
+        )}
       </div>
     </div>
   );

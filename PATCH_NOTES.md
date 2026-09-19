@@ -84,6 +84,40 @@ far more than your three-hundredth. This is deliberate — the early finds are
 meant to feel like a real step up, and they do: three potions in your first
 twenty minutes is already a ×1.24 on everything you sell.
 
+**Where to see it.** The Discovered tab shows the whole sum with its working —
+your Insight, your Renown, the two multiplied together, and what your next find
+would take it to:
+
+```
+   SELLING BONUS                             1.085×
+   Every potion you sell is worth 1.085× its base
+   value — 8.5% more.
+
+   Insight   1.064×          1 potion discovered
+   Renown    1.020×          4 achievements
+   1.064 × 1.020 =                           1.085×
+
+   Your next discovery takes this to 1.140×
+```
+
+And it now appears on the potion itself. Tap any potion to sell it and the
+**Market value** panel shows exactly where its price comes from — base value,
+then every multiplier you have earned, down to the coins you actually receive:
+
+```
+   MARKET VALUE                        ×1.56 of base
+   Base value                                🪙 267
+   × Mastery      1.05                       🪙 280
+   × Insight      1.51                       🪙 423
+   × Renown       1.035                      🪙 438
+   × Market rate  0.95                       🪙 416
+      Terra (Saturated)          −5%
+   Sells for                            🪙 416 each
+```
+
+(On a very cheap potion your bonuses can be worth less than a single coin, and
+the panel says so rather than showing you the same number four times.)
+
 ---
 
 ## 3. Discoveries pay for *what* you found
@@ -108,19 +142,20 @@ worthless still pays a small floor — there is nothing to farm here.
 
 ---
 
-## 4. Strange combinations pay the most
+## 4. Combo potions pay the most
 
-Some ingredient pairings produce **curated combination potions** — the ones with
-special names in your Trophy Case rather than the usual *"[Tier] [Type] of
-[Attribute]"* pattern. Things like *the Ascension*, or *Rebirth*, or
-*Chaos Incarnate*.
+Certain pairings of attributes produce **combo potions** — the ones with their
+own name, like *the Ascension* or *Rebirth*, instead of the usual
+*"[Tier] [Type] of [Attribute]"* pattern. They are collected in your Trophy
+Case, under **Guild Hall → Trophies**, which also shows you how many are still
+out there undiscovered.
 
 These were always the most interesting thing in the game to find. Now they are
 also the most lucrative:
 
-- A combination counts as **three discoveries** toward Insight, on top of its
-  tier bonus.
-- Discovering one pays **five times** the normal bonus. A combination worth 800
+- A combo potion is worth **three times** as much Insight as an ordinary find of
+  the same tier.
+- Discovering one pays **five times** the normal bonus. A combo potion worth 800
   coins pays **12,250** to find, against 2,450 for an ordinary potion of the
   same value.
 

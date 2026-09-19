@@ -757,6 +757,60 @@ export function knowledgeMultiplier(
   );
 }
 
+/** Every multiplier standing between a potion's base value and the coins that
+ *  land in your purse, itemised. */
+export interface PotionPriceParts {
+  /** describePotion().value — the raw worth of the ingredients. */
+  base: number;
+  /** Mastery tree: potion value % and sell price % combined. */
+  mastery: number;
+  /** Insight — what you have discovered. */
+  insight: number;
+  /** Renown — what you have achieved. */
+  renown: number;
+  /** The Grand Alchemical Exchange's live rate (1 when unchartered). */
+  market: number;
+  /** Coins for ONE potion, rounded exactly as the sale rounds it. */
+  total: number;
+}
+
+/**
+ * THE single source of truth for what a potion is worth right now.
+ *
+ * Every sale site (completeBrew, sellPotion, sellAll, the offline catch-up) and
+ * every price DISPLAY must read through this. It exists because they drifted:
+ * once Insight and Renown started multiplying sale value, the sell cards — which
+ * applied only the market rate — began quoting less than the player actually
+ * received, and the "Sell Everything" total was understated too.
+ *
+ * `marketMult` is passed in by sale sites (which get it from gaxPriceAndRecord,
+ * settling and recording volume); displays omit it and get a pure read of the
+ * live market instead, which must never settle or record.
+ */
+export function potionPriceParts(
+  baseValue: number,
+  stats: Attributes,
+  marketMult?: number,
+): PotionPriceParts {
+  const s = useGameStore.getState();
+  const fx = computeMasteryEffects(s.masteryUnlocks);
+  const mastery = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100);
+  const insight = insightMultiplier(insightPointsFor(s.discoveredPotions ?? []));
+  const renown = renownMultiplier((s.unlocked_achievements ?? []).length);
+  const market =
+    marketMult ??
+    (s.gaxUnlocked ? potionPriceMultiplier(s.gaxMarket, gaxDayIndex(now()), stats) : 1);
+
+  return {
+    base: baseValue,
+    mastery,
+    insight,
+    renown,
+    market,
+    total: Math.round(baseValue * mastery * insight * renown * market),
+  };
+}
+
 function unlockAttributes(
   ingredientId: string,
   current: string[],
@@ -1644,9 +1698,8 @@ export const useGameStore = create<GameState>()(
         const outputs = rollMultiBrew(effectiveMultiBrew(machine) + multiBonus);
         // Mastery XP = the pre-mastery brew seconds of this recipe (one cycle).
         const preMasteryBrewSecs = brewTime(machine, cfg.formulas, ingredients);
-        const knowMult = knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
-        const valueMult = (1 + masteryFx.potion_value_pct / 100) * knowMult;
-        const sellMult = 1 + masteryFx.sell_price_pct / 100;
+        // Price is composed by potionPriceParts() so the sale and every sell
+        // card can never quote different numbers.
 
         let coins = s.coins;
         const potionInv = { ...s.potionInv };
@@ -1655,7 +1708,7 @@ export const useGameStore = create<GameState>()(
           // GAX: trickle auto-sales are priced against the live market and
           // accumulate satiation (the velocity gate absorbs small volumes).
           const gaxMult = get().gaxPriceAndRecord(potion.stats, outputs);
-          autoSellEarned = Math.round(potion.value * valueMult * sellMult * gaxMult) * outputs;
+          autoSellEarned = potionPriceParts(potion.value, potion.stats, gaxMult).total * outputs;
           coins += autoSellEarned;
         } else {
           potionInv[potion.hash] = (potionInv[potion.hash] ?? 0) + outputs;
@@ -1848,11 +1901,8 @@ export const useGameStore = create<GameState>()(
         if (ingredients.length === 0) return;
         const potion = describePotion(ingredients, cfg.formulas);
         const n = Math.min(count, have);
-        const fx = computeMasteryEffects(s.masteryUnlocks);
-        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100)
-          * knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
         const gaxMult = get().gaxPriceAndRecord(potion.stats, n);
-        const earned = Math.round(potion.value * sellMult * gaxMult) * n;
+        const earned = potionPriceParts(potion.value, potion.stats, gaxMult).total * n;
         const potionInv = { ...s.potionInv };
         potionInv[hash] = have - n;
         if (potionInv[hash] <= 0) delete potionInv[hash];
@@ -1873,9 +1923,6 @@ export const useGameStore = create<GameState>()(
       sellAll: () => {
         const s = get();
         const cfg = useConfigStore.getState();
-        const fx = computeMasteryEffects(s.masteryUnlocks);
-        const sellMult = (1 + fx.potion_value_pct / 100) * (1 + fx.sell_price_pct / 100)
-          * knowledgeMultiplier(s.discoveredPotions, s.unlocked_achievements);
         let coins = s.coins;
         let totalEarned = 0;
         let totalSold = 0;
@@ -1886,7 +1933,7 @@ export const useGameStore = create<GameState>()(
           // Bulk sale: each name is priced against the market, and the dumped
           // volume floods its attributes' buckets.
           const gaxMult = get().gaxPriceAndRecord(d.stats, count);
-          const earned = Math.round(d.value * sellMult * gaxMult) * count;
+          const earned = potionPriceParts(d.value, d.stats, gaxMult).total * count;
           coins += earned;
           totalEarned += earned;
           totalSold += count;
@@ -1900,7 +1947,7 @@ export const useGameStore = create<GameState>()(
         if (totalEarned > 0) get().checkAchievements("coins", coins);
         if (totalEarned > 0) {
           if (coins >= HIRE_COST_BASE * Math.pow(s.workers.length, 2)) get().pushHint("can_afford_worker");
-          const nextMachineCost = s.machines.length < 5 ? MACHINE_COSTS[s.machines.length] : null;
+          const nextMachineCost = s.machines.length < MAX_MACHINES ? MACHINE_COSTS[s.machines.length] : null;
           if (nextMachineCost !== null && coins >= nextMachineCost) get().pushHint("can_afford_machine");
           if (s.unlockedRegions.includes("region_whispering_woods") && coins >= GAX_UNLOCK_COST) get().pushHint("can_afford_gax");
         }

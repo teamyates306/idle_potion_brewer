@@ -101,9 +101,21 @@ describe("PotionDetailsModal — selling & auto-sell", () => {
 });
 
 describe("PotionDetailsModal — GAX market breakdown (lazy, per-card)", () => {
-  it("hidden while the GAX is locked", () => {
+  it("hidden when nothing the player has earned moves the price", () => {
+    // No discoveries, no achievements, no mastery, no Exchange — base value is
+    // the whole story, so there is nothing to break down.
+    patchGameStore({ discoveredPotions: [], unlocked_achievements: [], masteryUnlocks: [] });
     render(<PotionDetailsModal recipeHash={hash} onClose={() => {}} />);
     expect(screen.queryByText(/Market value/)).not.toBeInTheDocument();
+  });
+
+  it("shows Insight WITHOUT the Exchange — knowledge multiplies a sale either way", () => {
+    // This is the bug the panel was hiding: Insight raised the sale price but
+    // the breakdown only ever rendered for the GAX, so the quote was too low.
+    patchGameStore({ gaxUnlocked: false, discoveredPotions: [hash], unlocked_achievements: [] });
+    render(<PotionDetailsModal recipeHash={hash} onClose={() => {}} />);
+    expect(screen.getByText(/Market value/)).toBeInTheDocument();
+    expect(screen.getByText(/Insight/)).toBeInTheDocument();
   });
 
   it("with the GAX unlocked and an attribute flooded, shows the breakdown off par", () => {
@@ -121,7 +133,9 @@ describe("PotionDetailsModal — GAX market breakdown (lazy, per-card)", () => {
     patchGameStore({ gaxUnlocked: true, gaxMarket: market });
     render(<PotionDetailsModal recipeHash={hash} onClose={() => {}} />);
     expect(screen.getByText(/Market value/)).toBeInTheDocument();
-    expect(screen.getByText(/% of base/)).toBeInTheDocument();
+    // The badge quotes the combined MULTIPLIER, not a rounded coin ratio — a
+    // cheap potion's real bonus can round back to its base value.
+    expect(screen.getByText(/×[\d.]+ of base/)).toBeInTheDocument();
     if (topAttr) expect(screen.getByText(/Saturated/)).toBeInTheDocument();
   });
 });

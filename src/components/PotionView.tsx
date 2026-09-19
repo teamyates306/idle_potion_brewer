@@ -8,7 +8,7 @@ import { masteryLevel, masteryXpProgress } from "../data/masteryTrees";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import InfoDot from "./ui/InfoDot";
-import { useGameStore, insightPointsFor } from "../store/gameStore";
+import { useGameStore, insightPointsFor, potionPriceParts } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { describeFromHash } from "../engine/potions";
 import { groupHashesByName } from "../engine/quests";
@@ -51,10 +51,6 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const gaxMarket = useGameStore((s) => s.gaxMarket);
   const settleGax = useGameStore((s) => s.settleGax);
   useEffect(() => { if (gaxUnlocked && tab === "sell") settleGax(); }, [gaxUnlocked, tab, settleGax]);
-  const marketDay = gaxDayIndex(Date.now());
-  const liveMult = (stats: Attributes): number =>
-    gaxUnlocked ? potionPriceMultiplier(gaxMarket, marketDay, stats) : 1;
-
   // Discovered controls
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("value");
@@ -66,11 +62,11 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const entries = Object.entries(potionInv).filter(([, c]) => c > 0);
-  // "Sell Everything" total uses today's market rates so the button matches
-  // the actual proceeds (bounded by inventory size — never the global list).
+  // Bounded by inventory size (never the global list), and priced through the
+  // same composer the sale uses so the button total matches the proceeds.
   const totalValue = entries.reduce((acc, [hash, count]) => {
     const d = describeFromHash(hash, cfg.ingredients, cfg.formulas);
-    return acc + (d ? Math.round(d.value * liveMult(d.stats)) * count : 0);
+    return acc + (d ? potionPriceParts(d.value, d.stats).total * count : 0);
   }, 0);
 
   const nameGroups = useMemo(
@@ -153,9 +149,10 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                   const isFirstPotion = firstPotion;
                   firstPotion = false;
                   // Price right now — computed only for this rendered card.
-                  const mult = liveMult(d.stats);
-                  const liveValue = Math.round(d.value * mult);
-                  const deltaPct = Math.round((mult - 1) * 100);
+                  // Everything the player has earned, not just the market rate.
+                  const parts = potionPriceParts(d.value, d.stats);
+                  const liveValue = parts.total;
+                  const deltaPct = Math.round((liveValue / Math.max(1, d.value) - 1) * 100);
                   return (
                     <div key={`${auto ? "a" : "m"}-${hash}`} className={`flex items-center gap-2 rounded-lg p-3 ${auto ? "bg-amber-950/40 border border-amber-700/40" : "bg-slate-800/60"}`}>
                       {auto && selectMode && (
@@ -173,7 +170,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
                           <div className={`truncate font-medium ${auto ? "text-amber-800" : "text-purple-800"}`}>{d.name}</div>
                           <div
                             className="text-xs text-slate-400"
-                            title={deltaPct !== 0 ? `Base ${fmt(d.value)} coins · market ×${mult.toFixed(2)} — tap for the breakdown` : undefined}
+                            title={deltaPct !== 0 ? `Base ${fmt(d.value)} coins · your bonuses ×${(liveValue / Math.max(1, d.value)).toFixed(2)} — tap for the full breakdown` : undefined}
                           >
                             ×{count} · <IconCoin className="inline" /> {fmt(liveValue)} each
                             {deltaPct !== 0 && (
@@ -260,7 +257,7 @@ export default function PotionView({ onClose, initialTab }: { onClose: () => voi
             <p className="py-6 text-center text-sm text-slate-500">No potions brewed yet.</p>
           ) : (
             <>
-              <InsightBanner />
+              <InsightBanner nameCount={nameGroups.length} />
               <div className="mb-3 space-y-2">
                 <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5">
                   <Search size={14} className="text-slate-500" />
@@ -492,53 +489,83 @@ export function SupplyChainDashboard() {
 }
 
 /**
- * Insight readout for the Discovered tab. The multiplier is the whole reason to
- * explore, so it is stated plainly, alongside what the NEXT find would be worth
- * — that "one more" number is the hook, not the total.
+ * Insight readout for the Discovered tab.
+ *
+ * Written as an EQUATION rather than three loose numbers: the first version
+ * showed "Insight x1.51", "Renown x1.035" and "Combined x1.56" with no way to
+ * see that the last one was the first two multiplied, or which of them actually
+ * applied to a sale. Lead with the answer, show the working, name the source of
+ * each part, and express "one more find" as a new total rather than a bare
+ * percentage nobody can anchor.
  */
-function InsightBanner() {
+function InsightBanner({ nameCount }: { nameCount: number }) {
   const discoveredPotions = useGameStore((s) => s.discoveredPotions);
   const unlocked = useGameStore((s) => s.unlocked_achievements);
 
   const points = insightPointsFor(discoveredPotions ?? []);
   const insight = insightMultiplier(points);
-  const renown = renownMultiplier((unlocked ?? []).length);
+  const achievements = (unlocked ?? []).length;
+  const renown = renownMultiplier(achievements);
+  const combined = insight * renown;
 
-  // What one more find of the SAME quality as your average would add. Quoted as
-  // a percentage of total output, because that is what the player feels.
-  const avgWeight = points > 0 ? points / Math.max(1, new Set(discoveredPotions ?? []).size) : 1;
-  const nextGain = insightMultiplier(points + avgWeight) / insight - 1;
+  // What one more find of TYPICAL quality for this player would do. Averaged
+  // over names (which is what Insight counts), not recipes.
+  const typicalWeight = nameCount > 0 && points > 0 ? points / nameCount : 1;
+  const nextTotal = insightMultiplier(points + typicalWeight) * renown;
+
+  /** Multipliers this close to 1 need three places or they all read "x1.00". */
+  const show = (m: number) => m.toFixed(m < 1.1 ? 3 : 2);
+
+  const Row = ({ label, mult, from }: { label: string; mult: number; from: string }) => (
+    <div className="flex items-baseline justify-between gap-2">
+      <span className="text-slate-400">
+        {label}{" "}
+        <span className="font-semibold tabular-nums text-purple-800">{show(mult)}&#215;</span>
+      </span>
+      <span className="text-[10px] text-slate-500">{from}</span>
+    </div>
+  );
 
   return (
     <div className="mb-3 rounded-lg border border-purple-700/40 bg-purple-950/20 p-3">
       <div className="flex items-baseline justify-between">
-        <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-purple-700">
-          Insight
-          <InfoDot helpTab="knowledge" label="About Insight">
-            Every distinct potion name you've discovered raises the value of everything
-            you brew. Rarer finds count for more; combi-potions count {COMBI_INSIGHT_WEIGHT}&#215;.
-          </InfoDot>
-        </span>
-        <span className="text-lg font-bold tabular-nums text-purple-800">
-          &#215;{insight.toFixed(2)}
-        </span>
+        <span className="text-[10px] uppercase tracking-wider text-purple-700">Selling bonus</span>
+        <span className="text-lg font-bold tabular-nums text-emerald-700">{show(combined)}&#215;</span>
       </div>
       <p className="mt-0.5 text-[11px] text-slate-400">
-        Every potion you discover pays out on everything you brew.
+        Every potion you sell is worth {show(combined)}&#215; its base value
+        &mdash; {((combined - 1) * 100).toFixed(1)}% more.
       </p>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-purple-700/30 pt-2 text-[11px]">
-        <span className="text-slate-400">
-          Renown <span className="font-semibold text-amber-800">&#215;{renown.toFixed(3)}</span>
-        </span>
-        <span className="text-slate-400">
-          Combined <span className="font-semibold text-emerald-700">&#215;{(insight * renown).toFixed(2)}</span>
-        </span>
-        {nextGain > 0 && (
-          <span className="ml-auto text-emerald-700">
-            next discovery &#8776; +{(nextGain * 100).toFixed(nextGain < 0.01 ? 2 : 1)}%
+
+      <div className="mt-2 space-y-1 border-t border-purple-700/30 pt-2 text-[11px]">
+        <Row
+          label="Insight"
+          mult={insight}
+          from={`${nameCount} potion${nameCount === 1 ? "" : "s"} discovered`}
+        />
+        <Row
+          label="Renown"
+          mult={renown}
+          from={`${achievements} achievement${achievements === 1 ? "" : "s"}`}
+        />
+        <div className="flex items-baseline justify-between border-t border-purple-700/20 pt-1 text-[11px] text-slate-400">
+          <span className="tabular-nums">
+            {show(insight)} &#215; {show(renown)} =
           </span>
-        )}
+          <span className="font-bold tabular-nums text-emerald-700">{show(combined)}&#215;</span>
+        </div>
       </div>
+
+      <p className="mt-2 text-[11px] text-slate-400">
+        Rarer potions are worth more Insight. A <span className="text-amber-800">combo potion</span>
+        {" "}&mdash; one of the specially-named ones collected in your Trophy Case &mdash; is worth
+        {" "}{COMBI_INSIGHT_WEIGHT}&#215; as much again.
+      </p>
+      {nextTotal > combined + 0.001 && (
+        <p className="mt-1 text-[11px] text-emerald-700">
+          Your next discovery takes this to <span className="font-bold tabular-nums">{show(nextTotal)}&#215;</span>
+        </p>
+      )}
     </div>
   );
 }
