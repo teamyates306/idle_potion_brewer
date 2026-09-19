@@ -1049,8 +1049,14 @@ const MachineColumn = React.memo(function MachineColumn({
   const hasTokens = (machine.upgrade_tokens ?? 0) > 0;
   const hot = heatDisplay >= HEAT_HOT;
   const liquidColor = liquidColorFor(brewProgress, hue);
-  // The bar goes gold once this cauldron has produced an Exalted+ potion.
-  const barColor = (machine.best_tier ?? 0) >= 7 ? "#e0b23a" : accent;
+  // The bar goes gold once this cauldron has produced an Exalted+ potion —
+  // but a STARVED cauldron overrides everything and goes red. Running dry is
+  // the failure the whole optimisation loop is supposed to be about, and it
+  // used to be announced by nothing but a small amber caption.
+  const starving = machine.running && !!machine.brew_stalled;
+  const barColor = starving
+    ? "#b91c1c"
+    : (machine.best_tier ?? 0) >= 7 ? "#e0b23a" : accent;
 
   return (
     <div className="flex flex-col items-center" style={{ width: COL_W, flexShrink: 0 }}>
@@ -1194,7 +1200,7 @@ const MachineColumn = React.memo(function MachineColumn({
         const hasRecipe = machine.recipe_slots.slice(0, machine.unlocked_slots).some(Boolean);
         if (!hasRecipe) return <span className="mt-1 text-[10px] text-stone-700">No recipe</span>;
         if (!machine.running) return <span className="mt-1 text-[10px] text-stone-700">Idle</span>;
-        if (machine.brew_stalled) return <span className="mt-1 text-[10px] font-semibold text-amber-900/90 animate-pulse">Need ingredients</span>;
+        if (starving) return <span className="mt-1 rounded bg-rose-900/25 px-1.5 text-[10px] font-bold text-rose-800 animate-pulse">⚠ Starving</span>;
         return <span className="mt-1 text-[10px] text-amber-900/80">Brewing…</span>;
       })()}
       <div className="mt-0.5 text-[10px] font-semibold" style={{ color: accent, textShadow: "0 1px 1px rgba(40,30,15,0.35)" }}>{machine.name}</div>

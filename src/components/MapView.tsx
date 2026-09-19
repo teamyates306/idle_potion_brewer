@@ -329,8 +329,7 @@ export default function MapView({
       <Modal title="The Map" onClose={onClose} accent="#5e7a45" size="xl">
         <div className="mb-3 flex items-start justify-between gap-2">
           <p className="text-xs text-slate-400">
-            The known world, region by region. Tap any node to learn more — nothing
-            here has to be unlocked in any particular order.
+            The known world, region by region. Unlock nodes in any order you like.
           </p>
           <button
             onClick={toggleNewMap}

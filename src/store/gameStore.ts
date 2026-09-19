@@ -560,6 +560,8 @@ export interface GameState {
   quests_completed_count: number;
   trades_completed_count: number;
   best_potion_value: number;
+  /** Best workshop efficiency ever sustained (0–100). A record to beat. */
+  best_efficiency: number;
   /** attribute key → count of potions brewed carrying that attribute (>0). */
   attr_brews: Record<string, number>;
   lastSeen: number;
@@ -671,6 +673,10 @@ export interface GameState {
   reconcileAchievements: () => void;
 
   // lifecycle
+  /** Commit a workshop-efficiency sample: keeps the personal best and fires
+   *  the efficiency achievements. Called ~1/s from the throughput hook, and
+   *  a no-op unless the record actually moved — so it is not a per-tick write. */
+  recordEfficiency: (pct: number) => void;
   applyOffline: () => void;
   dismissWelcome: () => void;
   // global player upgrades
@@ -869,6 +875,7 @@ export const useGameStore = create<GameState>()(
       quests_completed_count: 0,
       trades_completed_count: 0,
       best_potion_value: 0,
+      best_efficiency: 0,
       attr_brews: {},
       lastSeen: now(),
       welcomeBack: null,
@@ -2228,6 +2235,14 @@ export const useGameStore = create<GameState>()(
 
       // ---- Offline simulation -----------------------------------------------
 
+      recordEfficiency: (pct) => {
+        if (!(pct > 0)) return;
+        const s = get();
+        // Half a point of movement is noise; only a real improvement writes.
+        if (pct > (s.best_efficiency ?? 0) + 0.5) set({ best_efficiency: pct });
+        get().checkAchievements("workshop_efficiency", pct);
+      },
+
       applyOffline: () => {
         let anyGathered = false;
         let workerFirstToken = false;
@@ -2957,6 +2972,7 @@ export const useGameStore = create<GameState>()(
         quests_completed_count: s.quests_completed_count,
         trades_completed_count: s.trades_completed_count,
         best_potion_value: s.best_potion_value,
+        best_efficiency: s.best_efficiency,
         attr_brews: s.attr_brews,
         questsUnlocked: s.questsUnlocked,
         activeQuests: s.activeQuests,
@@ -3108,6 +3124,7 @@ export const useGameStore = create<GameState>()(
           quests_completed_count: p.quests_completed_count ?? 0,
           trades_completed_count: p.trades_completed_count ?? 0,
           best_potion_value: p.best_potion_value ?? 0,
+          best_efficiency: p.best_efficiency ?? 0,
           attr_brews: p.attr_brews ?? {},
           player_click_power_level: p.player_click_power_level ?? 0,
           player_crit_chance_level: p.player_crit_chance_level ?? 0,

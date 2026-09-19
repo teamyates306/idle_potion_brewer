@@ -7,6 +7,7 @@ import PotionIcon from "./art/PotionIcon";
 import { masteryLevel, masteryXpProgress } from "../data/masteryTrees";
 import Modal from "./ui/Modal";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
+import InfoDot from "./ui/InfoDot";
 import { useGameStore, insightPointsFor } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
 import { describeFromHash } from "../engine/potions";
@@ -14,6 +15,7 @@ import { groupHashesByName } from "../engine/quests";
 import { fmt, fmtDuration, fmtItemRate, fmtRatePerSec } from "../util/format";
 import { useThroughput } from "../hooks/useThroughput";
 import { bottleneck } from "../engine/throughput";
+import { uptimeBand } from "../engine/utilisation";
 import {
   COMBI_INSIGHT_WEIGHT, insightMultiplier, renownMultiplier,
 } from "../engine/insight";
@@ -359,14 +361,18 @@ export function SupplyChainDashboard() {
   // snapshot the HUD rate and the upgrade deltas read, so the dashboard can
   // never disagree with them. (It used to recompute brew time with raw
   // brewTime(), which silently ignored mastery and overstated every cycle.)
-  const { rate, flow } = useThroughput();
+  const { rate, flow, efficiency } = useThroughput();
+  const bestEfficiency = useGameStore((s) => s.best_efficiency ?? 0);
   const cfg = useConfigStore();
   const worst = bottleneck(flow);
+  const effBand = efficiency == null ? null : uptimeBand(efficiency);
+  const effClass =
+    effBand === "good" ? "text-emerald-700" : effBand === "fair" ? "text-amber-700" : "text-red-600";
 
   if (flow.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-slate-500">
-        Assign workers to locations and set brewers to run to see supply chain analytics.
+        Nothing flowing yet — send a worker gathering and set a brewer running.
       </p>
     );
   }
@@ -376,7 +382,13 @@ export function SupplyChainDashboard() {
       {/* Headline: the rate the whole game is about, and what is holding it back. */}
       <div className="rounded-lg border border-violet-700/40 bg-violet-950/20 p-3">
         <div className="flex items-baseline justify-between">
-          <span className="text-[10px] uppercase tracking-wider text-violet-700">Workshop output</span>
+          <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-violet-700">
+            Workshop output
+            <InfoDot helpTab="output" label="About workshop output">
+              Coins per second across every running brewer, after mastery. Upgrades quote
+              what they'd add to it.
+            </InfoDot>
+          </span>
           <span className="text-lg font-bold tabular-nums text-emerald-700">
             {rate.coinsPerSec > 0 ? `+${fmtRatePerSec(rate.coinsPerSec)}` : "—"}
           </span>
@@ -390,9 +402,31 @@ export function SupplyChainDashboard() {
             </span>
           )}
         </div>
+        {/* Efficiency: of the time you asked cauldrons to brew, how much they did.
+            This is the number to chase to 100%. */}
+        <div className="mt-2 flex items-baseline justify-between border-t border-violet-700/30 pt-2">
+          <span className="text-[11px] text-slate-400">
+            Efficiency{" "}
+            {efficiency == null ? (
+              <span className="italic text-slate-500">measuring…</span>
+            ) : (
+              <span className={`font-bold tabular-nums ${effClass}`}>{efficiency.toFixed(0)}%</span>
+            )}
+          </span>
+          {bestEfficiency > 0 && (
+            <span className="text-[11px] text-slate-400">
+              best <span className="font-semibold tabular-nums text-amber-800">{bestEfficiency.toFixed(0)}%</span>
+            </span>
+          )}
+        </div>
+        {efficiency != null && efficiency < 95 && (
+          <p className="mt-1 text-[10px] text-slate-500">
+            Cauldrons spent {(100 - efficiency).toFixed(0)}% of their time waiting on ingredients.
+          </p>
+        )}
         {rate.unbankedPerSec > 0 && (
           <p className="mt-1.5 text-[11px] text-amber-700">
-            {fmtRatePerSec(rate.unbankedPerSec)} is piling up unsold — auto-sell it to bank it.
+            {fmtRatePerSec(rate.unbankedPerSec)} unsold — auto-sell to bank it.
           </p>
         )}
         {worst && (
@@ -405,9 +439,13 @@ export function SupplyChainDashboard() {
       </div>
 
       {/* Per-ingredient ledger — worst deficit first. */}
-      <p className="text-[10px] text-slate-500">
-        Consumption excludes multi-brew (extra potions reuse the same inputs). Red = deficit.
-      </p>
+      <div className="flex items-center gap-1 pt-1 text-[10px] uppercase tracking-wider text-slate-500">
+        Ingredient ledger
+        <InfoDot helpTab="output" label="About the ingredient ledger">
+          Gathered in vs. brewed out, per second. Red is a deficit — you'll run dry.
+          Multi-brew extras are free and don't count against consumption.
+        </InfoDot>
+      </div>
       {flow.map((row) => {
         const ing = cfg.ingredients[row.id];
         // Half an item a minute either way is noise, not a trend.
@@ -474,14 +512,19 @@ function InsightBanner() {
   return (
     <div className="mb-3 rounded-lg border border-purple-700/40 bg-purple-950/20 p-3">
       <div className="flex items-baseline justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-purple-700">Insight</span>
+        <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-purple-700">
+          Insight
+          <InfoDot helpTab="knowledge" label="About Insight">
+            Every distinct potion name you've discovered raises the value of everything
+            you brew. Rarer finds count for more; combi-potions count {COMBI_INSIGHT_WEIGHT}&#215;.
+          </InfoDot>
+        </span>
         <span className="text-lg font-bold tabular-nums text-purple-800">
           &#215;{insight.toFixed(2)}
         </span>
       </div>
       <p className="mt-0.5 text-[11px] text-slate-400">
-        Every distinct potion you have ever discovered raises the value of everything you brew.
-        Rarer finds count for more, and a curated combination counts {COMBI_INSIGHT_WEIGHT}&#215;.
+        Every potion you discover pays out on everything you brew.
       </p>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 border-t border-purple-700/30 pt-2 text-[11px]">
         <span className="text-slate-400">

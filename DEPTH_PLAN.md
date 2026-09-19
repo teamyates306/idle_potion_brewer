@@ -482,25 +482,39 @@ number alone, is the success metric.
 
 ---
 
-### P4 — The Satisfactory itch: make the bottleneck the game (≈3–4 days)
+### P4 — The Satisfactory itch — ✅ DONE (2026-09-19)
 
-Satisfactory's compulsion is not building, it is *seeing a machine starve and
-fixing it*. The game already models everything needed and surfaces none of it.
+Shipped as `src/engine/utilisation.ts` (pure, 11 tests) plus `machineSupply()`
+in `throughput.ts`. All four parts landed:
 
-1. **Starvation is loud.** A cauldron that hits `brew_stalled` gets a visible
-   red state in the scene and a HUD counter ("2 cauldrons starving"). Right now
-   the failure that should drive all optimisation is nearly silent.
-2. **Ratios on the cauldron.** Each cauldron card shows *"needs 4.2
-   rootmoss/min — supplied 3.1/min"* with the deficit in red. That one line is
-   the entire Satisfactory dopamine loop, and `ingredientFlow()` from P0 already
-   computes both halves.
-3. **A utilisation number.** Per-cauldron uptime % over the last 5 minutes, and
-   a workshop-wide efficiency score. Give players a number they can chase to
-   100% — the sim already tracks `machine_util_pct`, so the concept exists in
-   the tooling but never reaches the player.
-4. **An efficiency goal.** "Run every cauldron at >95% for 10 minutes" as a
-   repeatable objective with a real reward. This turns the balancing act into a
-   win condition instead of a chore.
+1. **Starvation is loud.** A starved cauldron's progress bar goes red
+   (`#b91c1c`, overriding even the gold Exalted bar) and its caption becomes a
+   bold rose **"⚠ Starving"** chip. The HUD appends a red **⚠N** to the
+   coins/sec line, tappable straight into the Supply ledger.
+2. **Ratios on the cauldron.** `MachineView` grows a **Feed rate** panel:
+   *"Rootmoss — needs 30.89/min — supplied 26.04/min"*, red when the workshop
+   net is negative, with a one-line instruction on how to fix it. Demand is the
+   cauldron's own; supply and net are workshop-wide, because a shared
+   ingredient is only in trouble against TOTAL demand.
+3. **Utilisation.** Per-cauldron uptime % over a 5-minute sliding window, and
+   one workshop-wide **Efficiency** score in the Supply panel with a persisted
+   **best** to beat, banded green/amber/red at 95/70. Below 95 it explains
+   itself: *"Cauldrons spent 15% of their time waiting on ingredients."*
+4. **An efficiency goal.** Two achievements — *Well Oiled* (90%, 2 tokens) and
+   *Not a Drop Wasted* (99%, 6 tokens) — on a new `workshop_efficiency` trigger.
+
+**How the measurement avoids costing anything.** Uptime is sampled in the game
+loop, never the store: `recordUptime()` is O(1) and allocation-free into typed-
+array ring buffers held by the loop module, one call per *running* cauldron per
+logic tick. Idle and unprogrammed cauldrons are not sampled at all, so
+switching one off can never drag the score down. The only store write is
+`recordEfficiency()`, called ~1/s from the throughput hook and a no-op unless
+the personal best actually moved.
+
+**Design note:** "of the time you ASKED it to brew" is the definition that makes
+the number chase-able. Counting wall-clock time would punish players for owning
+cauldrons they deliberately idle, which would push them toward fewer cauldrons —
+the opposite of the intent.
 
 ---
 
@@ -568,7 +582,7 @@ colour map in `src/util/potionVisuals.ts`, plus a `ipb-config-vN` bump.
 | ~~1~~ | ~~P0~~ | ✅ done | Zero balance risk, makes every other change legible |
 | ~~2~~ | ~~P3~~ | ✅ done | The economy had to stop rewarding "ignore the game" |
 | ~~3~~ | ~~P5~~ | ✅ mostly done | Suffix ladder + 10 cauldrons + Transcendent made reachable |
-| 4 | P4 | 3–4 days | Builds straight on P0's throughput engine |
+| ~~4~~ | ~~P4~~ | ✅ done | Built straight on P0's throughput engine |
 | 5 | P1 | 2–3 days | Reuses the scene systems; adds "reason to be present" |
 | 6 | P2 | ~1 week | The retention engine; the economy under it is now sane |
 

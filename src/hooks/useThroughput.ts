@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { locationTripSecs, regionalCarry, useGameStore } from "../store/gameStore";
 import { useConfigStore } from "../store/configStore";
-import { machineBrewSecondsFor } from "./useGameLoop";
+import { machineBrewSecondsFor, machineUptime, workshopUptime } from "./useGameLoop";
 import { computeMasteryEffects } from "../data/masteryTrees";
 import { describePotion } from "../engine/potions";
 import { effectiveMultiBrew } from "../engine/formulas";
@@ -30,6 +30,10 @@ import {
 
 export interface ThroughputSnapshot {
   rate: WorkshopRate;
+  /** Workshop-wide utilisation over the last 5 min, or null while too new. */
+  efficiency: number | null;
+  /** Per-cauldron utilisation, keyed by machine id. */
+  uptimeById: Record<number, number | null>;
   /** Per-brewer inputs, kept so upgrade buttons can compute deltas via withPatch(). */
   machines: MachineFlow[];
   gatherers: GatherFlow[];
@@ -112,17 +116,25 @@ export function snapshotThroughput(): ThroughputSnapshot {
     });
   }
 
+  const uptimeById: Record<number, number | null> = {};
+  for (const m of s.machines) uptimeById[m.id] = machineUptime(m.id);
+
   return {
     rate: workshopRate(machines),
+    efficiency: workshopUptime(),
+    uptimeById,
     machines,
     gatherers,
     flow: ingredientFlow(gatherers, machines, s.ingredientInv),
   };
 }
 
+export type HudRate = WorkshopRate & { efficiency: number | null };
+
 /** True when two rates would render identically, so the HUD can skip a re-render. */
-function sameRate(a: WorkshopRate, b: WorkshopRate): boolean {
+function sameRate(a: HudRate, b: HudRate): boolean {
   return (
+    Math.abs((a.efficiency ?? -1) - (b.efficiency ?? -1)) < 0.5 &&
     Math.abs(a.coinsPerSec - b.coinsPerSec) < 0.005 &&
     Math.abs(a.potionsPerSec - b.potionsPerSec) < 0.005 &&
     Math.abs(a.unbankedPerSec - b.unbankedPerSec) < 0.005 &&
@@ -135,12 +147,19 @@ function sameRate(a: WorkshopRate, b: WorkshopRate): boolean {
  * The HUD rate. Re-renders only when the displayed value actually moves, so a
  * steady workshop costs one snapshot per second and zero renders.
  */
-export function useWorkshopRate(intervalMs = 1000): WorkshopRate {
-  const [rate, setRate] = useState<WorkshopRate>(() => snapshotThroughput().rate);
+export function useWorkshopRate(intervalMs = 1000): HudRate {
+  const [rate, setRate] = useState<HudRate>(() => {
+    const s = snapshotThroughput();
+    return { ...s.rate, efficiency: s.efficiency };
+  });
   const ref = useRef(rate);
   useEffect(() => {
     const id = window.setInterval(() => {
-      const next = snapshotThroughput().rate;
+      const snap = snapshotThroughput();
+      const next: HudRate = { ...snap.rate, efficiency: snap.efficiency };
+      // Bank the personal best / fire the efficiency achievements. The action
+      // is a no-op unless the record actually moved, so this is not a 1 Hz write.
+      if (snap.efficiency != null) useGameStore.getState().recordEfficiency(snap.efficiency);
       if (sameRate(ref.current, next)) return;
       ref.current = next;
       setRate(next);

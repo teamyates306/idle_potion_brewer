@@ -33,6 +33,7 @@ import DevDashboard from "./components/DevDashboard";
 import HintBanner from "./components/ui/HintBanner";
 import SpotlightHighlight from "./components/ui/SpotlightHighlight";
 import { spotlight } from "./util/spotlight";
+import { subscribeHelp, type HelpTabId } from "./util/helpBus";
 import Modal from "./components/ui/Modal";
 import FATLayer from "./components/ui/FATLayer";
 import Atmosphere, { applyDayNightVars } from "./components/Atmosphere";
@@ -198,6 +199,8 @@ export default function App() {
   // it lands there instead of the default board/join tab.
   const [leaderboardInitialTab, setLeaderboardInitialTab] = useState<"board" | "account" | undefined>(undefined);
   const [machineTabId, setMachineTabId] = useState(1);
+  // Set when an InfoDot's "Read more" deep-links into How to Play (see helpBus).
+  const [helpTab, setHelpTab] = useState<HelpTabId | undefined>(undefined);
   // Tapping the HUD's coins/sec opens the Supply ledger it comes from.
   const [potionTab, setPotionTab] = useState<"sell" | "discovered" | "supply" | undefined>(undefined);
   const [workerIndexForMap, setWorkerIndexForMap] = useState(0);
@@ -224,6 +227,9 @@ export default function App() {
   // 5-way equal split (machine / ingredient / potion / worker / adventurer)
   // and LoadingScreen.tsx for how each kind renders.
   const [loadingIcon] = useState(() => pickLoadingIcon());
+
+  // An InfoDot anywhere in the tree can ask for How to Play on a given tab.
+  useEffect(() => subscribeHelp((tab) => { setHelpTab(tab); setPanel("help"); }), []);
   useEffect(() => {
     // Defensive reset: a page navigated to us (e.g. "Back to the workshop"
     // from the leaderboard) can arrive with a stray scroll/pan position —
@@ -385,7 +391,7 @@ export default function App() {
       {panel === "quests"   && <QuestView    onClose={() => setPanel(null)} />}
       {panel === "guild"    && <GuildPanel   onClose={() => setPanel(null)} />}
       {panel === "progress" && <ProgressPanel onClose={() => setPanel(null)} />}
-      {panel === "help"     && <HelpModal    onClose={() => setPanel(null)} />}
+      {panel === "help"     && <HelpModal    onClose={() => { setPanel(null); setHelpTab(undefined); }} initialTab={helpTab} />}
       {panel === "gax"      && <GaxDashboard onClose={() => setPanel(null)} />}
       {panel === "leaderboard" && (
         <LeaderboardModal onClose={() => setPanel(null)} initialTab={leaderboardInitialTab} />

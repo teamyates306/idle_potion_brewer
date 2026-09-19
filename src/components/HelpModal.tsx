@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "./ui/Modal";
 import { ICONS, IconSparkle } from "./ui/icons";
 
 // ── Tabbed in-game guide ──────────────────────────────────────────────────────
 // Plain-language explanations of every facet of the game, one tab per topic.
 
-type TabId = "basics" | "brewing" | "ingredients" | "workers" | "map" | "market" | "mastery" | "quests" | "tips";
+type TabId = "basics" | "brewing" | "ingredients" | "workers" | "map" | "market" | "mastery" | "quests" | "output" | "knowledge" | "tips";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "basics",      label: "Basics",      icon: "house" },
@@ -16,6 +16,8 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: "market",      label: "The GAX",     icon: "columns" },
   { id: "mastery",     label: "Mastery",     icon: "sparkle" },
   { id: "quests",      label: "Quests",      icon: "scroll" },
+  { id: "output",      label: "Output",      icon: "chartUp" },
+  { id: "knowledge",   label: "Knowledge",   icon: "book" },
   { id: "tips",        label: "Tips",        icon: "idea" },
 ];
 
@@ -233,6 +235,62 @@ const CONTENT: Record<TabId, React.ReactNode> = {
       </P>
     </>
   ),
+  output: (
+    <>
+      <H>Coins per second</H>
+      <P>
+        The rate under your coin total is the number the whole game moves. Every worker
+        and brewer upgrade quotes what it would add to that rate, so you can price a
+        purchase against what it actually buys you.
+      </P>
+      <H>Unsold income</H>
+      <P>
+        An amber <Em>unsold</Em> rate means you're making value but not banking it — turn
+        on auto-sell for that potion, or sell the pile by hand.
+      </P>
+      <H>The supply ledger</H>
+      <P>
+        Tap the rate to open <Em>Supply</Em>. Each ingredient shows what's coming in from
+        gathering against what your brewers consume. Red means you're burning it faster
+        than you gather it, and the headline names whichever shortage runs dry first —
+        fix that bottleneck and every other number moves.
+      </P>
+      <P>
+        Consumption counts one set of inputs per cycle: multi-brew extras are free, since
+        they reuse the same ingredients.
+      </P>
+      <H>Starved brewers</H>
+      <P>
+        A <Em>starved</Em> brewer has a recipe and is set to run but has no inputs left.
+        It earns nothing until the ingredient it wants comes back.
+      </P>
+    </>
+  ),
+  knowledge: (
+    <>
+      <H>Insight</H>
+      <P>
+        Every distinct potion <Em>name</Em> you have ever discovered raises the value of
+        everything you brew, forever — not just that potion. Rarer finds count for more,
+        and combi-potions count several times over.
+      </P>
+      <P>
+        It counts names, not recipes, so there's nothing to gain from grinding out
+        thousands of near-identical ingredient permutations. The bonus grows
+        logarithmically: it never stops rising, and it never runs away.
+      </P>
+      <H>Renown</H>
+      <P>
+        A second, smaller multiplier from every achievement you've unlocked. It stacks
+        with Insight — the Discovered tab shows both and their combined total.
+      </P>
+      <H>Why explore</H>
+      <P>
+        Camping one recipe forever is the slow route. New locations mean new ingredients,
+        new ingredients mean new names, and every name pays out across the whole workshop.
+      </P>
+    </>
+  ),
   tips: (
     <>
       <H>Early game</H>
@@ -255,8 +313,12 @@ const CONTENT: Record<TabId, React.ReactNode> = {
   ),
 };
 
-export default function HelpModal({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<TabId>("basics");
+export default function HelpModal({ onClose, initialTab }: { onClose: () => void; initialTab?: TabId }) {
+  // initialTab is set when an InfoDot's "Read more" deep-links in (util/helpBus).
+  const [tab, setTab] = useState<TabId>(initialTab ?? "basics");
+  // Follow later deep-links too: if this modal is already open, a fresh
+  // openHelp() changes the prop without remounting, so seeding state isn't enough.
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   return (
     <Modal title="How to Play" onClose={onClose} accent="#3f7a78" size="lg">
       <div className="mb-3 flex gap-1 overflow-x-auto pb-1">

@@ -100,8 +100,7 @@ export default function GaxDashboard({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <div className="mb-4 rounded-xl border border-dashed border-slate-700 bg-slate-800/30 p-3 text-center text-[11px] text-slate-500">
-          No market anomalies on the wire. The ticker breaks the news a full day
-          before any event hits prices.
+          Quiet on the wire. The ticker breaks any event a full day before it hits prices.
         </div>
       )}
 

@@ -14,6 +14,7 @@ import {
   PROSPERITY_SLOT_UNLOCK_LEVEL, bulkShipmentSize, processBulkTrade, prosperityProgress,
 } from "../engine/prosperity";
 import { fmt, fmtDuration, RARITY_COLOR } from "../util/format";
+import InfoDot from "./ui/InfoDot";
 import IngredientSvg from "./art/IngredientSvg";
 import WorkerArt, { workerHue } from "./art/WorkerArt";
 import type { Settlement, TradeSlot } from "../types";
@@ -56,7 +57,6 @@ export default function SettlementModal({
   const [activeSlotId, setActiveSlotId] = useState<string>(slots[0]?.id ?? "");
   const [fromBySlot, setFromBySlot] = useState<Record<string, string | null>>({});
   const [pickerSlot, setPickerSlot] = useState<TradeSlot | null>(null);
-  const [showHowTradesWork, setShowHowTradesWork] = useState(false);
 
   const region = regionOfDistance(settlement.distance);
   const activeSlot = slots.find((s) => s.id === activeSlotId) ?? slots[0];
@@ -125,32 +125,25 @@ export default function SettlementModal({
           {prosperity.level >= PROSPERITY_MAX_LEVEL && (
             <div className="mt-0.5 text-right text-[9px] text-slate-500">{fmt(prosperityEntry.xp)} XP total</div>
           )}
-          <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-            Every item delivered grants +1 Prosperity XP.
-            {prosperity.level < PROSPERITY_SLOT_UNLOCK_LEVEL && <> Level {PROSPERITY_SLOT_UNLOCK_LEVEL} opens a bonus trade offer.</>}
-            {prosperity.level >= PROSPERITY_SLOT_UNLOCK_LEVEL && prosperity.level < PROSPERITY_BARTER_LEVEL && <> Bonus offer unlocked! Level {PROSPERITY_BARTER_LEVEL} grants Barter Efficiency (−1 input, +1 output on every offer).</>}
-            {prosperity.level >= PROSPERITY_BARTER_LEVEL && <> Barter Efficiency active: every offer asks one less and pays one more.</>}
+          <p className="mt-1.5 flex items-center gap-1 text-[10px] leading-relaxed text-slate-500">
+            {prosperity.level < PROSPERITY_SLOT_UNLOCK_LEVEL && <>Level {PROSPERITY_SLOT_UNLOCK_LEVEL}: a bonus trade offer.</>}
+            {prosperity.level >= PROSPERITY_SLOT_UNLOCK_LEVEL && prosperity.level < PROSPERITY_BARTER_LEVEL && <>Level {PROSPERITY_BARTER_LEVEL}: Barter Efficiency — every offer asks one less, pays one more.</>}
+            {prosperity.level >= PROSPERITY_BARTER_LEVEL && <>Barter Efficiency active — every offer asks one less, pays one more.</>}
+            <InfoDot helpTab="map" label="About Prosperity">
+              Every item you deliver here grants +1 Prosperity XP. Levelling a town unlocks
+              better offers and buffs every worker travelling in its region.
+            </InfoDot>
           </p>
         </div>
 
         {/* Trade slots */}
         <div className="mb-1.5 flex items-center gap-1.5">
           <p className="text-[10px] uppercase tracking-wider text-amber-700">Trade offers</p>
-          <button
-            onClick={() => setShowHowTradesWork((x) => !x)}
-            className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-slate-600 text-[9px] font-bold text-slate-500 hover:border-amber-600 hover:text-amber-600"
-            title="How trades work"
-          >
-            ?
-          </button>
+          <InfoDot helpTab="map" label="How trades work">
+            Workers pack to full carry capacity and repeat the run while your stash holds out.
+            Leftovers that don't fill a whole trade are banked at the town toward the next one.
+          </InfoDot>
         </div>
-        {showHowTradesWork && (
-          <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-            Workers pack their bags to full carrying capacity. Whole recipes convert to return
-            cargo; fractional leftovers are banked as surplus credit at the town and count
-            toward the next delivery. The run repeats while your stash holds out.
-          </p>
-        )}
         <div className="mb-4 space-y-2">
           {slots.map((slot) => {
             const outIng = cfg.ingredients[slot.output.ingredientId];
@@ -409,7 +402,7 @@ function TradeInputPicker({
             </div>
           )}
           <p className="mt-3 text-[10px] text-slate-500">
-            The chosen goods leave your stash when the worker departs and are traded on arrival.
+            Goods leave your stash when the worker departs.
           </p>
         </div>
       </div>

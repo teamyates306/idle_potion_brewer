@@ -260,9 +260,9 @@ export default function MasteryView({ onClose, embedded = false }: { onClose: ()
 
         {showExplainer && (
           <div className="mb-3 rounded-lg border border-slate-700/60 bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-200">
-            Brewing a potion builds its own Mastery — level 10 (~12h brewing that potion) shaves up to 15% off
-            its brew time and awards a token. Spend tokens below on permanent tree bonuses. Tree and potion
-            bonuses stack (capped at −80% brew time). Tap any tier to see its effect and unlock it.
+            Brewing a potion masters it. Level 10 (~12h of brewing it) cuts its brew time by 15% and
+            awards a token. Tokens buy the permanent tree bonuses below — tree and potion bonuses
+            stack, up to −80% brew time.
           </div>
         )}
 
@@ -278,7 +278,7 @@ export default function MasteryView({ onClose, embedded = false }: { onClose: ()
 
         {masteryTokens === 0 && masteryUnlocks.length === 0 && (
           <p className="mb-3 rounded-lg bg-slate-800/60 px-3 py-2 text-center text-xs text-slate-300">
-            Reach mastery level 10 on any potion (roughly 12 hours of brewing it) to earn your first token.
+            Master any potion to level 10 (~12h of brewing it) to earn your first token.
           </p>
         )}
 

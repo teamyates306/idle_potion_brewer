@@ -138,7 +138,7 @@ export default function CoinCounter({ onOpenSupply }: { onOpenSupply?: () => voi
         </span>
         {/* Banked income beats unbanked: a player with auto-sell off is producing
             value but earning nothing, and saying so is how they learn to fix it. */}
-        {rate.coinsPerSec > 0 || rate.unbankedPerSec > 0 ? (
+        {rate.coinsPerSec > 0 || rate.unbankedPerSec > 0 || rate.stalledMachines > 0 ? (
           <button
             type="button"
             onClick={onOpenSupply}
@@ -153,6 +153,9 @@ export default function CoinCounter({ onOpenSupply }: { onOpenSupply?: () => voi
             {rate.coinsPerSec > 0
               ? `+${fmtRatePerSec(rate.coinsPerSec)}`
               : `${fmtRatePerSec(rate.unbankedPerSec)} unsold`}
+            {rate.stalledMachines > 0 && (
+              <span className="ml-1 font-bold text-rose-400">⚠{rate.stalledMachines}</span>
+            )}
           </button>
         ) : null}
       </span>

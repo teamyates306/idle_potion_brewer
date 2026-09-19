@@ -212,9 +212,58 @@ export function ingredientFlow(
   return rows;
 }
 
+/** One ingredient line on a cauldron's card: what IT needs vs what the workshop supplies. */
+export interface MachineSupplyRow {
+  id: string;
+  /** Items per second THIS cauldron burns (one per slot per cycle). */
+  needPerSec: number;
+  /** Items per second every gatherer brings in, workshop-wide. */
+  incomePerSec: number;
+  /** Workshop-wide net after every cauldron's demand. Negative = draining. */
+  netPerSec: number;
+  stock: number;
+  secsUntilEmpty: number | null;
+  /** True when this line is what will stop this cauldron. */
+  starving: boolean;
+}
+
+/**
+ * The "needs 4.2/min, supplied 3.1/min" readout for one cauldron.
+ *
+ * Demand is this cauldron's alone; supply and net are workshop-wide, because
+ * that is the number the player can act on — an ingredient two cauldrons share
+ * is only in trouble relative to total demand, not this one's slice of it.
+ */
+export function machineSupply(
+  m: MachineFlow,
+  rows: readonly IngredientFlowRow[],
+): MachineSupplyRow[] {
+  const { cyclesPerSec } = machineRate(m);
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const counts = new Map<string, number>();
+  for (const id of m.recipeIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+  const out: MachineSupplyRow[] = [];
+  for (const [id, slots] of counts) {
+    const row = byId.get(id);
+    out.push({
+      id,
+      needPerSec: cyclesPerSec * slots,
+      incomePerSec: row?.incomePerSec ?? 0,
+      netPerSec: row?.netPerSec ?? 0,
+      stock: row?.stock ?? 0,
+      secsUntilEmpty: row?.secsUntilEmpty ?? null,
+      starving: (row?.netPerSec ?? 0) < 0,
+    });
+  }
+  // Worst first, so the line to fix is the line on top.
+  out.sort((a, b) => a.netPerSec - b.netPerSec || a.id.localeCompare(b.id));
+  return out;
+}
+
 /**
  * The bottleneck: the ingredient that will starve a brewer soonest, or null
- * when nothing is draining. This is the one number P4's "cauldron is starving"
+ * when nothing is draining. This is the one number the "cauldron is starving"
  * warning hangs off.
  */
 export function bottleneck(rows: readonly IngredientFlowRow[]): IngredientFlowRow | null {

@@ -6,6 +6,7 @@ import {
   gatherIncomePerSec,
   ingredientFlow,
   machineRate,
+  machineSupply,
   withPatch,
   workshopRate,
   type GatherFlow,
@@ -215,6 +216,51 @@ describe("ingredientFlow", () => {
     expect(rows[0].id).toBe("unobtainium");
     expect(rows[0].incomePerSec).toBe(0);
     expect(rows[0].secsUntilEmpty).toBe(0);
+  });
+});
+
+describe("machineSupply", () => {
+  it("quotes this cauldron's demand against workshop-wide supply", () => {
+    const m = machine({ brewSecs: 10, recipeIds: ["a", "b"] });
+    const rows = ingredientFlow(
+      [gatherer({ tripSecs: 10, yieldPerTrip: 1, drops: [{ ingredientId: "a", weight: 1 }] })],
+      [m],
+      { a: 50, b: 0 },
+    );
+    const supply = machineSupply(m, rows);
+    const a = supply.find((r) => r.id === "a")!;
+    expect(a.needPerSec).toBeCloseTo(0.1);
+    expect(a.incomePerSec).toBeCloseTo(0.1);
+    expect(a.starving).toBe(false);
+  });
+
+  it("flags the ingredient nobody is gathering", () => {
+    const m = machine({ recipeIds: ["a", "b"] });
+    const rows = ingredientFlow([], [m], {});
+    const supply = machineSupply(m, rows);
+    expect(supply.every((r) => r.starving)).toBe(true);
+    expect(supply[0].incomePerSec).toBe(0);
+  });
+
+  it("counts a duplicated ingredient once per slot", () => {
+    const m = machine({ brewSecs: 10, recipeIds: ["a", "a"] });
+    const supply = machineSupply(m, ingredientFlow([], [m], {}));
+    expect(supply).toHaveLength(1);
+    expect(supply[0].needPerSec).toBeCloseTo(0.2);
+  });
+
+  it("puts the worst line on top", () => {
+    const m = machine({ brewSecs: 2, recipeIds: ["scarce", "plenty"] });
+    const rows = ingredientFlow(
+      [gatherer({ tripSecs: 1, yieldPerTrip: 10, drops: [{ ingredientId: "plenty", weight: 1 }] })],
+      [m],
+      {},
+    );
+    expect(machineSupply(m, rows)[0].id).toBe("scarce");
+  });
+
+  it("is empty for an unprogrammed cauldron", () => {
+    expect(machineSupply(machine({ recipeIds: [] }), [])).toEqual([]);
   });
 });
 

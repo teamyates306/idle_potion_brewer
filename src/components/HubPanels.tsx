@@ -119,8 +119,8 @@ export function ProgressPanel({ onClose }: { onClose: () => void }) {
           </div>
           <p className="text-sm font-semibold text-slate-300">No potion has reached Mastery level 10 yet</p>
           <p className="max-w-[36ch] text-xs leading-relaxed text-slate-400">
-            Every brew builds that potion's Mastery. Reach level&nbsp;10 on any potion
-            (roughly 12 hours of brewing it) to earn your first Mastery token and open this tree.
+            Every brew masters that potion. Reach level&nbsp;10 on any of them (~12h of
+            brewing it) to earn your first token and open this tree.
           </p>
           {bestLevel > 0 && (
             <p className="text-[11px] text-amber-700">

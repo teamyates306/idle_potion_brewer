@@ -17,8 +17,12 @@ import {
 import { machineBrewSecondsFor } from "../hooks/useGameLoop";
 import { usePotionPreview } from "../hooks/usePotionPreview";
 import { useThroughput } from "../hooks/useThroughput";
-import { withPatch, workshopRate } from "../engine/throughput";
-import { fmt, fmtRatePerSec } from "../util/format";
+import {
+  machineSupply, withPatch, workshopRate,
+  type IngredientFlowRow, type MachineFlow,
+} from "../engine/throughput";
+import { uptimeBand } from "../engine/utilisation";
+import { fmt, fmtItemRate, fmtRatePerSec } from "../util/format";
 import { dominantAttrSentence } from "../util/potionVisuals";
 import IngredientSvg from "./art/IngredientSvg";
 import IngredientSelectionModal from "./IngredientSelectionModal";
@@ -358,6 +362,9 @@ function MachinePanelBody({
       >
         {machine.running ? <><Pause size={18} /> Stop Brewing</> : <><Play size={18} /> Set to Brew</>}
       </button>
+
+      {/* Feed rate + uptime — the bottleneck, stated per cauldron. */}
+      <CauldronSupply flow={flow} rows={tp.flow} uptime={tp.uptimeById[machine.id] ?? null} />
 
       {/* Gloves of Engineering — True Brew Rate analytics */}
       {hasGloves && preview && (
@@ -710,6 +717,71 @@ function TokenUpgrades({ options }: { options: UpgradeOption[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * "Needs 4.2/min, workshop supplies 3.1/min" — the Satisfactory readout, per
+ * cauldron. Demand is this cauldron's; supply and net are workshop-wide,
+ * because an ingredient two cauldrons share is only in trouble against TOTAL
+ * demand, not this one's slice of it.
+ */
+function CauldronSupply({
+  flow,
+  rows,
+  uptime,
+}: {
+  flow: MachineFlow | undefined;
+  rows: IngredientFlowRow[];
+  uptime: number | null;
+}) {
+  const cfg = useConfigStore();
+  if (!flow || flow.recipeIds.length === 0) return null;
+  const supply = machineSupply(flow, rows);
+  if (supply.length === 0) return null;
+
+  const band = uptime == null ? null : uptimeBand(uptime);
+  const bandClass =
+    band === "good" ? "text-emerald-700" : band === "fair" ? "text-amber-700" : "text-red-600";
+
+  return (
+    <div className="mt-3 rounded-lg border border-slate-700 bg-slate-800/40 p-3">
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">Feed rate</span>
+        {uptime != null ? (
+          <span className={`text-xs font-bold tabular-nums ${bandClass}`}>
+            {uptime.toFixed(0)}% uptime
+          </span>
+        ) : (
+          <span className="text-[10px] italic text-slate-500">measuring uptime…</span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {supply.map((r) => {
+          const ing = cfg.ingredients[r.id];
+          return (
+            <div key={r.id} className="flex items-baseline justify-between gap-2 text-[11px]">
+              <span className="min-w-0 flex-1 truncate text-slate-300">{ing?.name ?? r.id}</span>
+              <span className="shrink-0 tabular-nums text-slate-400">
+                needs {fmtItemRate(r.needPerSec)}
+              </span>
+              <span
+                className={`shrink-0 tabular-nums font-semibold ${
+                  r.starving ? "text-red-600" : "text-emerald-700"
+                }`}
+              >
+                supplied {fmtItemRate(r.incomePerSec)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {supply.some((r) => r.starving) && (
+        <p className="mt-2 border-t border-slate-700/60 pt-2 text-[10px] text-red-500">
+          Send more workers to a location that drops the red ingredients, or slow this cauldron down.
+        </p>
+      )}
     </div>
   );
 }

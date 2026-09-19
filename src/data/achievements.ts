@@ -13,7 +13,8 @@ export type AchievementTrigger =
   | "locations_unlocked"   // map nodes unlocked
   | "worker_click_speed"   // a single worker's clicks/sec (auto_click_speed)
   | "volatile_recipe"      // # of high-volatility ingredients in one brewed recipe
-  | "single_potion_value"; // sell value of a single brewed potion
+  | "single_potion_value"  // sell value of a single brewed potion
+  | "workshop_efficiency"; // % of asked-to-brew time actually spent brewing
 
 export interface Reward {
   type: "coins" | "tokens";
@@ -70,6 +71,12 @@ export const ACHIEVEMENTS: Achievement[] = [
     description: "Eight peons on the books, run ragged by adventuring parties who always show up needing everything at once, five minutes before a raid.", rewards: [coins(100_000)] },
   { id: "loc_30",   name: "Cartographer of Bad Ideas", trigger_type: "locations_unlocked", target_value: 30, is_secret: false,
     description: "Every location on the map charted — including the three that chart you back.", rewards: [tokens(5)] },
+
+  // ── Efficiency: the optimisation game made explicit ──
+  { id: "eff_90",  name: "Well Oiled",        trigger_type: "workshop_efficiency", target_value: 90,  is_secret: false,
+    description: "Nine cauldrons in ten stayed fed. The gatherers have started taking pride in it.", rewards: [tokens(2)] },
+  { id: "eff_99",  name: "Not a Drop Wasted", trigger_type: "workshop_efficiency", target_value: 99,  is_secret: false,
+    description: "Every cauldron fed, every minute, for five minutes straight. Somewhere a logistics scholar is weeping with joy.", rewards: [tokens(6)] },
 
   // ── Secret / zany ──
   { id: "secret_clickspeed", name: "Guild Standards Violation", trigger_type: "worker_click_speed", target_value: 10, is_secret: true,

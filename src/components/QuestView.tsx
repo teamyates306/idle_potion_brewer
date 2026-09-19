@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollText, Check, Hourglass, FlaskConical, RotateCcw } from "lucide-react";
 import Modal from "./ui/Modal";
+import InfoDot from "./ui/InfoDot";
 import PotionDetailsModal from "./ui/PotionDetailsModal";
 import AdventurerSprite from "./art/AdventurerSprite";
 import { useGameStore, QUEST_COOLDOWN_MS, QUEST_COOLDOWNS_MS } from "../store/gameStore";
@@ -102,7 +103,6 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
   const rerollDiscoveryBounty = useGameStore((s) => s.rerollDiscoveryBounty);
   const coins = useGameStore((s) => s.coins);
   const [detailName, setDetailName] = useState<string | null>(null);
-  const [showHowQuestsWork, setShowHowQuestsWork] = useState(false);
 
   // 1s tick so countdowns update live and elapsed cooldowns regenerate.
   const [, setNow] = useState(Date.now());
@@ -138,24 +138,13 @@ export default function QuestView({ onClose }: { onClose: () => void }) {
       <Modal title="The Quest Board" onClose={onClose} accent="#f59e0b" size="xl">
         <div className="mb-3 flex items-start gap-1.5">
           <p className="flex-1 text-xs text-slate-400">
-            Local adventurers passing through need potions for the road ahead. Fulfil their requests
-            with any recipes matching the potion they're after.
+            Passing adventurers need potions for the road. Any recipe with the right name counts.
           </p>
-          <button
-            onClick={() => setShowHowQuestsWork((x) => !x)}
-            className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-slate-600 text-[9px] font-bold text-slate-500 hover:border-amber-600 hover:text-amber-600"
-            title="How quests work"
-          >
-            ?
-          </button>
+          <InfoDot helpTab="quests" label="How quests work" className="mt-0.5">
+            Quests are paid from your stash, so the potions must actually be sitting there — don't
+            auto-sell a recipe you're saving. Which ingredients brewed it doesn't matter.
+          </InfoDot>
         </div>
-        {showHowQuestsWork && (
-          <p className="mb-3 rounded-lg bg-slate-800/50 px-3 py-2 text-[11px] leading-relaxed text-slate-400">
-            Quests are fulfilled from your potion inventory — the potions must actually be sitting in
-            your stash, so don't auto-sell a recipe you're saving for a quest. Matching any recipe with
-            the requested name counts, regardless of which exact ingredients brewed it.
-          </p>
-        )}
 
         {/* Desktop shows the three difficulty tiers side by side */}
         <div className="space-y-3 lg:grid lg:grid-cols-3 lg:items-start lg:gap-3 lg:space-y-0">

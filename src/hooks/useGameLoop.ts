@@ -17,6 +17,13 @@ import {
 } from "../engine/tripChoreography";
 // Re-exported so consumers keep importing the loop's public surface from one place.
 export { SHUTTLE_TRIP_SECS, SHUTTLE_PERIOD_SECS } from "../engine/tripChoreography";
+import {
+  createUptimeWindow,
+  recordUptime,
+  uptimePct,
+  workshopEfficiency,
+  type UptimeWindow,
+} from "../engine/utilisation";
 import type { BrewingMachine, Worker } from "../types";
 
 // =============================================================================
@@ -140,6 +147,41 @@ export function machineBrewSecondsFor(machine: BrewingMachine, fx?: MasteryEffec
   const secs = applyMasteryToBrewTime(base, fx.brew_speed_pct, potionMasteryLvl);
   brewSecsCache.set(machine, { fx, potionMastery: state.potionMastery, cfg, secs });
   return secs;
+}
+
+// ---- Cauldron utilisation ---------------------------------------------------
+// "Of the time you asked it to brew, how much did it actually brew?" — the
+// number the whole optimisation loop hangs off (see engine/utilisation.ts).
+//
+// Sampled HERE rather than in the store because the loop's performance contract
+// forbids a set() per tick. The ring buffers are typed arrays held for the life
+// of the page: one O(1), allocation-free write per running cauldron per tick.
+const uptimeWindows = new Map<number, UptimeWindow>();
+
+function uptimeFor(machineId: number): UptimeWindow {
+  let w = uptimeWindows.get(machineId);
+  if (!w) {
+    w = createUptimeWindow();
+    uptimeWindows.set(machineId, w);
+  }
+  return w;
+}
+
+/** Does this cauldron have anything slotted? Avoids the slice() a filter would allocate. */
+function hasProgrammedRecipe(m: BrewingMachine): boolean {
+  for (let i = 0; i < m.unlocked_slots; i++) if (m.recipe_slots[i]) return true;
+  return false;
+}
+
+/** Uptime % for one cauldron over the last 5 minutes, or null while too new. */
+export function machineUptime(machineId: number, now: number = Date.now()): number | null {
+  const w = uptimeWindows.get(machineId);
+  return w ? uptimePct(w, now) : null;
+}
+
+/** One workshop-wide efficiency score, time-weighted across every cauldron. */
+export function workshopUptime(now: number = Date.now()): number | null {
+  return workshopEfficiency(uptimeWindows.values(), now);
 }
 
 // ---- Published progress store ----------------------------------------------
@@ -272,7 +314,8 @@ function startDriver(): () => void {
     last = t;
 
     const now = Date.now();
-    const dt = (now - lastWall) / 1000;
+    const dtMs = now - lastWall;
+    const dt = dtMs / 1000;
 
     if (now - lastWall > 2000) {
       // Frame gap (throttled tab / suspended device): hand over to the
@@ -365,6 +408,11 @@ function startDriver(): () => void {
       const machine = useGameStore.getState().machines[i];
       if (!machine) break;
       const brewActive = machine.running && !(machine.brew_stalled ?? false);
+      // Utilisation: only sample a cauldron you actually ASKED to brew, so an
+      // idle or unprogrammed one never drags the workshop score down.
+      if (machine.running && hasProgrammedRecipe(machine)) {
+        recordUptime(uptimeFor(machine.id), now, dtMs, brewActive);
+      }
       let brewProgress = 0;
       if (brewActive && machine.brew_started_at) {
         const total = machineBrewSecondsFor(machine, fx);

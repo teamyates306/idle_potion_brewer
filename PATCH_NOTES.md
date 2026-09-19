@@ -208,7 +208,56 @@ before you walk away.
 
 ---
 
-## 9. What did *not* change
+## 9. You can see which cauldron is starving, and how badly
+
+A cauldron with no ingredients used to sit there with a small amber caption
+reading *"Need ingredients"*, which is a strange way to announce the single
+most important failure in the game. Now:
+
+**In the workshop.** A starved cauldron's progress bar turns **red** and its
+caption becomes a bold **⚠ Starving**. You can spot it across the room.
+
+**In the HUD.** The coins/sec line picks up a red **⚠2** telling you how many
+cauldrons are dry right now. Tap it and you land straight in the Supply ledger.
+
+**On the cauldron itself.** Open any brewer and there is a new **Feed rate**
+panel:
+
+```
+   FEED RATE                            87% uptime
+   Rootmoss       needs 30.89/min       supplied 26.04/min
+
+   Send more workers to a location that drops the red ingredients,
+   or slow this cauldron down.
+```
+
+That is the whole optimisation game in two numbers. If *needs* is bigger than
+*supplied*, you are running on stock and you will run dry — the Supply tab will
+even tell you when (*"⚠ Bottleneck: Rootmoss runs out in 24s"*).
+
+**Efficiency.** The Supply tab now scores your whole workshop:
+
+```
+   EFFICIENCY  100%                          BEST  100%
+   EFFICIENCY   85%                          BEST  100%
+   Cauldrons spent 15% of their time waiting on ingredients.
+```
+
+It is the share of time your cauldrons spent *actually brewing* out of the time
+you asked them to brew — measured over the last five minutes, and it keeps your
+best score so you have a record to beat. Green at 95%+, amber below that, red
+below 70%.
+
+Two things worth knowing: a cauldron you deliberately switch off, or one with no
+recipe loaded, **is not counted at all** — idling a brewer can never hurt your
+score. And there are two new achievements on it: **Well Oiled** (hold 90%) and
+**Not a Drop Wasted** (hold 99%), worth 2 and 6 upgrade tokens.
+
+Chasing 100% is now a real thing to do with an evening.
+
+---
+
+## 10. What did *not* change
 
 **There is no penalty for repetition.** Settling on one strong recipe and
 grinding it is still a completely valid way to play, and nothing taxes you for
@@ -221,7 +270,7 @@ untouched.
 
 ---
 
-## 10. Did it actually work?
+## 11. Did it actually work?
 
 The game has a headless simulator that plays 24 in-game hours with six different
 AI playstyles, 300 runs total. Here is the same test before and after, total

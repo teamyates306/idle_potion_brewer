@@ -86,7 +86,7 @@ function LogisticsBreakdown({ worker, distance }: { worker: Worker; distance: nu
             </div>
           </div>
           <p className="text-[9px] normal-nums text-slate-500">
-            Regional advantages come from Settlement Prosperity — trade at this region's towns to level them up.
+            From Settlement Prosperity — trade at this region's towns to raise it.
           </p>
         </div>
       )}
@@ -427,7 +427,7 @@ export default function WorkerView({ onClose, onOpenMap }: { onClose: () => void
             <span className="text-sm font-semibold text-slate-200">Hire a New Worker</span>
           </div>
           <p className="mb-3 text-xs text-slate-500">
-            Each additional worker gathers ingredients independently.
+            One more pair of hands, gathering on its own.
           </p>
           <button
             data-tut="hire-worker"
@@ -510,8 +510,7 @@ function PendingTokensPanel({
         })}
       </div>
       <p className="text-[10px] text-slate-500">
-        Spends each worker's own tokens, cheapest upgrades first, until coins run out.
-        Fine-tune a single worker from their detail card.
+        Spends each worker's own tokens, cheapest first, until coins run out.
       </p>
     </div>
   );

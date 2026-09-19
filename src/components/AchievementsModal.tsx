@@ -17,6 +17,7 @@ function requirementText(a: Achievement): string {
     workers_hired: `Employ ${t} workers`,
     locations_unlocked: `Unlock ${t} map locations`,
     worker_click_speed: `Push a worker to ${t} clicks/sec`,
+    workshop_efficiency: `Hold ${t}% workshop efficiency for five minutes`,
     volatile_recipe: `Brew a recipe of ${t} highly-volatile ingredients`,
     single_potion_value: `Brew a single potion worth ${fmt(t)} coins`,
   };
