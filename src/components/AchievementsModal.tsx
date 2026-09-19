@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Trophy, Lock, HelpCircle, X, ChevronDown, ChevronUp } from "lucide-react";
 import Modal from "./ui/Modal";
 import { useGameStore } from "../store/gameStore";
-import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, type Achievement, type AchievementTrigger } from "../data/achievements";
+import { ACHIEVEMENTS, ACHIEVEMENTS_BY_ID, ACHIEVEMENT_GROUPS, type Achievement, type AchievementTrigger } from "../data/achievements";
 import { fmt } from "../util/format";
 import { spawnFAT } from "../util/fat";
 import { IconCoin, IconStarToken, IconCheck } from "./ui/icons";
@@ -24,13 +24,10 @@ function requirementText(a: Achievement): string {
   return labels[a.trigger_type];
 }
 
-const GROUPS: { name: string; ids: string[] }[] = [
-  { name: "Potion Discovery", ids: ["disc_10", "disc_50", "disc_150", "disc_300", "disc_600"] },
-  { name: "Wealth",           ids: ["coin_10k", "coin_1m", "coin_100m", "coin_1b"] },
-  { name: "Output",           ids: ["brew_1k", "brew_100k"] },
-  { name: "Empire",           ids: ["mach_5", "work_8", "loc_30"] },
-  { name: "Secret",           ids: ["secret_clickspeed", "secret_voidsoup", "secret_liquidasset"] },
-];
+// Grouping lives with the catalogue (data/achievements) so a test can assert it
+// covers every achievement — see ACHIEVEMENT_GROUPS' own comment for why a gap
+// here is worse than a cosmetic one.
+const GROUPS = ACHIEVEMENT_GROUPS;
 
 export default function AchievementsModal({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const unlocked = useGameStore((s) => s.unlocked_achievements);

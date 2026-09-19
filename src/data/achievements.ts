@@ -90,3 +90,23 @@ export const ACHIEVEMENTS: Achievement[] = [
 export const ACHIEVEMENTS_BY_ID: Record<string, Achievement> = Object.fromEntries(
   ACHIEVEMENTS.map((a) => [a.id, a])
 );
+
+/**
+ * How the Guild Hall's achievement list is grouped, in display order.
+ *
+ * This lives beside the catalogue rather than in the modal because it has to
+ * cover EVERY achievement: the list renders group by group, and the only place
+ * a reward can be collected is its row. An achievement missing from here is
+ * therefore unreachable — it still unlocks, still counts toward the Guild dock
+ * badge, and can never be collected, so the badge sticks on a number the player
+ * cannot clear. That is exactly what happened to the two efficiency
+ * achievements. achievements.test.ts asserts the two lists match.
+ */
+export const ACHIEVEMENT_GROUPS: { name: string; ids: string[] }[] = [
+  { name: "Potion Discovery", ids: ["disc_10", "disc_50", "disc_150", "disc_300", "disc_600"] },
+  { name: "Wealth",           ids: ["coin_10k", "coin_1m", "coin_100m", "coin_1b"] },
+  { name: "Output",           ids: ["brew_1k", "brew_100k"] },
+  { name: "Empire",           ids: ["mach_5", "work_8", "loc_30"] },
+  { name: "Efficiency",       ids: ["eff_90", "eff_99"] },
+  { name: "Secret",           ids: ["secret_clickspeed", "secret_voidsoup", "secret_liquidasset"] },
+];
